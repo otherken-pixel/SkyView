@@ -9,6 +9,9 @@
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
     <!-- Babel for in-browser JSX compiling -->
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <!-- Leaflet Maps -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <!-- Google Fonts & Material Symbols (MD3) -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -165,6 +168,21 @@
         button, a, .interactive {
             transition: all 0.2s cubic-bezier(0.2, 0, 0, 1);
         }
+
+        /* Leaflet map overrides */
+        .leaflet-container { z-index: 0; font-family: var(--font-sans); }
+        .leaflet-control-attribution { font-size: 10px !important; }
+        .route-icao-label {
+            background: transparent !important;
+            border: none !important;
+            box-shadow: none !important;
+            font-family: var(--font-mono);
+            font-weight: 700;
+            font-size: 12px;
+            color: #1a1c1e;
+            text-shadow: 0 0 4px #fff, 0 0 4px #fff, 0 0 4px #fff;
+            white-space: nowrap;
+        }
     </style>
 </head>
 <body>
@@ -212,26 +230,53 @@
             { id: "other", name: "Other", cat: "-", kts: 150 },
         ];
 
-        // Ensure we handle ANY valid 4-letter ICAO
+        // Returns airport from cache (sync). Trims whitespace before lookup.
         function getAirport(icao) {
             if (!icao) return null;
-            icao = icao.toUpperCase();
+            icao = icao.trim().toUpperCase();
+            return AIRPORTS[icao] || null;
+        }
+
+        // In-flight fetch guard to prevent duplicate API calls
+        const _fetchingIcaos = new Set();
+
+        // Fetch real airport data from Aviation Weather Center API and cache it.
+        // Returns a promise that resolves with the airport object (or null on failure).
+        async function fetchAirportInfo(icao) {
+            if (!icao) return null;
+            icao = icao.trim().toUpperCase();
+            if (icao.length !== 4) return null;
             if (AIRPORTS[icao]) return AIRPORTS[icao];
-            
-            // Generate a plausible mock airport if user typed an unlisted ICAO
-            if (icao.length === 4) {
-                var mockLat = 25 + (Math.random() * 24); 
-                var mockLon = -125 + (Math.random() * 58);
-                var newApt = {
-                    name: icao + " Facility", city: icao, state: "US",
-                    lat: mockLat, lon: mockLon, elev: Math.floor(Math.random() * 5000) + 10,
-                    rwy: ["18/36", "09/27"], artcc: "Center",
+            if (_fetchingIcaos.has(icao)) return null;
+            _fetchingIcaos.add(icao);
+            try {
+                const res = await fetch(
+                    `https://aviationweather.gov/api/data/airport?ids=${icao}&format=json`,
+                    { signal: AbortSignal.timeout(6000) }
+                );
+                if (!res.ok) return null;
+                const data = await res.json();
+                if (!data || data.length === 0) return null;
+                const a = data[0];
+                if (!a.lat || !a.lon) return null;
+                const apt = {
+                    name: a.name || icao + " Airport",
+                    city: a.city || icao,
+                    state: a.state || "US",
+                    lat: parseFloat(a.lat),
+                    lon: parseFloat(a.lon),
+                    elev: parseInt(a.elev) || 0,
+                    rwy: ["18/36", "09/27"],
+                    artcc: "Center",
                     freq: { atis: "120.0", twr: "118.0", gnd: "121.9", app: "124.0", dep: "125.0", clnc: "121.5" }
                 };
-                AIRPORTS[icao] = newApt; 
-                return newApt;
+                AIRPORTS[icao] = apt;
+                return apt;
+            } catch(e) {
+                return null;
+            } finally {
+                _fetchingIcaos.delete(icao);
             }
-            return null;
         }
 
         function pick(arr) { return arr[Math.floor(Math.random() * arr.length)]; }
@@ -495,77 +540,94 @@
         }
 
         function RouteMap({ dep, arr, wps }) {
-            var depApt = getAirport(dep);
-            var arrApt = getAirport(arr);
-            var wpApts = (wps || []).map(function(w) { return getAirport(w); }).filter(Boolean);
-            var allPts = [depApt].concat(wpApts).concat([arrApt]).filter(Boolean);
+            const { useRef: useRefMap, useEffect: useEffectMap } = React;
+            const mapContainerRef = useRefMap(null);
+            const leafletMapRef = useRefMap(null);
+            const layersRef = useRefMap([]);
+
+            var allCodes = [dep].concat(wps || []).concat([arr]).filter(c => c && c.trim().length === 4);
+            var allPts = allCodes.map(c => getAirport(c)).filter(Boolean);
+
+            var totalDist = 0;
+            var heading = 0;
+            if (allPts.length >= 2) {
+                for (var di = 0; di < allPts.length - 1; di++) {
+                    totalDist += calcDist(allPts[di].lat, allPts[di].lon, allPts[di+1].lat, allPts[di+1].lon);
+                }
+                heading = calcBearing(allPts[0].lat, allPts[0].lon, allPts[allPts.length-1].lat, allPts[allPts.length-1].lon);
+            }
+
+            useEffectMap(() => {
+                const L = window.L;
+                if (!L || !mapContainerRef.current) return;
+
+                // Initialize map once
+                if (!leafletMapRef.current) {
+                    leafletMapRef.current = L.map(mapContainerRef.current, { zoomControl: true });
+                    L.tileLayer(
+                        'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png',
+                        { attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/">CARTO</a>', subdomains: 'abcd', maxZoom: 19 }
+                    ).addTo(leafletMapRef.current);
+                }
+                const map = leafletMapRef.current;
+
+                // Remove previous route layers
+                layersRef.current.forEach(l => map.removeLayer(l));
+                layersRef.current = [];
+
+                if (allPts.length < 2) return;
+
+                const latLngs = allPts.map(p => [p.lat, p.lon]);
+
+                // Route polyline
+                const line = L.polyline(latLngs, { color: '#0b57d0', weight: 3, dashArray: '8 5', opacity: 0.9 });
+                line.addTo(map);
+                layersRef.current.push(line);
+
+                // Waypoint markers
+                const colors = { dep: '#0b57d0', arr: '#6b5778', wp: '#535f70' };
+                allPts.forEach((p, i) => {
+                    const isDep = i === 0, isArr = i === allPts.length - 1;
+                    const color = isDep ? colors.dep : isArr ? colors.arr : colors.wp;
+                    const marker = L.circleMarker([p.lat, p.lon], {
+                        radius: (isDep || isArr) ? 9 : 7,
+                        fillColor: color, color: '#fff', weight: 2, fillOpacity: 1
+                    });
+                    marker.addTo(map);
+                    marker.bindTooltip(allCodes[i], { permanent: true, direction: 'top', offset: [0, -8], className: 'route-icao-label' });
+                    layersRef.current.push(marker);
+                });
+
+                map.fitBounds(latLngs, { padding: [50, 50] });
+            }, [dep, arr, JSON.stringify(wps), allPts.length]);
+
+            // Cleanup on unmount
+            useEffectMap(() => {
+                return () => {
+                    if (leafletMapRef.current) {
+                        leafletMapRef.current.remove();
+                        leafletMapRef.current = null;
+                    }
+                };
+            }, []);
 
             if (allPts.length < 2) {
                 return (
-                    <div style={{ width: "100%", height: "100%", display: "flex", alignItems: "center", justifyContent: "center", background: "var(--md-sys-color-surface-container-lowest)", borderRadius: "16px", minHeight: "300px" }}>
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "center", background: "var(--md-sys-color-surface-container-lowest)", borderRadius: "16px", minHeight: "420px" }}>
                         <span style={{ color: "var(--md-sys-color-on-surface-variant)", fontSize: "14px" }}>Enter valid route to view map</span>
                     </div>
                 );
             }
 
-            var lats = allPts.map(p => p.lat);
-            var lons = allPts.map(p => p.lon);
-            var pad = 2.5;
-            var minLat = Math.min.apply(null, lats) - pad;
-            var maxLat = Math.max.apply(null, lats) + pad;
-            var minLon = Math.min.apply(null, lons) - pad;
-            var maxLon = Math.max.apply(null, lons) + pad;
-            var W = 700, H = 380;
-
-            function project(lat, lon) {
-                return {
-                    x: ((lon - minLon) / (maxLon - minLon)) * (W - 60) + 30,
-                    y: ((maxLat - lat) / (maxLat - minLat)) * (H - 60) + 30
-                };
-            }
-
-            var codes = [dep].concat(wps || []).concat([arr]);
-            var mapPts = allPts.map((p, i) => {
-                var proj = project(p.lat, p.lon);
-                return { x: proj.x, y: proj.y, code: codes[i], isDep: i === 0, isArr: i === allPts.length - 1 };
-            });
-
-            var pathD = mapPts.map((p, i) => (i === 0 ? "M" : "L") + p.x + "," + p.y).join(" ");
-            var totalDist = 0;
-            for (var i = 0; i < allPts.length - 1; i++) {
-                totalDist += calcDist(allPts[i].lat, allPts[i].lon, allPts[i + 1].lat, allPts[i + 1].lon);
-            }
-            var heading = calcBearing(allPts[0].lat, allPts[0].lon, allPts[allPts.length - 1].lat, allPts[allPts.length - 1].lon);
-
             return (
-                <div style={{ width: "100%", height: "100%", position: "relative", background: "var(--md-sys-color-surface-container-lowest)", borderRadius: "16px", overflow: "hidden", minHeight: "300px" }}>
-                    <svg width="100%" height="100%" viewBox={"0 0 " + W + " " + H} preserveAspectRatio="xMidYMid meet">
-                        <defs>
-                            <pattern id="mapgrid" width="40" height="40" patternUnits="userSpaceOnUse">
-                                <path d="M40 0L0 0 0 40" fill="none" stroke="var(--md-sys-color-surface-variant)" strokeWidth="0.5" />
-                            </pattern>
-                        </defs>
-                        <rect width={W} height={H} fill="url(#mapgrid)" />
-                        <path d={pathD} fill="none" stroke="var(--md-sys-color-primary)" strokeWidth="3" strokeDasharray="6 4" />
-                        
-                        {mapPts.map((p, idx) => {
-                            var color = p.isDep ? "var(--md-sys-color-primary)" : p.isArr ? "var(--md-sys-color-tertiary)" : "var(--md-sys-color-secondary)";
-                            var rad = (p.isDep || p.isArr) ? 6 : 4;
-                            return (
-                                <g key={idx}>
-                                    <circle cx={p.x} cy={p.y} r={rad + 6} fill={color} opacity="0.15" />
-                                    <circle cx={p.x} cy={p.y} r={rad} fill={color} />
-                                    <text x={p.x} y={p.y - 14} textAnchor="middle" fill="var(--md-sys-color-on-surface)" fontSize="12" fontWeight="700" className="font-mono">{p.code}</text>
-                                </g>
-                            );
-                        })}
-                    </svg>
-                    <div className="font-mono" style={{ position: "absolute", bottom: 16, left: 16, display: "flex", gap: 8, fontSize: 12 }}>
-                        <div style={{ background: "var(--md-sys-color-surface)", borderRadius: "8px", padding: "6px 12px", color: "var(--md-sys-color-on-surface)", boxShadow: "0 1px 3px rgba(0,0,0,0.12)" }}>
-                            <span style={{ color: "var(--md-sys-color-on-surface-variant)" }}>DIST </span><span style={{ fontWeight: 700 }}>{Math.round(totalDist)} NM</span>
+                <div style={{ position: "relative", borderRadius: "16px", overflow: "hidden" }}>
+                    <div ref={mapContainerRef} style={{ width: "100%", height: "420px" }} />
+                    <div className="font-mono" style={{ position: "absolute", bottom: 36, left: 12, zIndex: 1000, display: "flex", gap: 8, fontSize: 12, pointerEvents: "none" }}>
+                        <div style={{ background: "rgba(255,255,255,0.95)", borderRadius: "8px", padding: "6px 12px", color: "#1a1c1e", boxShadow: "0 2px 6px rgba(0,0,0,0.18)" }}>
+                            <span style={{ color: "#73777f" }}>DIST </span><span style={{ fontWeight: 700 }}>{Math.round(totalDist)} NM</span>
                         </div>
-                        <div style={{ background: "var(--md-sys-color-surface)", borderRadius: "8px", padding: "6px 12px", color: "var(--md-sys-color-on-surface)", boxShadow: "0 1px 3px rgba(0,0,0,0.12)" }}>
-                            <span style={{ color: "var(--md-sys-color-on-surface-variant)" }}>HDG </span><span style={{ fontWeight: 700 }}>{String(Math.round(heading)).padStart(3, "0")}&deg;</span>
+                        <div style={{ background: "rgba(255,255,255,0.95)", borderRadius: "8px", padding: "6px 12px", color: "#1a1c1e", boxShadow: "0 2px 6px rgba(0,0,0,0.18)" }}>
+                            <span style={{ color: "#73777f" }}>HDG </span><span style={{ fontWeight: 700 }}>{String(Math.round(heading)).padStart(3, "0")}&deg;</span>
                         </div>
                     </div>
                 </div>
@@ -599,8 +661,14 @@
 
         function WeatherDetail({ icao, label }) {
             const [expanded, setExpanded] = useState(false);
-            var metar = useMemo(() => makeMetar(icao), [icao]);
-            var taf = useMemo(() => makeTaf(icao), [icao]);
+            const [aptReady, setAptReady] = useState(!!AIRPORTS[icao]);
+            useEffect(() => {
+                if (!AIRPORTS[icao]) {
+                    fetchAirportInfo(icao).then(a => { if (a) setAptReady(true); });
+                }
+            }, [icao]);
+            var metar = useMemo(() => makeMetar(icao), [icao, aptReady]);
+            var taf = useMemo(() => makeTaf(icao), [icao, aptReady]);
             var apt = getAirport(icao);
             if (!metar || !apt) { return null; }
 
@@ -665,6 +733,12 @@
         }
 
         function FreqPanel({ icao }) {
+            const [aptReady, setAptReady] = useState(!!AIRPORTS[icao]);
+            useEffect(() => {
+                if (!AIRPORTS[icao]) {
+                    fetchAirportInfo(icao).then(a => { if (a) setAptReady(true); });
+                }
+            }, [icao]);
             var apt = getAirport(icao);
             if (!apt) return null;
             var labels = { atis: "ATIS", twr: "Tower", gnd: "Ground", app: "Approach", dep: "Departure", clnc: "Clearance" };
@@ -845,6 +919,8 @@
             var [tab, setTab] = useState("brief");
             var [forecastDay, setForecastDay] = useState(0);
             var [newTrip, setNewTrip] = useState({ route: ["", ""], aircraft: "c172", date: "", time: defaultTimeStr, name: "" });
+            // Bump this counter to force re-renders after async airport fetches resolve
+            var [aptVersion, setAptVersion] = useState(0);
 
             useEffect(() => {
                 setTrips(prev => prev.map(t => {
@@ -853,19 +929,30 @@
                 }));
             }, []);
 
+            // Auto-fetch real data for any unknown ICAOs typed in the create form
+            useEffect(() => {
+                const candidates = newTrip.route
+                    .map(r => r.trim().toUpperCase())
+                    .filter(r => r.length === 4 && !AIRPORTS[r]);
+                if (candidates.length === 0) return;
+                Promise.all(candidates.map(fetchAirportInfo)).then(results => {
+                    if (results.some(Boolean)) setAptVersion(v => v + 1);
+                });
+            }, [newTrip.route.join(',')]);
+
             function createTrip() {
-                var validRoute = newTrip.route.filter(r => r && r.length === 4).map(r => r.toUpperCase());
+                var validRoute = newTrip.route
+                    .map(r => r.trim().toUpperCase())
+                    .filter(r => r.length === 4);
                 if (validRoute.length < 2) return;
-                
-                validRoute.forEach(r => getAirport(r));
 
                 var t = {
-                    id: Date.now(), 
-                    dep: validRoute[0], 
+                    id: Date.now(),
+                    dep: validRoute[0],
                     arr: validRoute[validRoute.length - 1],
                     wps: validRoute.slice(1, -1),
-                    aircraft: newTrip.aircraft, 
-                    date: newTrip.date, 
+                    aircraft: newTrip.aircraft,
+                    date: newTrip.date,
                     time: newTrip.time,
                     name: newTrip.name || (validRoute[0] + " to " + validRoute[validRoute.length - 1]),
                     goScore: calcGoScore(validRoute[0], validRoute[validRoute.length - 1])
@@ -928,7 +1015,7 @@
                                     {trips.map(trip => {
                                         var ac = AIRCRAFT.find(a => a.id === trip.aircraft) || AIRCRAFT[0];
                                         
-                                        var fullRoute = [trip.dep].concat(trip.wps || []).concat([trip.arr]);
+                                        var fullRoute = [trip.dep].concat(trip.wps || []).concat([trip.arr]).map(r => r ? r.trim().toUpperCase() : r);
                                         var validRoutePts = fullRoute.filter(r => r && getAirport(r));
                                         var d = 0;
                                         for (var i = 0; i < validRoutePts.length - 1; i++) {
@@ -950,7 +1037,7 @@
                                                                 {fullRoute.map((rt, idx) => (
                                                                     <React.Fragment key={idx}>
                                                                         <span className="font-mono" style={{ fontSize: 20, fontWeight: 700, color: idx === 0 ? "var(--md-sys-color-primary)" : idx === fullRoute.length - 1 ? "var(--md-sys-color-tertiary)" : "var(--md-sys-color-secondary)" }}>{rt}</span>
-                                                                        {idx < fullRoute.length - 1 && <MdIcon name="arrow_right_alt" style={{ color: "var(--md-sys-color-outline)" }} />}
+                                                                        {idx < fullRoute.length - 1 && <MdIcon name="flight" style={{ color: "var(--md-sys-color-outline)", transform: "rotate(45deg)", fontSize: "18px" }} />}
                                                                     </React.Fragment>
                                                                 ))}
                                                             </div>
@@ -1005,7 +1092,7 @@
                                                         value={r} 
                                                         onChange={e => {
                                                             let newRoute = [...newTrip.route];
-                                                            newRoute[i] = e.target.value.toUpperCase();
+                                                            newRoute[i] = e.target.value.trim().toUpperCase();
                                                             setNewTrip({...newTrip, route: newRoute});
                                                         }} 
                                                         placeholder={isDep ? "KCLT" : isArr ? "KATL" : "KORD"} 
@@ -1033,7 +1120,9 @@
                                     </div>
                                     
                                     {(() => {
-                                        var validRoutePts = newTrip.route.filter(r => r && r.length === 4 && getAirport(r));
+                                        var validRoutePts = newTrip.route
+                                            .map(r => r.trim().toUpperCase())
+                                            .filter(r => r.length === 4 && getAirport(r));
                                         if (validRoutePts.length < 2) return null;
                                         var dist = 0;
                                         for (var i = 0; i < validRoutePts.length - 1; i++) {
@@ -1129,7 +1218,7 @@
                                                     {fullRoute.map((rt, idx) => (
                                                         <React.Fragment key={idx}>
                                                             <span className="font-mono" style={{ fontSize: 22, fontWeight: 700, color: idx === 0 ? "var(--md-sys-color-primary)" : idx === fullRoute.length - 1 ? "var(--md-sys-color-tertiary)" : "var(--md-sys-color-secondary)" }}>{rt}</span>
-                                                            {idx < fullRoute.length - 1 && <MdIcon name="arrow_right_alt" style={{ color: "var(--md-sys-color-outline)" }} />}
+                                                            {idx < fullRoute.length - 1 && <MdIcon name="flight" style={{ color: "var(--md-sys-color-outline)", transform: "rotate(45deg)", fontSize: "18px" }} />}
                                                         </React.Fragment>
                                                     ))}
                                                 </div>
