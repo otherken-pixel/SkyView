@@ -169,6 +169,9 @@
             transition: all 0.2s cubic-bezier(0.2, 0, 0, 1);
         }
 
+        /* Spin animation for loading indicator */
+        @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+
         /* Leaflet map overrides */
         .leaflet-container { z-index: 0; font-family: var(--font-sans); }
         .leaflet-control-attribution { font-size: 10px !important; }
@@ -386,6 +389,114 @@
         }
 
         function getGoColor(s) { return s >= 75 ? "var(--md-sys-color-primary)" : s >= 50 ? "var(--md-sys-color-warning)" : "var(--md-sys-color-error)"; }
+
+        // Fetch live METAR from Aviation Weather Center API
+        async function fetchLiveMetar(icao) {
+            if (!icao) return null;
+            icao = icao.trim().toUpperCase();
+            try {
+                const res = await fetch(
+                    `https://aviationweather.gov/api/data/metar?ids=${icao}&format=json&hours=2`,
+                    { signal: AbortSignal.timeout(8000) }
+                );
+                if (!res.ok) return null;
+                const data = await res.json();
+                if (!data || data.length === 0) return null;
+                const m = data[0];
+                const wspd = m.wspd || 0;
+                const wdir = m.wdir || 0;
+                const wgst = m.wgst || 0;
+                const visib = m.visib != null ? m.visib : 10;
+                const temp = m.temp != null ? m.temp : 15;
+                const dewp = m.dewp != null ? m.dewp : 5;
+                const altim = m.altim || 29.92;
+                const wdirStr = wdir === 0 ? "VRB" : String(wdir).padStart(3, "0");
+                const wspdStr = String(wspd).padStart(2, "0");
+                const gustStr = wgst > 0 ? `G${String(wgst).padStart(2, "0")}` : "";
+                const wind = `${wdirStr}${wspdStr}${gustStr}KT`;
+                const visStr = visib >= 6 ? "P6SM" : `${visib}SM`;
+                let skyStr = "CLR";
+                if (m.skyCondition && m.skyCondition.length > 0) {
+                    skyStr = m.skyCondition.map(s => `${s.skyCover}${s.cloudBase ? String(Math.round(s.cloudBase / 100)).padStart(3, "0") : ""}`).join(" ");
+                }
+                const tI = Math.round(temp), dI = Math.round(dewp);
+                const tempStr = `${tI < 0 ? "M" : ""}${Math.abs(tI) < 10 ? "0" : ""}${Math.abs(tI)}/${dI < 0 ? "M" : ""}${Math.abs(dI) < 10 ? "0" : ""}${Math.abs(dI)}`;
+                const altStr = `A${String(Math.round(altim * 100)).padStart(4, "0")}`;
+                return {
+                    raw: m.rawOb || `${icao} LIVE METAR`,
+                    wind, vis: visStr, sky: skyStr, temp: tempStr, alt: altStr,
+                    cat: m.fltcat || "VFR", wspd
+                };
+            } catch(e) { return null; }
+        }
+
+        // Fetch live TAF from Aviation Weather Center API
+        async function fetchLiveTaf(icao) {
+            if (!icao) return null;
+            icao = icao.trim().toUpperCase();
+            try {
+                const res = await fetch(
+                    `https://aviationweather.gov/api/data/taf?ids=${icao}&format=json`,
+                    { signal: AbortSignal.timeout(8000) }
+                );
+                if (!res.ok) return null;
+                const data = await res.json();
+                if (!data || data.length === 0) return null;
+                return data[0].rawTAF || null;
+            } catch(e) { return null; }
+        }
+
+        // Fetch 7-day forecast from NWS API for a lat/lon
+        async function fetchNwsForecast(lat, lon) {
+            if (lat == null || lon == null) return null;
+            try {
+                const pointsRes = await fetch(
+                    `https://api.weather.gov/points/${lat.toFixed(4)},${lon.toFixed(4)}`,
+                    { signal: AbortSignal.timeout(8000), headers: { "Accept": "application/geo+json" } }
+                );
+                if (!pointsRes.ok) return null;
+                const pointsData = await pointsRes.json();
+                const forecastUrl = pointsData?.properties?.forecast;
+                if (!forecastUrl) return null;
+                const forecastRes = await fetch(forecastUrl, { signal: AbortSignal.timeout(8000), headers: { "Accept": "application/geo+json" } });
+                if (!forecastRes.ok) return null;
+                const forecastData = await forecastRes.json();
+                const periods = forecastData?.properties?.periods;
+                if (!periods || periods.length === 0) return null;
+                var days = [];
+                for (var i = 0; i < periods.length && days.length < 7; i++) {
+                    var p = periods[i];
+                    if (p.isDaytime) {
+                        var dt = new Date(p.startTime);
+                        var cat = "VFR";
+                        var name = (p.shortForecast || "").toLowerCase();
+                        if (name.includes("fog") || name.includes("freezing")) cat = "LIFR";
+                        else if (name.includes("rain") || name.includes("snow") || name.includes("storm") || name.includes("shower")) cat = "IFR";
+                        else if (name.includes("cloud") || name.includes("overcast") || name.includes("drizzle")) cat = "MVFR";
+                        days.push({
+                            dayName: dt.toLocaleDateString("en-US", { weekday: "short" }),
+                            dateStr: dt.toLocaleDateString("en-US", { month: "short", day: "numeric" }),
+                            cat, hi: p.temperature,
+                            lo: periods[i + 1]?.temperature || (p.temperature - 15),
+                            ws: parseInt(p.windSpeed) || 0, pr: 0
+                        });
+                    }
+                }
+                return days.length > 0 ? days : null;
+            } catch(e) { return null; }
+        }
+
+        // Calculate Go/No-Go score from live METAR objects
+        function calcGoScoreFromMetars(depMetar, arrMetar) {
+            if (!depMetar || !arrMetar) return 50;
+            var catScores = { VFR: 95, MVFR: 65, IFR: 30, LIFR: 10 };
+            var windPen = Math.max(0, (depMetar.wspd - 15) * 3) + Math.max(0, (arrMetar.wspd - 15) * 3);
+            var score = Math.round(
+                (catScores[depMetar.cat] || 50) * 0.45 +
+                (catScores[arrMetar.cat] || 50) * 0.45 - windPen
+            );
+            return Math.max(5, Math.min(99, score));
+        }
 
         /* =========================================
            MATERIAL DESIGN 3 REACT COMPONENTS
@@ -635,26 +746,79 @@
         }
 
         function ForecastStrip({ icao, selectedDay, onSelect }) {
-            var forecasts = useMemo(() => makeForecast(icao), [icao]);
+            const [forecasts, setForecasts] = useState(null);
+            const [isLive, setIsLive] = useState(false);
+
+            useEffect(() => {
+                setForecasts(null);
+                setIsLive(false);
+                var apt = getAirport(icao);
+                if (apt) {
+                    fetchNwsForecast(apt.lat, apt.lon).then(data => {
+                        if (data) { setForecasts(data); setIsLive(true); }
+                        else setForecasts(makeForecast(icao));
+                    });
+                } else {
+                    fetchAirportInfo(icao).then(a => {
+                        if (a) {
+                            fetchNwsForecast(a.lat, a.lon).then(data => {
+                                if (data) { setForecasts(data); setIsLive(true); }
+                                else setForecasts(makeForecast(icao));
+                            });
+                        } else {
+                            setForecasts(makeForecast(icao));
+                        }
+                    });
+                }
+            }, [icao]);
+
+            var items = forecasts || makeForecast(icao);
+
             return (
-                <div style={{ display: "flex", gap: 8, overflowX: "auto", padding: "4px 0", WebkitOverflowScrolling: "touch" }}>
-                    {forecasts.map((f, i) => {
-                        var selected = selectedDay === i;
-                        var lc = f.cat.toLowerCase();
-                        return (
-                            <button key={i} onClick={() => onSelect(i)} style={{
-                                flex: "0 0 auto", minWidth: 72, padding: "12px 8px", borderRadius: "12px",
-                                border: selected ? `2px solid var(--cat-${lc}-color)` : "2px solid transparent",
-                                background: selected ? `var(--cat-${lc}-bg)` : "var(--md-sys-color-surface-container-high)", 
-                                cursor: "pointer", textAlign: "center", transition: "all 0.2s"
-                            }}>
-                                <div style={{ fontSize: 12, fontWeight: 700, color: selected ? `var(--cat-${lc}-color)` : "var(--md-sys-color-on-surface)", marginBottom: 2 }}>{f.dayName}</div>
-                                <div style={{ fontSize: 10, color: "var(--md-sys-color-on-surface-variant)", marginBottom: 8 }}>{f.dateStr}</div>
-                                <CatBadge cat={f.cat} />
-                                <div style={{ fontSize: 12, color: "var(--md-sys-color-on-surface)", marginTop: 8, fontWeight: 500 }}>{f.hi}&deg; <span style={{color: "var(--md-sys-color-on-surface-variant)"}}>{f.lo}&deg;</span></div>
-                            </button>
-                        );
-                    })}
+                <div>
+                    <div style={{ fontSize: 11, color: "var(--md-sys-color-on-surface-variant)", marginBottom: 6, display: "flex", alignItems: "center", gap: 4 }}>
+                        <MdIcon name="calendar_month" style={{ fontSize: 13 }} />
+                        7-Day Forecast
+                        {isLive && <span style={{ color: "var(--md-sys-color-primary)", fontWeight: 700, fontSize: 10, background: "var(--md-sys-color-primary-container)", borderRadius: 4, padding: "1px 5px", marginLeft: 4 }}>NWS LIVE</span>}
+                    </div>
+                    <div style={{ display: "flex", gap: 8, overflowX: "auto", padding: "4px 0", WebkitOverflowScrolling: "touch" }}>
+                        {items.map((f, i) => {
+                            var selected = selectedDay === i;
+                            var lc = f.cat.toLowerCase();
+                            return (
+                                <button key={i} onClick={() => onSelect(i)} style={{
+                                    flex: "0 0 auto", minWidth: 72, padding: "12px 8px", borderRadius: "12px",
+                                    border: selected ? `2px solid var(--cat-${lc}-color)` : "2px solid transparent",
+                                    background: selected ? `var(--cat-${lc}-bg)` : "var(--md-sys-color-surface-container-high)",
+                                    cursor: "pointer", textAlign: "center", transition: "all 0.2s"
+                                }}>
+                                    <div style={{ fontSize: 12, fontWeight: 700, color: selected ? `var(--cat-${lc}-color)` : "var(--md-sys-color-on-surface)", marginBottom: 2 }}>{f.dayName}</div>
+                                    <div style={{ fontSize: 10, color: "var(--md-sys-color-on-surface-variant)", marginBottom: 8 }}>{f.dateStr}</div>
+                                    <CatBadge cat={f.cat} />
+                                    <div style={{ fontSize: 12, color: "var(--md-sys-color-on-surface)", marginTop: 8, fontWeight: 500 }}>{f.hi}&deg; <span style={{color: "var(--md-sys-color-on-surface-variant)"}}>{f.lo}&deg;</span></div>
+                                </button>
+                            );
+                        })}
+                    </div>
+                </div>
+            );
+        }
+
+        function WindyMap({ dep, arr, wps }) {
+            var allPts = useMemo(() => [dep, ...(wps || []), arr].map(getAirport).filter(Boolean), [dep, arr, JSON.stringify(wps)]);
+            if (allPts.length < 2) return null;
+            var midLat = allPts.reduce((s, p) => s + p.lat, 0) / allPts.length;
+            var midLon = allPts.reduce((s, p) => s + p.lon, 0) / allPts.length;
+            var src = `https://embed.windy.com/embed2.html?lat=${midLat.toFixed(2)}&lon=${midLon.toFixed(2)}&detailLat=${midLat.toFixed(2)}&detailLon=${midLon.toFixed(2)}&zoom=6&level=surface&overlay=wind&product=ecmwf&menu=&message=&marker=&calendar=now&pressure=&type=map&location=coordinates&detail=&metricWind=kt&metricTemp=%C2%B0F&radarRange=-1`;
+            return (
+                <div style={{ marginTop: 24 }}>
+                    <h2 style={{ fontSize: 16, fontWeight: 500, margin: "0 0 12px", color: "var(--md-sys-color-on-surface)", display: "flex", alignItems: "center", gap: 8 }}>
+                        <MdIcon name="storm" style={{ color: "var(--md-sys-color-primary)" }} />
+                        Live Wind &amp; Weather Radar
+                    </h2>
+                    <div style={{ borderRadius: "16px", overflow: "hidden", border: "1px solid var(--md-sys-color-outline-variant)" }}>
+                        <iframe src={src} style={{ width: "100%", height: "450px", border: "none" }} allowFullScreen title="Windy Weather Radar" />
+                    </div>
                 </div>
             );
         }
@@ -662,15 +826,32 @@
         function WeatherDetail({ icao, label }) {
             const [expanded, setExpanded] = useState(false);
             const [aptReady, setAptReady] = useState(!!AIRPORTS[icao]);
+            const [liveMetar, setLiveMetar] = useState(null);
+            const [liveTaf, setLiveTaf] = useState(null);
+            const [loadingWx, setLoadingWx] = useState(true);
+
             useEffect(() => {
                 if (!AIRPORTS[icao]) {
                     fetchAirportInfo(icao).then(a => { if (a) setAptReady(true); });
                 }
             }, [icao]);
-            var metar = useMemo(() => makeMetar(icao), [icao, aptReady]);
-            var taf = useMemo(() => makeTaf(icao), [icao, aptReady]);
+
+            useEffect(() => {
+                setLoadingWx(true);
+                setLiveMetar(null);
+                setLiveTaf(null);
+                Promise.all([fetchLiveMetar(icao), fetchLiveTaf(icao)]).then(([m, t]) => {
+                    setLiveMetar(m);
+                    setLiveTaf(t);
+                    setLoadingWx(false);
+                });
+            }, [icao]);
+
+            var metar = liveMetar || (aptReady ? makeMetar(icao) : null);
+            var taf = liveTaf || makeTaf(icao);
             var apt = getAirport(icao);
-            if (!metar || !apt) { return null; }
+            if (!apt && !loadingWx) { return null; }
+            if (!metar && !loadingWx) { return null; }
 
             return (
                 <MdCard style={{ marginBottom: '16px' }}>
@@ -679,28 +860,38 @@
                             <div style={{ fontSize: 12, fontWeight: 600, color: "var(--md-sys-color-primary)", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 4 }}>{label}</div>
                             <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                                 <span className="font-mono" style={{ fontSize: 20, fontWeight: 700 }}>{icao}</span>
-                                <span style={{ fontSize: 14, color: "var(--md-sys-color-on-surface-variant)" }}>{apt.city}, {apt.state}</span>
+                                {apt && <span style={{ fontSize: 14, color: "var(--md-sys-color-on-surface-variant)" }}>{apt.city}, {apt.state}</span>}
+                                {liveMetar && <span style={{ fontSize: 10, color: "var(--md-sys-color-primary)", background: "var(--md-sys-color-primary-container)", borderRadius: 4, padding: "2px 6px", fontWeight: 700, letterSpacing: "0.5px" }}>LIVE</span>}
+                                {loadingWx && <MdIcon name="sync" style={{ fontSize: 14, color: "var(--md-sys-color-on-surface-variant)", animation: "spin 1s linear infinite" }} />}
                             </div>
                         </div>
-                        <CatBadge cat={metar.cat} />
-                    </div>
-                    
-                    <div className="font-mono" style={{ background: "var(--md-sys-color-surface-container-lowest)", borderRadius: "8px", padding: "12px", fontSize: 13, color: "var(--md-sys-color-on-surface)", lineHeight: 1.6, wordBreak: "break-all", marginBottom: 16, border: "1px solid var(--md-sys-color-outline-variant)" }}>{metar.raw}</div>
-                    
-                    <div className="font-mono" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(100px, 1fr))", gap: "12px 16px", fontSize: 13 }}>
-                        <div><span style={{ color: "var(--md-sys-color-on-surface-variant)", fontSize: 11, display: 'block' }}>WIND</span><span style={{ fontWeight: 600 }}>{metar.wind}</span></div>
-                        <div><span style={{ color: "var(--md-sys-color-on-surface-variant)", fontSize: 11, display: 'block' }}>VIS</span><span style={{ fontWeight: 600 }}>{metar.vis}</span></div>
-                        <div><span style={{ color: "var(--md-sys-color-on-surface-variant)", fontSize: 11, display: 'block' }}>SKY</span><span style={{ fontWeight: 600 }}>{metar.sky}</span></div>
-                        <div><span style={{ color: "var(--md-sys-color-on-surface-variant)", fontSize: 11, display: 'block' }}>TEMP</span><span style={{ fontWeight: 600 }}>{metar.temp}</span></div>
-                        <div><span style={{ color: "var(--md-sys-color-on-surface-variant)", fontSize: 11, display: 'block' }}>ALTM</span><span style={{ fontWeight: 600 }}>{metar.alt}</span></div>
+                        {metar && <CatBadge cat={metar.cat} />}
                     </div>
 
-                    <div style={{ marginTop: 16, paddingTop: 16, borderTop: "1px solid var(--md-sys-color-outline-variant)" }}>
-                        <MdButton variant="text" onClick={() => setExpanded(!expanded)} icon={expanded ? "expand_less" : "expand_more"} style={{ padding: '4px 8px', margin: '-4px -8px' }}>
-                            {expanded ? "Hide TAF" : "View TAF"}
-                        </MdButton>
-                        {expanded && <div className="font-mono" style={{ background: "var(--md-sys-color-surface-container-lowest)", borderRadius: "8px", padding: "12px", fontSize: 12, color: "var(--md-sys-color-on-surface)", lineHeight: 1.8, marginTop: 12 }}>{taf}</div>}
-                    </div>
+                    {loadingWx && !metar && (
+                        <div style={{ color: "var(--md-sys-color-on-surface-variant)", fontSize: 13, padding: "8px 0" }}>Fetching live weather data...</div>
+                    )}
+
+                    {metar && (
+                        <>
+                            <div className="font-mono" style={{ background: "var(--md-sys-color-surface-container-lowest)", borderRadius: "8px", padding: "12px", fontSize: 13, color: "var(--md-sys-color-on-surface)", lineHeight: 1.6, wordBreak: "break-all", marginBottom: 16, border: "1px solid var(--md-sys-color-outline-variant)" }}>{metar.raw}</div>
+
+                            <div className="font-mono" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(100px, 1fr))", gap: "12px 16px", fontSize: 13 }}>
+                                <div><span style={{ color: "var(--md-sys-color-on-surface-variant)", fontSize: 11, display: 'block' }}>WIND</span><span style={{ fontWeight: 600 }}>{metar.wind}</span></div>
+                                <div><span style={{ color: "var(--md-sys-color-on-surface-variant)", fontSize: 11, display: 'block' }}>VIS</span><span style={{ fontWeight: 600 }}>{metar.vis}</span></div>
+                                <div><span style={{ color: "var(--md-sys-color-on-surface-variant)", fontSize: 11, display: 'block' }}>SKY</span><span style={{ fontWeight: 600 }}>{metar.sky}</span></div>
+                                <div><span style={{ color: "var(--md-sys-color-on-surface-variant)", fontSize: 11, display: 'block' }}>TEMP</span><span style={{ fontWeight: 600 }}>{metar.temp}</span></div>
+                                <div><span style={{ color: "var(--md-sys-color-on-surface-variant)", fontSize: 11, display: 'block' }}>ALTM</span><span style={{ fontWeight: 600 }}>{metar.alt}</span></div>
+                            </div>
+
+                            <div style={{ marginTop: 16, paddingTop: 16, borderTop: "1px solid var(--md-sys-color-outline-variant)" }}>
+                                <MdButton variant="text" onClick={() => setExpanded(!expanded)} icon={expanded ? "expand_less" : "expand_more"} style={{ padding: '4px 8px', margin: '-4px -8px' }}>
+                                    {expanded ? "Hide TAF" : "View TAF"}
+                                </MdButton>
+                                {expanded && <div className="font-mono" style={{ background: "var(--md-sys-color-surface-container-lowest)", borderRadius: "8px", padding: "12px", fontSize: 12, color: "var(--md-sys-color-on-surface)", lineHeight: 1.8, marginTop: 12 }}>{taf}</div>}
+                            </div>
+                        </>
+                    )}
                 </MdCard>
             );
         }
@@ -768,6 +959,7 @@
             var [result, setResult] = useState(null);
             var [loading, setLoading] = useState(false);
             var [error, setError] = useState(null);
+            var [apiKey, setApiKey] = useState("");
 
             var runBriefing = useCallback(async function() {
                 if (!trip.dep || !trip.arr) return;
@@ -775,7 +967,7 @@
 
                 var ac = AIRCRAFT.find(a => a.id === trip.aircraft) || AIRCRAFT[0];
                 var allRoutePts = [trip.dep].concat(trip.wps || []).concat([trip.arr]);
-                
+
                 var distance = 0;
                 for (var i = 0; i < allRoutePts.length - 1; i++) {
                     var p1 = getAirport(allRoutePts[i]);
@@ -784,35 +976,54 @@
                 }
                 var ete = distance / ac.kts;
 
-                var prompt = `TRIP: ${ac.name} (${ac.cat}) cruise ${ac.kts}kt\n` +
-                  `DEPARTURE: ${trip.date} at ${trip.time} Local Time\n` +
-                  `ROUTE: ${allRoutePts.join(" -> ")}\n` +
-                  `Distance:${Math.round(distance)}nm ETE:${Math.floor(ete)}h${Math.round((ete % 1) * 60)}m\n\n` +
-                  `METAR ${trip.dep}: ${(makeMetar(trip.dep)?.raw || "N/A")}\n` +
-                  `TAF ${trip.dep}: ${makeTaf(trip.dep)}\n` +
-                  `METAR ${trip.arr}: ${(makeMetar(trip.arr)?.raw || "N/A")}\n`;
+                // Pre-fetch live METARs and TAFs for all waypoints
+                var wxData = await Promise.all(allRoutePts.map(async icao => {
+                    var [m, t] = await Promise.all([fetchLiveMetar(icao), fetchLiveTaf(icao)]);
+                    return { icao, metar: m, taf: t };
+                }));
 
-                const apiKey = ""; 
-                const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${apiKey}`;
-                
+                var wxLines = wxData.map(w => {
+                    var lines = [];
+                    if (w.metar) lines.push(`METAR ${w.icao}: ${w.metar.raw}`);
+                    if (w.taf) lines.push(`TAF ${w.icao}: ${w.taf}`);
+                    return lines.join("\n");
+                }).join("\n");
+
+                var prompt = `TRIP: ${ac.name} (${ac.cat}) cruise ${ac.kts}kt\n` +
+                    `DEPARTURE: ${trip.date} at ${trip.time} Local Time\n` +
+                    `ROUTE: ${allRoutePts.join(" -> ")}\n` +
+                    `Distance: ${Math.round(distance)}nm  ETE: ${Math.floor(ete)}h${Math.round((ete % 1) * 60)}m\n\n` +
+                    `=== LIVE WEATHER DATA ===\n${wxLines || "No live weather available."}`;
+
+                const url = "https://api.anthropic.com/v1/messages";
                 const payload = {
-                    contents: [{ parts: [{ text: prompt }] }],
-                    systemInstruction: { 
-                        parts: [{ 
-                            text: "You are an expert aviation weather analyst providing a flight briefing. Use bullet points. Provide the briefing using EXACTLY these headers on their own lines: **GO/NO-GO RECOMMENDATION**, **WEATHER SYNOPSIS**, **DEPARTURE WINDOW**, **EN ROUTE HAZARDS**, **RUNWAY ANALYSIS**, **NOTAM IMPACT**, **ALTERNATE RECOMMENDATIONS**, **FREQUENCY GUIDE**"
-                        }] 
-                    }
+                    model: "claude-sonnet-4-6",
+                    max_tokens: 1500,
+                    system: "You are an expert aviation weather analyst providing a flight briefing. Use bullet points. Provide the briefing using EXACTLY these headers on their own lines: **GO/NO-GO RECOMMENDATION**, **WEATHER SYNOPSIS**, **DEPARTURE WINDOW**, **EN ROUTE HAZARDS**, **RUNWAY ANALYSIS**, **NOTAM IMPACT**, **ALTERNATE RECOMMENDATIONS**, **FREQUENCY GUIDE**",
+                    messages: [{ role: "user", content: prompt }]
                 };
 
-                const fetchWithRetry = async (retries = 5) => {
-                    const delays = [1000, 2000, 4000, 8000, 16000];
+                const fetchWithRetry = async (retries = 3) => {
+                    const delays = [1000, 2000, 4000];
                     for (let i = 0; i <= retries; i++) {
                         try {
-                            const response = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
-                            if (!response.ok) throw new Error("API Error");
+                            const response = await fetch(url, {
+                                method: "POST",
+                                headers: {
+                                    "Content-Type": "application/json",
+                                    "x-api-key": apiKey,
+                                    "anthropic-version": "2023-06-01",
+                                    "anthropic-dangerous-direct-browser-access": "true"
+                                },
+                                body: JSON.stringify(payload)
+                            });
+                            if (!response.ok) {
+                                const errBody = await response.json().catch(() => ({}));
+                                throw new Error(errBody?.error?.message || `HTTP ${response.status}`);
+                            }
                             const data = await response.json();
-                            const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
-                            if (!text) throw new Error("Empty response");
+                            const text = data.content?.[0]?.text;
+                            if (!text) throw new Error("Empty response from Claude");
                             return text;
                         } catch (err) {
                             if (i === retries) throw err;
@@ -825,11 +1036,11 @@
                     const responseText = await fetchWithRetry();
                     setResult(responseText);
                 } catch (e) {
-                    setError("Briefing failed. Please try again later.");
+                    setError("Briefing failed: " + (e.message || "Please check your API key and try again."));
                 } finally {
                     setLoading(false);
                 }
-            }, [trip]);
+            }, [trip, apiKey]);
 
             var sections = useMemo(() => {
                 if (!result) return [];
@@ -862,16 +1073,25 @@
 
             return (
                 <div style={{ paddingBottom: '32px' }}>
-                    <MdButton 
-                        variant={loading ? "tonal" : "sparkle"} 
-                        onClick={runBriefing} 
-                        disabled={loading || !trip.dep || !trip.arr} 
+                    <div style={{ marginBottom: 16 }}>
+                        <MdInput
+                            label="Anthropic API Key"
+                            value={apiKey}
+                            onChange={e => setApiKey(e.target.value)}
+                            placeholder="sk-ant-..."
+                            type="password"
+                        />
+                    </div>
+                    <MdButton
+                        variant={loading ? "tonal" : "sparkle"}
+                        onClick={runBriefing}
+                        disabled={loading || !trip.dep || !trip.arr || !apiKey}
                         icon="auto_awesome"
                         style={{ width: "100%", padding: "16px", marginBottom: "24px", fontSize: "16px" }}
                     >
-                        {loading ? "Analyzing Aviation Data..." : "Generate AI Briefing"}
+                        {loading ? "Fetching live weather & analyzing..." : "Generate AI Briefing"}
                     </MdButton>
-                    
+
                     {error && <MdCard style={{ background: "var(--md-sys-color-error-container)", color: "var(--md-sys-color-on-error-container)", marginBottom: "16px" }}><MdIcon name="error" style={{marginRight: 8}}/>{error}</MdCard>}
                     
                     {sections.map((s, i) => {
@@ -896,7 +1116,7 @@
                         <div style={{ textAlign: "center", padding: "48px 24px", color: "var(--md-sys-color-on-surface-variant)" }}>
                             <MdIcon name="robot_2" style={{ fontSize: 48, opacity: 0.5, marginBottom: 16 }} />
                             <div style={{ fontSize: 16, maxWidth: "400px", margin: "0 auto", lineHeight: 1.5 }}>
-                                Google AI will analyze METARs, TAFs, NOTAMs, PIREPs, and winds to generate a comprehensive flight briefing.
+                                Claude AI will fetch live METARs &amp; TAFs from AviationWeather.gov, then generate a comprehensive flight briefing. Enter your Anthropic API key above.
                             </div>
                         </div>
                     )}
@@ -923,10 +1143,14 @@
             var [aptVersion, setAptVersion] = useState(0);
 
             useEffect(() => {
-                setTrips(prev => prev.map(t => {
-                    if (t.goScore) return t;
-                    return { ...t, goScore: getAirport(t.dep) && getAirport(t.arr) ? calcGoScore(t.dep, t.arr) : 50 };
-                }));
+                // Fetch live METARs for each trip to compute live Go/No-Go scores
+                trips.forEach(t => {
+                    Promise.all([fetchLiveMetar(t.dep), fetchLiveMetar(t.arr)]).then(([dm, am]) => {
+                        var score = dm && am ? calcGoScoreFromMetars(dm, am)
+                            : (getAirport(t.dep) && getAirport(t.arr) ? calcGoScore(t.dep, t.arr) : 50);
+                        setTrips(prev => prev.map(x => x.id === t.id ? { ...x, goScore: score } : x));
+                    });
+                });
             }, []);
 
             // Auto-fetch real data for any unknown ICAOs typed in the create form
@@ -958,14 +1182,22 @@
                     goScore: calcGoScore(validRoute[0], validRoute[validRoute.length - 1])
                 };
                 setTrips(prev => [t].concat(prev));
+                // Async update go score with live METARs
+                Promise.all([fetchLiveMetar(t.dep), fetchLiveMetar(t.arr)]).then(([dm, am]) => {
+                    if (dm && am) setTrips(prev => prev.map(x => x.id === t.id ? { ...x, goScore: calcGoScoreFromMetars(dm, am) } : x));
+                });
                 setNewTrip({ route: ["", ""], aircraft: "c172", date: "", time: defaultTimeStr, name: "" });
                 setView("trips");
             }
 
             function openTrip(trip) {
-                trip.goScore = calcGoScore(trip.dep, trip.arr);
-                setActiveTrip(trip); setTab("brief"); setForecastDay(0);
+                var updated = { ...trip, goScore: calcGoScore(trip.dep, trip.arr) };
+                setActiveTrip(updated); setTab("brief"); setForecastDay(0);
                 setView("briefing");
+                // Async refresh go score with live METARs
+                Promise.all([fetchLiveMetar(trip.dep), fetchLiveMetar(trip.arr)]).then(([dm, am]) => {
+                    if (dm && am) setActiveTrip(prev => prev && prev.id === trip.id ? { ...prev, goScore: calcGoScoreFromMetars(dm, am) } : prev);
+                });
             }
 
             function deleteTrip(id) {
@@ -1239,14 +1471,16 @@
                                                         return (
                                                             <div key={idx}>
                                                                 <h2 style={{fontSize: 16, fontWeight: 500, margin: "0 0 12px", color: "var(--md-sys-color-on-surface)"}}>
-                                                                    {label} - {getAirport(rt)?.city}
+                                                                    {label} - {getAirport(rt)?.city || rt}
                                                                 </h2>
                                                                 <WeatherDetail icao={rt} label={label} />
                                                                 <ForecastStrip icao={rt} selectedDay={forecastDay} onSelect={setForecastDay} />
                                                             </div>
                                                         );
                                                     })}
-                                                    
+
+                                                    <WindyMap dep={activeTrip.dep} arr={activeTrip.arr} wps={activeTrip.wps || []} />
+
                                                     <div>
                                                         <h2 style={{fontSize: 16, fontWeight: 500, margin: "0 0 12px", color: "var(--md-sys-color-on-surface)"}}>En Route PIREPs</h2>
                                                         <MdCard style={{ padding: 12 }}>
