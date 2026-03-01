@@ -186,6 +186,101 @@
             text-shadow: 0 0 4px #fff, 0 0 4px #fff, 0 0 4px #fff;
             white-space: nowrap;
         }
+
+        /* ── Manual dark / light theme overrides (JS toggle beats @media) ── */
+        body.dark-theme {
+            --md-sys-color-primary: #a8c7fa; --md-sys-color-on-primary: #062e6f;
+            --md-sys-color-primary-container: #0842a0; --md-sys-color-on-primary-container: #d3e3fd;
+            --md-sys-color-secondary: #bbc7db; --md-sys-color-on-secondary: #253140;
+            --md-sys-color-secondary-container: #3b4858; --md-sys-color-on-secondary-container: #d7e3f7;
+            --md-sys-color-tertiary: #d6bdfb; --md-sys-color-on-tertiary: #3a2948;
+            --md-sys-color-tertiary-container: #523f5f; --md-sys-color-on-tertiary-container: #f2daff;
+            --md-sys-color-error: #ffb4ab; --md-sys-color-on-error: #690005;
+            --md-sys-color-error-container: #93000a; --md-sys-color-on-error-container: #ffdad6;
+            --md-sys-color-warning: #ffb951; --md-sys-color-warning-container: #653e00; --md-sys-color-on-warning-container: #ffddb3;
+            --md-sys-color-background: #111114; --md-sys-color-on-background: #e2e2e6;
+            --md-sys-color-surface: #111114; --md-sys-color-on-surface: #e2e2e6;
+            --md-sys-color-surface-variant: #43474e; --md-sys-color-on-surface-variant: #c3c6cf;
+            --md-sys-color-surface-container-lowest: #0c0f12; --md-sys-color-surface-container-low: #191c20;
+            --md-sys-color-surface-container: #1d2024; --md-sys-color-surface-container-high: #282a2f;
+            --md-sys-color-surface-container-highest: #33353a;
+            --md-sys-color-outline: #8d9199; --md-sys-color-outline-variant: #43474e;
+            --cat-vfr-color: #6dd58c; --cat-vfr-bg: #0d381e;
+            --cat-mvfr-color: #a8c7fa; --cat-mvfr-bg: #0842a0;
+            --cat-ifr-color: #ffb4ab; --cat-ifr-bg: #93000a;
+            --cat-lifr-color: #d6bdfb; --cat-lifr-bg: #523f5f;
+        }
+        body.light-theme {
+            --md-sys-color-primary: #0b57d0; --md-sys-color-on-primary: #ffffff;
+            --md-sys-color-primary-container: #d3e3fd; --md-sys-color-on-primary-container: #041e49;
+            --md-sys-color-secondary: #535f70; --md-sys-color-on-secondary: #ffffff;
+            --md-sys-color-secondary-container: #d7e3f7; --md-sys-color-on-secondary-container: #101c2b;
+            --md-sys-color-tertiary: #6b5778; --md-sys-color-on-tertiary: #ffffff;
+            --md-sys-color-tertiary-container: #f2daff; --md-sys-color-on-tertiary-container: #251431;
+            --md-sys-color-error: #b3261e; --md-sys-color-on-error: #ffffff;
+            --md-sys-color-error-container: #f9dedc; --md-sys-color-on-error-container: #410e0b;
+            --md-sys-color-warning: #855400; --md-sys-color-warning-container: #ffddb3; --md-sys-color-on-warning-container: #2a1700;
+            --md-sys-color-background: #fdfbff; --md-sys-color-on-background: #1a1c1e;
+            --md-sys-color-surface: #fdfbff; --md-sys-color-on-surface: #1a1c1e;
+            --md-sys-color-surface-variant: #dfe2eb; --md-sys-color-on-surface-variant: #43474e;
+            --md-sys-color-surface-container-lowest: #ffffff; --md-sys-color-surface-container-low: #f3f3fa;
+            --md-sys-color-surface-container: #ece6f0; --md-sys-color-surface-container-high: #e6e0e9;
+            --md-sys-color-surface-container-highest: #e0dce3;
+            --md-sys-color-outline: #73777f; --md-sys-color-outline-variant: #c3c6cf;
+            --cat-vfr-color: #0f5223; --cat-vfr-bg: #c4eed0;
+            --cat-mvfr-color: #0b57d0; --cat-mvfr-bg: #d3e3fd;
+            --cat-ifr-color: #b3261e; --cat-ifr-bg: #f9dedc;
+            --cat-lifr-color: #6b5778; --cat-lifr-bg: #f2daff;
+        }
+
+        /* ── Airport autocomplete dropdown ── */
+        .apt-suggest-drop {
+            position: absolute; top: calc(100% + 2px); left: 0; right: 0;
+            background: var(--md-sys-color-surface-container-low);
+            border: 1px solid var(--md-sys-color-outline-variant);
+            border-radius: 12px; overflow: hidden;
+            box-shadow: 0 4px 16px rgba(0,0,0,0.20);
+            z-index: 9999; max-height: 240px; overflow-y: auto;
+        }
+        .apt-suggest-item {
+            display: flex; align-items: center; gap: 10px; padding: 10px 14px;
+            cursor: pointer; border-bottom: 1px solid var(--md-sys-color-outline-variant);
+            transition: background 0.15s;
+        }
+        .apt-suggest-item:hover { background: var(--md-sys-color-secondary-container); }
+        .apt-suggest-item:last-child { border-bottom: none; }
+
+        /* ── Conversational AI chat bubbles ── */
+        .chat-bubble-user {
+            align-self: flex-end; max-width: 85%;
+            background: var(--md-sys-color-primary-container);
+            color: var(--md-sys-color-on-primary-container);
+            border-radius: 18px 18px 4px 18px;
+            padding: 10px 14px; font-size: 13px; line-height: 1.5; white-space: pre-wrap;
+        }
+        .chat-bubble-ai {
+            align-self: flex-start; max-width: 92%;
+            background: var(--md-sys-color-surface-container-high);
+            color: var(--md-sys-color-on-surface);
+            border-radius: 18px 18px 18px 4px;
+            padding: 10px 14px; font-size: 13px; line-height: 1.5; white-space: pre-wrap;
+        }
+
+        /* ── Mobile responsive: hide side rail, show bottom tabs ── */
+        .mobile-bottom-nav { display: none; }
+        @media (max-width: 640px) {
+            .nav-rail { display: none !important; }
+            .mobile-bottom-nav {
+                display: flex !important;
+                position: fixed; bottom: 0; left: 0; right: 0;
+                background: var(--md-sys-color-surface);
+                border-top: 1px solid var(--md-sys-color-outline-variant);
+                justify-content: space-around; align-items: center;
+                height: 60px; z-index: 200;
+                padding-bottom: env(safe-area-inset-bottom, 0px);
+            }
+            .briefing-content { padding: 16px 12px 80px !important; }
+        }
     </style>
 </head>
 <body>
@@ -561,6 +656,92 @@
         ========================================= */
 
         // Rough UTC offset (hours) from airport longitude — US-focused
+        // ── Composite Safety Score (0-100) with per-factor breakdown ────────────
+        function calcDetailedScore(effectiveWxData, routeDist) {
+            if (!effectiveWxData || effectiveWxData.length === 0) return { total: 50, breakdown: [] };
+            function parseT(ts) {
+                if (!ts) return null;
+                var m = ts.match(/^(M?)(\d+)\//);
+                return m ? (m[1] === 'M' ? -parseInt(m[2]) : parseInt(m[2])) : null;
+            }
+            var breakdown = [];
+
+            // 1. Flight category (0-25 pts)
+            var catRank = { VFR: 0, MVFR: 1, IFR: 2, LIFR: 3 };
+            var worstCat = effectiveWxData.reduce(function(w, e) {
+                if (!e.effectiveWx) return w;
+                return (catRank[e.effectiveWx.cat] || 0) > (catRank[w] || 0) ? e.effectiveWx.cat : w;
+            }, 'VFR');
+            var catPts = { VFR: 25, MVFR: 16, IFR: 7, LIFR: 0 }[worstCat] || 25;
+            var catCol = { VFR: 'var(--cat-vfr-color)', MVFR: 'var(--cat-mvfr-color)', IFR: 'var(--cat-ifr-color)', LIFR: 'var(--cat-lifr-color)' }[worstCat] || 'var(--cat-vfr-color)';
+            breakdown.push({ label: 'Flight Category', score: catPts, max: 25, icon: 'cloud', color: catCol, detail: 'Worst case: ' + worstCat });
+
+            // 2. Visibility (0-20 pts)
+            var minVis = Infinity;
+            effectiveWxData.forEach(function(e) {
+                if (!e.effectiveWx) return;
+                var v = parseFloat(e.effectiveWx.vis);
+                if (!isNaN(v)) minVis = Math.min(minVis, v);
+            });
+            var visPts = minVis === Infinity ? 20 : minVis >= 10 ? 20 : minVis >= 5 ? 16 : minVis >= 3 ? 10 : minVis >= 1 ? 4 : 0;
+            var visCol = visPts >= 16 ? 'var(--cat-vfr-color)' : visPts >= 10 ? 'var(--cat-mvfr-color)' : 'var(--cat-ifr-color)';
+            breakdown.push({ label: 'Visibility', score: visPts, max: 20, icon: 'visibility', color: visCol, detail: minVis === Infinity ? 'No data' : (minVis.toFixed(1) + ' SM') });
+
+            // 3. Wind & gusts (0-20 pts)
+            var maxWind = 0;
+            effectiveWxData.forEach(function(e) {
+                if (!e.effectiveWx) return;
+                var ws = e.effectiveWx.wind || '';
+                var wm = ws.match(/(\d{2,3})KT/); if (wm) maxWind = Math.max(maxWind, parseInt(wm[1]));
+                var gm = ws.match(/G(\d+)KT/); if (gm) maxWind = Math.max(maxWind, parseInt(gm[1]));
+            });
+            var windPts = maxWind <= 10 ? 20 : maxWind <= 15 ? 17 : maxWind <= 20 ? 12 : maxWind <= 25 ? 6 : 0;
+            var windCol = windPts >= 17 ? 'var(--cat-vfr-color)' : windPts >= 12 ? 'var(--cat-mvfr-color)' : 'var(--cat-ifr-color)';
+            breakdown.push({ label: 'Winds / Gusts', score: windPts, max: 20, icon: 'air', color: windCol, detail: maxWind > 0 ? ('Max ' + maxWind + ' kts') : 'Calm' });
+
+            // 4. Route length complexity (0-15 pts)
+            var rd = routeDist || 0;
+            var rtPts = rd <= 50 ? 15 : rd <= 150 ? 13 : rd <= 300 ? 10 : rd <= 500 ? 7 : 4;
+            var rtCol = rtPts >= 13 ? 'var(--cat-vfr-color)' : rtPts >= 10 ? 'var(--cat-mvfr-color)' : 'var(--md-sys-color-warning)';
+            breakdown.push({ label: 'Route Length', score: rtPts, max: 15, icon: 'route', color: rtCol, detail: rd + ' NM total' });
+
+            // 5. Data confidence (0-10 pts)
+            var noLive = effectiveWxData.some(function(e) { return !e.metarLive; });
+            var isMos  = effectiveWxData.some(function(e) { return e.source === 'mos'; });
+            var isTaf  = effectiveWxData.some(function(e) { return e.source === 'taf'; });
+            var confPts = noLive ? 4 : isMos ? 5 : isTaf ? 8 : 10;
+            var confCol = confPts >= 8 ? 'var(--cat-vfr-color)' : confPts >= 5 ? 'var(--cat-mvfr-color)' : 'var(--cat-ifr-color)';
+            var confTxt = noLive ? 'Simulated stations present' : isMos ? 'GFS model (72h+ horizon)' : isTaf ? 'TAF forecast' : 'Live METAR';
+            breakdown.push({ label: 'Data Quality', score: confPts, max: 10, icon: 'verified', color: confCol, detail: confTxt });
+
+            // 6. Icing / freezing risk (0-10 pts)
+            var icingRisk = 0;
+            effectiveWxData.forEach(function(e) {
+                if (!e.effectiveWx) return;
+                var tc = parseT(e.effectiveWx.temp);
+                if (tc !== null && tc <= 2 && tc >= -22) icingRisk = Math.max(icingRisk, 2);
+                else if (e.effectiveWx.sky && /FZRA|FZDZ|SN|RASN/.test(e.effectiveWx.sky)) icingRisk = Math.max(icingRisk, 1);
+            });
+            var icPts = icingRisk === 0 ? 10 : icingRisk === 1 ? 6 : 2;
+            var icCol = icPts === 10 ? 'var(--cat-vfr-color)' : icPts === 6 ? 'var(--cat-mvfr-color)' : 'var(--cat-ifr-color)';
+            var icTxt = icingRisk === 0 ? 'No indicators' : icingRisk === 1 ? 'Precip type — check PIREPs' : 'Near-freezing temps + moisture';
+            breakdown.push({ label: 'Icing Risk', score: icPts, max: 10, icon: 'ac_unit', color: icCol, detail: icTxt });
+
+            var total = Math.round(Math.min(100, breakdown.reduce(function(s, f) { return s + f.score; }, 0)));
+            return { total: total, breakdown: breakdown };
+        }
+
+        // ── Live PIREPs from AviationWeather.gov ─────────────────────────────────
+        async function fetchLivePireps(lat, lon, radiusNm) {
+            try {
+                var url = 'https://aviationweather.gov/api/data/pirep?format=json&distance=' + (radiusNm || 150) + '&lat=' + lat.toFixed(3) + '&lon=' + lon.toFixed(3) + '&age=3';
+                var res = await timeoutFetch(url, {}, 8000);
+                if (!res.ok) return null;
+                var data = await res.json();
+                return Array.isArray(data) ? data : null;
+            } catch(e) { return null; }
+        }
+
         function estimateUtcOffsetHours(lon) {
             if (!lon) return -5;
             // Approximate US timezone longitude boundaries
@@ -814,6 +995,215 @@
                 </div>
             );
         };
+
+        /* =========================================
+           VOICE INPUT BUTTON (Web Speech API)
+        ========================================= */
+        function VoiceInputButton({ onResult, style }) {
+            var [listening, setListening] = useState(false);
+            var canListen = !!(window.SpeechRecognition || window.webkitSpeechRecognition);
+            if (!canListen) return null;
+            var PHONETIC = { ALPHA:'A',BRAVO:'B',CHARLIE:'C',DELTA:'D',ECHO:'E',FOXTROT:'F',GOLF:'G',HOTEL:'H',INDIA:'I',JULIET:'J',KILO:'K',LIMA:'L',MIKE:'M',NOVEMBER:'N',OSCAR:'O',PAPA:'P',QUEBEC:'Q',ROMEO:'R',SIERRA:'S',TANGO:'T',UNIFORM:'U',VICTOR:'V',WHISKEY:'W',XRAY:'X',YANKEE:'Y',ZULU:'Z' };
+            function start() {
+                var SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+                var rec = new SR();
+                rec.lang = 'en-US'; rec.continuous = false; rec.interimResults = false;
+                rec.onresult = function(e) {
+                    var t = e.results[0][0].transcript.trim().toUpperCase();
+                    var direct = t.replace(/\s+/g, '');
+                    if (/^[A-Z]{4}$/.test(direct)) { onResult(direct); setListening(false); return; }
+                    var words = t.split(/\s+/);
+                    var conv = words.map(function(w) { return PHONETIC[w] || (w.length === 1 ? w : null); }).filter(Boolean).join('');
+                    if (/^[A-Z]{4}$/.test(conv)) { onResult(conv); setListening(false); return; }
+                    var match = Object.entries(AIRPORTS).find(function([, a]) {
+                        return a.city.toUpperCase() === t || a.name.toUpperCase().includes(t);
+                    });
+                    if (match) onResult(match[0]);
+                    setListening(false);
+                };
+                rec.onerror = function() { setListening(false); };
+                rec.onend = function() { setListening(false); };
+                rec.start(); setListening(true);
+            }
+            return (
+                <button onClick={start} title={listening ? 'Listening…' : 'Voice input'} style={{ background:'none', border:'none', cursor:'pointer', padding:'4px', display:'inline-flex', alignItems:'center', ...(style || {}) }}>
+                    <MdIcon name={listening ? 'mic' : 'mic_none'} style={{ fontSize:20, color: listening ? 'var(--md-sys-color-error)' : 'var(--md-sys-color-outline)', transition:'color 0.2s' }} />
+                </button>
+            );
+        }
+
+        /* =========================================
+           AIRPORT INPUT WITH AUTOCOMPLETE
+        ========================================= */
+        function AirportInput({ label, value, onChange, placeholder, containerStyle }) {
+            var [open, setOpen] = useState(false);
+            var [suggestions, setSuggestions] = useState([]);
+            useEffect(() => {
+                var q = (value || '').trim().toUpperCase();
+                if (q.length < 2) { setSuggestions([]); return; }
+                var matches = Object.entries(AIRPORTS)
+                    .filter(function([k, a]) {
+                        return k.startsWith(q) || a.city.toUpperCase().startsWith(q) || a.name.toUpperCase().includes(q) || k === q;
+                    })
+                    .slice(0, 6)
+                    .map(function([k, a]) { return { icao: k, name: a.name, city: a.city, state: a.state }; });
+                setSuggestions(matches);
+            }, [value]);
+
+            function pick(icao) { onChange(icao); setSuggestions([]); setOpen(false); }
+
+            return (
+                <div style={{ position:'relative', flex:1, ...(containerStyle || {}) }}>
+                    <div style={{ display:'flex', alignItems:'center', gap:0 }}>
+                        <MdInput
+                            label={label} value={value} placeholder={placeholder} maxLength={4}
+                            containerStyle={{ flex:1 }}
+                            onChange={function(e) { onChange(e.target.value.trim().toUpperCase()); setOpen(true); }}
+                            onFocus={function() { setOpen(true); }}
+                            onBlur={function() { setTimeout(function() { setOpen(false); }, 160); }}
+                        />
+                        <VoiceInputButton onResult={function(v) { onChange(v); setSuggestions([]); }} style={{ marginLeft:4 }} />
+                    </div>
+                    {open && suggestions.length > 0 && (
+                        <div className="apt-suggest-drop">
+                            {suggestions.map(function(s) {
+                                return (
+                                    <div key={s.icao} className="apt-suggest-item" onMouseDown={function() { pick(s.icao); }}>
+                                        <span className="font-mono" style={{ fontWeight:700, fontSize:14, color:'var(--md-sys-color-primary)', minWidth:46 }}>{s.icao}</span>
+                                        <div>
+                                            <div style={{ fontSize:12, color:'var(--md-sys-color-on-surface)', lineHeight:1.3 }}>{s.name}</div>
+                                            <div style={{ fontSize:11, color:'var(--md-sys-color-on-surface-variant)' }}>{s.city}, {s.state}</div>
+                                        </div>
+                                    </div>
+                                );
+                            })}
+                        </div>
+                    )}
+                </div>
+            );
+        }
+
+        /* =========================================
+           SEMICIRCLE SAFETY GAUGE (SVG)
+        ========================================= */
+        function SemiGauge({ score, size }) {
+            size = size || 180;
+            var cx = size / 2, cy = size * 0.58, r = size * 0.40;
+            var arcLen = Math.PI * r;
+            var col = score >= 75 ? 'var(--cat-vfr-color)' : score >= 50 ? 'var(--cat-mvfr-color)' : 'var(--cat-ifr-color)';
+            var pathD = 'M ' + (cx - r).toFixed(1) + ' ' + cy.toFixed(1) + ' A ' + r.toFixed(1) + ' ' + r.toFixed(1) + ' 0 0 1 ' + (cx + r).toFixed(1) + ' ' + cy.toFixed(1);
+            return (
+                <div style={{ position:'relative', width:size, margin:'0 auto' }}>
+                    <svg width={size} height={Math.round(cy + 20)} viewBox={'0 0 ' + size + ' ' + Math.round(cy + 20)} style={{ display:'block' }}>
+                        <path d={pathD} fill="none" stroke="var(--md-sys-color-surface-container-highest)" strokeWidth="10" strokeLinecap="round" />
+                        <path d={pathD} fill="none" stroke={col} strokeWidth="10" strokeLinecap="round"
+                            strokeDasharray={arcLen.toFixed(1)} strokeDashoffset={(arcLen * (1 - score / 100)).toFixed(1)}
+                            style={{ transition:'stroke-dashoffset 0.9s ease-out' }} />
+                        <text x={cx - r - 2} y={cy + 16} textAnchor="middle" fontSize="10" fill="var(--md-sys-color-on-surface-variant)" fontFamily="sans-serif">0</text>
+                        <text x={cx + r + 2} y={cy + 16} textAnchor="middle" fontSize="10" fill="var(--md-sys-color-on-surface-variant)" fontFamily="sans-serif">100</text>
+                        <text x={cx} y={cy - r * 0.1} textAnchor="middle" fontSize={Math.round(size * 0.18)} fontWeight="800" fill={col} fontFamily="monospace">{score}</text>
+                        <text x={cx} y={cy + 8} textAnchor="middle" fontSize="9" fill="var(--md-sys-color-on-surface-variant)" fontFamily="sans-serif" letterSpacing="1">SAFETY SCORE</text>
+                    </svg>
+                </div>
+            );
+        }
+
+        /* =========================================
+           SCORE BREAKDOWN PANEL
+        ========================================= */
+        function ScoreBreakdown({ breakdown, total }) {
+            return (
+                <div style={{ background:'var(--md-sys-color-surface-container)', borderRadius:16, padding:'16px 20px', marginBottom:16 }}>
+                    <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:16 }}>
+                        <MdIcon name="analytics" style={{ color:'var(--md-sys-color-primary)', fontSize:18 }} />
+                        <span style={{ fontWeight:700, fontSize:13, textTransform:'uppercase', letterSpacing:'0.5px', color:'var(--md-sys-color-primary)' }}>Composite Safety Score</span>
+                    </div>
+                    <SemiGauge score={total} size={180} />
+                    <div style={{ marginTop:16, display:'flex', flexDirection:'column', gap:12 }}>
+                        {breakdown.map(function(f) {
+                            return (
+                                <div key={f.label} style={{ display:'flex', alignItems:'flex-start', gap:10 }}>
+                                    <MdIcon name={f.icon} style={{ fontSize:16, color:f.color, flexShrink:0, marginTop:3 }} />
+                                    <div style={{ flex:1 }}>
+                                        <div style={{ display:'flex', justifyContent:'space-between', marginBottom:4 }}>
+                                            <span style={{ fontSize:12, fontWeight:500, color:'var(--md-sys-color-on-surface)' }}>{f.label}</span>
+                                            <span className="font-mono" style={{ fontSize:12, fontWeight:700, color:f.color }}>
+                                                {f.score}<span style={{ fontWeight:400, color:'var(--md-sys-color-on-surface-variant)' }}>/{f.max}</span>
+                                            </span>
+                                        </div>
+                                        <div style={{ height:6, background:'var(--md-sys-color-surface-container-highest)', borderRadius:3, overflow:'hidden', marginBottom:3 }}>
+                                            <div style={{ width:(f.score/f.max*100)+'%', height:'100%', background:f.color, borderRadius:3, transition:'width 0.9s ease-out' }} />
+                                        </div>
+                                        <div style={{ fontSize:11, color:'var(--md-sys-color-on-surface-variant)' }}>{f.detail}</div>
+                                    </div>
+                                </div>
+                            );
+                        })}
+                    </div>
+                </div>
+            );
+        }
+
+        /* =========================================
+           LIVE PIREPS (from AviationWeather.gov)
+        ========================================= */
+        function LivePireps({ dep, arr }) {
+            var [pireps, setPireps] = useState(null);
+            var [loading, setLoading] = useState(true);
+            useEffect(() => {
+                setLoading(true); setPireps(null);
+                var depApt = getAirport(dep), arrApt = getAirport(arr);
+                if (!depApt) { setLoading(false); return; }
+                var lat = depApt.lat, lon = depApt.lon;
+                if (arrApt) { lat = (depApt.lat + arrApt.lat) / 2; lon = (depApt.lon + arrApt.lon) / 2; }
+                fetchLivePireps(lat, lon, 200).then(function(data) {
+                    setPireps(data); setLoading(false);
+                }).catch(function() { setLoading(false); });
+            }, [dep, arr]);
+
+            if (loading) return (
+                <div style={{ padding:'24px', textAlign:'center', color:'var(--md-sys-color-on-surface-variant)' }}>
+                    <MdIcon name="sync" style={{ animation:'spin 1s linear infinite', fontSize:24 }} />
+                    <div style={{ marginTop:8, fontSize:13 }}>Fetching live PIREPs…</div>
+                </div>
+            );
+            var sim = makePireps(dep, arr);
+            if (!pireps || pireps.length === 0) {
+                return (
+                    <MdCard style={{ padding:12 }}>
+                        <div style={{ fontSize:11, color:'var(--md-sys-color-on-surface-variant)', marginBottom:8, display:'flex', alignItems:'center', gap:6 }}>
+                            <MdIcon name="info" style={{ fontSize:14 }} />No live PIREPs within 200 NM — representative samples shown
+                        </div>
+                        {sim.map(function(p, i) {
+                            return (
+                                <div key={i} className="font-mono" style={{ background:'var(--md-sys-color-surface-container-highest)', borderRadius:8, padding:12, marginBottom:i<sim.length-1?8:0, borderLeft:'4px solid var(--md-sys-color-outline)', fontSize:12, color:'var(--md-sys-color-on-surface)', lineHeight:1.6 }}>
+                                    <span style={{ color:'var(--md-sys-color-outline)', fontWeight:700, marginRight:8 }}>{p.type}</span>{p.text}
+                                </div>
+                            );
+                        })}
+                    </MdCard>
+                );
+            }
+            return (
+                <MdCard style={{ padding:12 }}>
+                    <div style={{ fontSize:11, color:'var(--cat-vfr-color)', marginBottom:8, display:'flex', alignItems:'center', gap:6 }}>
+                        <MdIcon name="verified" style={{ fontSize:14 }} />
+                        Live PIREPs — AviationWeather.gov ({pireps.length} report{pireps.length !== 1 ? 's' : ''} within 200 NM)
+                    </div>
+                    {pireps.slice(0, 8).map(function(p, i) {
+                        var raw = p.rawOb || p.rawPirep || '';
+                        var type = (p.reportType === 'PIREP' || !p.reportType) ? 'UA' : 'UUA';
+                        var fallback = [p.acId, p.altitudeFtMsl ? ('FL' + Math.round(p.altitudeFtMsl / 100)) : null, p.turbIntensity ? ('TB ' + p.turbIntensity) : null, p.icingIntensity ? ('IC ' + p.icingIntensity) : null].filter(Boolean).join(' ');
+                        return (
+                            <div key={i} className="font-mono" style={{ background:'var(--md-sys-color-surface-container-highest)', borderRadius:8, padding:12, marginBottom:i<Math.min(pireps.length,8)-1?8:0, borderLeft:'4px solid var(--md-sys-color-primary)', fontSize:12, color:'var(--md-sys-color-on-surface)', lineHeight:1.6 }}>
+                                <span style={{ color:'var(--md-sys-color-primary)', fontWeight:700, marginRight:8 }}>{type}</span>
+                                {raw || fallback || 'No detail available'}
+                            </div>
+                        );
+                    })}
+                </MdCard>
+            );
+        }
 
         function CatBadge({ cat }) {
             const lc = cat.toLowerCase();
@@ -1366,6 +1756,16 @@
             var [aiError, setAiError] = useState(null);
             var [apiKey, setApiKey] = useState("");
             var [showAI, setShowAI] = useState(false);
+            var [aiFeedback, setAiFeedback] = useState(null); // 'up' | 'down'
+
+            // --- Conversational AI Chat ---
+            var [chatMessages, setChatMessages] = useState([]);
+            var [chatInput, setChatInput] = useState('');
+            var [chatLoading, setChatLoading] = useState(false);
+            var chatEndRef = React.useRef(null);
+
+            // --- Voice output ---
+            var [speaking, setSpeaking] = useState(false);
 
             var ac = AIRCRAFT.find(a => a.id === trip.aircraft) || AIRCRAFT[0];
             var allRoutePts = useMemo(() =>
@@ -1657,6 +2057,17 @@
                 return { verdict, verdictColor, verdictBg, verdictIcon, verdictDesc, concerns, recs, dataContext, isFutureFlight, anyTaf, anyMos, allMos };
             }, [effectiveWxData, hoursUntilTrip, tripTargetUtc]);
 
+            // --- Composite Safety Score breakdown ---
+            var detailedScore = useMemo(function() {
+                if (!effectiveWxData) return null;
+                return calcDetailedScore(effectiveWxData, routeDist);
+            }, [effectiveWxData, routeDist]);
+
+            // Auto-scroll chat to bottom on new messages
+            useEffect(function() {
+                if (chatEndRef.current) chatEndRef.current.scrollIntoView({ behavior: 'smooth' });
+            }, [chatMessages]);
+
             // --- AI Enhanced briefing ---
             var runAiBriefing = useCallback(async function() {
                 if (!trip.dep || !trip.arr || !wxData) return;
@@ -1677,17 +2088,22 @@
                     return lines.join("\n");
                 }).join("\n");
 
+                var scoreCtx = detailedScore
+                    ? ('Automated Safety Score: ' + detailedScore.total + '/100 — ' + detailedScore.breakdown.map(function(f) { return f.label + ' ' + f.score + '/' + f.max; }).join(', ') + '\n')
+                    : '';
+
                 var prompt = `TRIP: ${ac.name} (${ac.cat}) cruise ${ac.kts}kt\n` +
                     `DEPARTURE: ${trip.date} at ${trip.time} Local Time\n` +
                     `ROUTE: ${allRoutePts.join(" -> ")}\n` +
-                    `Distance: ${Math.round(distance)}nm  ETE: ${Math.floor(ete)}h${Math.round((ete % 1) * 60)}m\n\n` +
-                    `=== LIVE WEATHER DATA ===\n${wxLines || "No live weather available."}`;
+                    `Distance: ${Math.round(distance)}nm  ETE: ${Math.floor(ete)}h${Math.round((ete % 1) * 60)}m\n` +
+                    scoreCtx +
+                    `\n=== LIVE WEATHER DATA ===\n${wxLines || "No live weather available."}`;
 
                 const url = "https://api.anthropic.com/v1/messages";
                 const payload = {
                     model: "claude-sonnet-4-6",
-                    max_tokens: 1500,
-                    system: "You are an expert aviation weather analyst providing a flight briefing. Use bullet points. Provide the briefing using EXACTLY these headers on their own lines: **GO/NO-GO RECOMMENDATION**, **WEATHER SYNOPSIS**, **DEPARTURE WINDOW**, **EN ROUTE HAZARDS**, **RUNWAY ANALYSIS**, **NOTAM IMPACT**, **ALTERNATE RECOMMENDATIONS**, **FREQUENCY GUIDE**",
+                    max_tokens: 1800,
+                    system: "You are an expert aviation weather analyst (CFI-I level) providing a detailed pre-flight briefing. Be specific with numbers — cite thresholds (e.g., 'ceiling 1200ft OVC = MVFR', 'winds 18G25KT = moderate crosswind risk'). For high-elevation airports, estimate density altitude (DA ≈ Elevation + 120 × (OAT_°C − ISA_°C)). Flag icing risk, convective activity, TFRs, and airspace concerns. Use concise bullet points. Provide the briefing using EXACTLY these headers on their own lines (with ** markers): **GO/NO-GO RECOMMENDATION**, **WEATHER SYNOPSIS**, **DEPARTURE WINDOW**, **EN ROUTE HAZARDS**, **RUNWAY ANALYSIS**, **NOTAM IMPACT**, **ALTERNATE RECOMMENDATIONS**, **FREQUENCY GUIDE**",
                     messages: [{ role: "user", content: prompt }]
                 };
 
@@ -1727,7 +2143,51 @@
                 } finally {
                     setAiLoading(false);
                 }
-            }, [trip, apiKey, wxData]);
+            }, [trip, apiKey, wxData, detailedScore]);
+
+            // --- Conversational AI Chat ---
+            var sendChat = useCallback(async function() {
+                if (!chatInput.trim() || !apiKey || chatLoading) return;
+                var userMsg = chatInput.trim();
+                setChatInput('');
+                var updated = [...chatMessages, { role: 'user', content: userMsg }];
+                setChatMessages(updated);
+                setChatLoading(true);
+                var wxSummary = effectiveWxData ? effectiveWxData.map(function(e) {
+                    var wx = e.effectiveWx;
+                    return wx ? (e.icao + ': ' + wx.cat + ' wind=' + wx.wind + ' vis=' + wx.vis + ' sky=' + wx.sky) : (e.icao + ': no data');
+                }).join('; ') : 'No weather data';
+                var systemCtx = 'You are an aviation weather analyst assistant for a specific flight. ' +
+                    'Flight: ' + ac.name + ' (' + ac.cat + ') ' + allRoutePts.join('→') + ' on ' + trip.date + ' at ' + trip.time + '. ' +
+                    'Safety score: ' + (detailedScore ? detailedScore.total + '/100' : 'N/A') + '. ' +
+                    'Current weather: ' + wxSummary + '. ' +
+                    'Answer concisely and specifically about this flight. Always recommend consulting official sources before flight.';
+                try {
+                    var res = await fetch('https://api.anthropic.com/v1/messages', {
+                        method: 'POST',
+                        headers: { 'Content-Type':'application/json', 'x-api-key':apiKey, 'anthropic-version':'2023-06-01', 'anthropic-dangerous-direct-browser-access':'true' },
+                        body: JSON.stringify({ model:'claude-sonnet-4-6', max_tokens:600, system:systemCtx, messages: updated.map(function(m) { return { role:m.role, content:m.content }; }) })
+                    });
+                    var data = await res.json();
+                    var reply = data.content?.[0]?.text || 'No response.';
+                    setChatMessages(function(prev) { return [...prev, { role:'assistant', content:reply }]; });
+                } catch(e) {
+                    setChatMessages(function(prev) { return [...prev, { role:'assistant', content:'Error: ' + e.message }]; });
+                } finally { setChatLoading(false); }
+            }, [chatInput, chatMessages, apiKey, effectiveWxData, trip, allRoutePts, ac, chatLoading, detailedScore]);
+
+            // --- Voice output (Text-to-Speech) ---
+            function speakBriefing() {
+                if (!window.speechSynthesis) return;
+                if (speaking) { window.speechSynthesis.cancel(); setSpeaking(false); return; }
+                var text = aiResult ? aiResult.replace(/\*\*/g, '').replace(/\*/g, '') : (analysis ? (analysis.verdict + '. ' + analysis.verdictDesc + '. ' + analysis.recs.join('. ')) : 'No briefing available.');
+                var utt = new SpeechSynthesisUtterance(text);
+                utt.rate = 0.95; utt.pitch = 1; utt.volume = 1;
+                utt.onend = function() { setSpeaking(false); };
+                utt.onerror = function() { setSpeaking(false); };
+                setSpeaking(true);
+                window.speechSynthesis.speak(utt);
+            }
 
             var aiSections = useMemo(() => {
                 if (!aiResult) return [];
@@ -1821,6 +2281,9 @@
                                     </div>
                                 </div>
                             </div>
+
+                            {/* Composite Safety Score Breakdown */}
+                            {detailedScore && <ScoreBreakdown breakdown={detailedScore.breakdown} total={detailedScore.total} />}
 
                             {/* Go/No-Go banner */}
                             <div style={{ background: analysis.verdictBg, borderRadius: 16, padding: '20px 24px', marginBottom: 16, display: 'flex', alignItems: 'center', gap: 16 }}>
@@ -1953,15 +2416,22 @@
                                 <div style={{ marginBottom: 12 }}>
                                     <MdInput label="Anthropic API Key" value={apiKey} onChange={e => setApiKey(e.target.value)} placeholder="sk-ant-..." type="password" />
                                 </div>
-                                <MdButton
-                                    variant={aiLoading ? "tonal" : "sparkle"}
-                                    onClick={runAiBriefing}
-                                    disabled={aiLoading || !apiKey || loadingWx}
-                                    icon="auto_awesome"
-                                    style={{ width: '100%', padding: '14px', marginBottom: '20px', fontSize: '15px' }}
-                                >
-                                    {aiLoading ? "Analyzing with Claude…" : "Generate AI Briefing"}
-                                </MdButton>
+                                <div style={{ display: 'flex', gap: 8, marginBottom: 20 }}>
+                                    <MdButton
+                                        variant={aiLoading ? "tonal" : "sparkle"}
+                                        onClick={runAiBriefing}
+                                        disabled={aiLoading || !apiKey || loadingWx}
+                                        icon="auto_awesome"
+                                        style={{ flex: 1, padding: '14px', fontSize: '15px' }}
+                                    >
+                                        {aiLoading ? "Analyzing with Claude…" : "Generate AI Briefing"}
+                                    </MdButton>
+                                    {window.speechSynthesis && (aiResult || analysis) && (
+                                        <MdButton variant="tonal" icon={speaking ? 'stop_circle' : 'volume_up'} onClick={speakBriefing} title={speaking ? 'Stop reading' : 'Read briefing aloud'} style={{ padding: '14px 16px' }}>
+                                            {speaking ? 'Stop' : 'Read'}
+                                        </MdButton>
+                                    )}
+                                </div>
 
                                 {aiError && <MdCard style={{ background: 'var(--md-sys-color-error-container)', color: 'var(--md-sys-color-on-error-container)', marginBottom: 16 }}><MdIcon name="error" style={{ marginRight: 8 }} />{aiError}</MdCard>}
 
@@ -1980,9 +2450,56 @@
                                     );
                                 })}
 
+                                {/* AI Feedback */}
+                                {aiResult && !aiLoading && (
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '8px 0 16px', borderBottom: '1px solid var(--md-sys-color-outline-variant)' }}>
+                                        <span style={{ fontSize: 12, color: 'var(--md-sys-color-on-surface-variant)' }}>Was this briefing helpful?</span>
+                                        <button onClick={() => setAiFeedback('up')} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 4, display: 'inline-flex' }}>
+                                            <MdIcon name="thumb_up" style={{ fontSize: 20, color: aiFeedback === 'up' ? 'var(--cat-vfr-color)' : 'var(--md-sys-color-outline)' }} />
+                                        </button>
+                                        <button onClick={() => setAiFeedback('down')} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 4, display: 'inline-flex' }}>
+                                            <MdIcon name="thumb_down" style={{ fontSize: 20, color: aiFeedback === 'down' ? 'var(--md-sys-color-error)' : 'var(--md-sys-color-outline)' }} />
+                                        </button>
+                                        {aiFeedback && <span style={{ fontSize: 11, color: 'var(--md-sys-color-on-surface-variant)' }}>{aiFeedback === 'up' ? 'Thanks! Feedback helps improve AI responses.' : 'Thanks for the feedback.'}</span>}
+                                    </div>
+                                )}
+
                                 {!aiResult && !aiLoading && (
                                     <div style={{ textAlign: 'center', padding: '24px', color: 'var(--md-sys-color-on-surface-variant)', fontSize: 13 }}>
-                                        Claude will analyze the live weather data above and generate a detailed narrative briefing.
+                                        Claude will analyze live weather + the safety score above to generate a detailed narrative briefing with quantitative risk thresholds.
+                                    </div>
+                                )}
+
+                                {/* Conversational AI Chat */}
+                                {apiKey && (
+                                    <div style={{ marginTop: 16, border: '1px solid var(--md-sys-color-outline-variant)', borderRadius: 16, overflow: 'hidden' }}>
+                                        <div style={{ padding: '10px 14px', background: 'var(--md-sys-color-surface-container)', borderBottom: chatMessages.length ? '1px solid var(--md-sys-color-outline-variant)' : 'none', display: 'flex', alignItems: 'center', gap: 8 }}>
+                                            <MdIcon name="chat" style={{ fontSize: 16, color: 'var(--md-sys-color-primary)' }} />
+                                            <span style={{ fontWeight: 600, fontSize: 13, color: 'var(--md-sys-color-on-surface)', flex: 1 }}>Ask AI about this flight</span>
+                                            {chatMessages.length > 0 && (
+                                                <button onClick={() => setChatMessages([])} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 11, color: 'var(--md-sys-color-on-surface-variant)', padding: '2px 6px' }}>Clear</button>
+                                            )}
+                                        </div>
+                                        {chatMessages.length > 0 && (
+                                            <div style={{ maxHeight: 300, overflowY: 'auto', padding: '12px 14px', display: 'flex', flexDirection: 'column', gap: 8, background: 'var(--md-sys-color-background)' }}>
+                                                {chatMessages.map((m, i) => (
+                                                    <div key={i} className={m.role === 'user' ? 'chat-bubble-user' : 'chat-bubble-ai'}>{m.content}</div>
+                                                ))}
+                                                {chatLoading && <div className="chat-bubble-ai" style={{ color: 'var(--md-sys-color-on-surface-variant)', fontStyle: 'italic' }}>Thinking…</div>}
+                                                <div ref={chatEndRef} />
+                                            </div>
+                                        )}
+                                        <div style={{ display: 'flex', gap: 8, padding: '10px 14px', borderTop: chatMessages.length ? '1px solid var(--md-sys-color-outline-variant)' : 'none', alignItems: 'flex-end', background: 'var(--md-sys-color-surface-container)' }}>
+                                            <textarea
+                                                value={chatInput}
+                                                onChange={e => setChatInput(e.target.value)}
+                                                onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendChat(); } }}
+                                                placeholder={'Ask about this flight — e.g. "What if I leave at noon?" or "Suggest alternates if ' + (trip.arr || 'destination') + ' goes IFR"'}
+                                                rows={2}
+                                                style={{ flex: 1, background: 'var(--md-sys-color-background)', border: '1px solid var(--md-sys-color-outline-variant)', borderRadius: 12, padding: '8px 12px', fontSize: 13, color: 'var(--md-sys-color-on-surface)', resize: 'none', fontFamily: 'inherit', outline: 'none' }}
+                                            />
+                                            <MdButton variant="tonal" icon="send" onClick={sendChat} disabled={!chatInput.trim() || chatLoading} style={{ padding: '10px 14px', flexShrink: 0 }} />
+                                        </div>
                                     </div>
                                 )}
                             </>
@@ -2080,6 +2597,19 @@
             var defaultTimeStr = (new Date(Date.now() + 7200000)).toTimeString().slice(0, 5);
 
             var [showDataModal, setShowDataModal] = useState(false);
+
+            // Dark mode: JS toggle overrides system @media preference
+            var [darkMode, setDarkMode] = useState(function() {
+                var saved = localStorage.getItem('skyclear_theme');
+                if (saved === 'dark') return true;
+                if (saved === 'light') return false;
+                return !!(window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches);
+            });
+            useEffect(function() {
+                document.body.classList.toggle('dark-theme', darkMode);
+                document.body.classList.toggle('light-theme', !darkMode);
+                localStorage.setItem('skyclear_theme', darkMode ? 'dark' : 'light');
+            }, [darkMode]);
 
             // Trips — initialized from localStorage, falling back to sample trips
             var [trips, setTrips] = useState(() => {
@@ -2233,8 +2763,9 @@
                             )}
                             <div style={{ fontSize: 22, fontWeight: 500 }}>SkyClear</div>
                         </div>
-                        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
                             <MdButton variant="tonal" icon="add" onClick={() => setView("create")}>New Trip</MdButton>
+                            <MdButton variant="text" icon={darkMode ? 'light_mode' : 'dark_mode'} title={darkMode ? 'Switch to Light Mode' : 'Switch to Dark Mode'} onClick={() => setDarkMode(function(d) { return !d; })} style={{ padding: '8px' }} />
                             <MdButton variant="text" icon="import_export" title="Export / Import trips" onClick={() => setShowDataModal(true)} style={{ padding: '8px' }} />
                         </div>
                     </header>
@@ -2324,17 +2855,16 @@
                                             
                                             return (
                                                 <div key={i} style={{ display: "flex", alignItems: "flex-end", gap: 12 }}>
-                                                    <MdIcon name={icon} style={{ color: "var(--md-sys-color-on-surface-variant)", marginBottom: 12 }} />
-                                                    <MdInput 
+                                                    <MdIcon name={icon} style={{ color: "var(--md-sys-color-on-surface-variant)", marginBottom: 12, flexShrink: 0 }} />
+                                                    <AirportInput
                                                         label={label}
-                                                        value={r} 
-                                                        onChange={e => {
+                                                        value={r}
+                                                        onChange={function(v) {
                                                             let newRoute = [...newTrip.route];
-                                                            newRoute[i] = e.target.value.trim().toUpperCase();
+                                                            newRoute[i] = v;
                                                             setNewTrip({...newTrip, route: newRoute});
-                                                        }} 
-                                                        placeholder={isDep ? "KCLT" : isArr ? "KATL" : "KORD"} 
-                                                        maxLength={4} 
+                                                        }}
+                                                        placeholder={isDep ? "KCLT" : isArr ? "KATL" : "KORD"}
                                                         containerStyle={{ flex: 1 }}
                                                     />
                                                     {(!isDep && !isArr && newTrip.route.length > 2) && (
@@ -2417,9 +2947,9 @@
                             
                             return (
                                 <div style={{ display: "flex", height: "100%" }}>
-                                    {/* MD3 Navigation Rail */}
-                                    <div style={{ 
-                                        width: "80px", background: "var(--md-sys-color-surface)", 
+                                    {/* MD3 Navigation Rail (hidden on mobile via .nav-rail CSS class) */}
+                                    <div className="nav-rail" style={{
+                                        width: "80px", background: "var(--md-sys-color-surface)",
                                         borderRight: "1px solid var(--md-sys-color-outline-variant)",
                                         display: "flex", flexDirection: "column", alignItems: "center", paddingTop: 16, gap: 12
                                     }}>
@@ -2446,6 +2976,19 @@
                                         })}
                                     </div>
 
+                                    {/* Mobile Bottom Navigation (CSS makes it visible on small screens) */}
+                                    <div className="mobile-bottom-nav">
+                                        {tabList.map(function(t) {
+                                            var active = tab === t.id;
+                                            return (
+                                                <button key={t.id} onClick={() => setTab(t.id)} style={{ background:'none', border:'none', cursor:'pointer', display:'flex', flexDirection:'column', alignItems:'center', gap:2, padding:'6px 10px', minWidth:48 }}>
+                                                    <MdIcon name={t.icon} style={{ fontSize:22, color: active ? 'var(--md-sys-color-primary)' : 'var(--md-sys-color-on-surface-variant)' }} />
+                                                    <span style={{ fontSize:10, fontWeight: active ? 600 : 400, color: active ? 'var(--md-sys-color-primary)' : 'var(--md-sys-color-on-surface-variant)' }}>{t.label}</span>
+                                                </button>
+                                            );
+                                        })}
+                                    </div>
+
                                     {/* Content Area */}
                                     <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden", background: "var(--md-sys-color-background)" }}>
                                         {/* Trip Header Banner */}
@@ -2467,7 +3010,7 @@
                                         </div>
 
                                         {/* Scrollable Tab Content */}
-                                        <div style={{ flex: 1, overflowY: "auto", padding: "24px", maxWidth: "900px", margin: "0 auto", width: "100%" }}>
+                                        <div className="briefing-content" style={{ flex: 1, overflowY: "auto", padding: "24px", maxWidth: "900px", margin: "0 auto", width: "100%" }}>
                                             {tab === "brief" && <BriefingPanel trip={activeTrip} />}
                                             
                                             {tab === "wx" && (
@@ -2489,13 +3032,7 @@
 
                                                     <div>
                                                         <h2 style={{fontSize: 16, fontWeight: 500, margin: "0 0 12px", color: "var(--md-sys-color-on-surface)"}}>En Route PIREPs</h2>
-                                                        <MdCard style={{ padding: 12 }}>
-                                                            {makePireps(activeTrip.dep, activeTrip.arr).map((p, i) => (
-                                                                <div key={i} className="font-mono" style={{ background: "var(--md-sys-color-surface-container-highest)", borderRadius: "8px", padding: "12px", marginBottom: i===0?8:0, borderLeft: "4px solid var(--md-sys-color-primary)", fontSize: 12, color: "var(--md-sys-color-on-surface)", lineHeight: 1.6 }}>
-                                                                    <span style={{ color: "var(--md-sys-color-primary)", fontWeight: 700, marginRight: 8 }}>{p.type}</span>{p.text}
-                                                                </div>
-                                                            ))}
-                                                        </MdCard>
+                                                        <LivePireps dep={activeTrip.dep} arr={activeTrip.arr} />
                                                     </div>
                                                 </div>
                                             )}
