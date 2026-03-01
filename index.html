@@ -325,9 +325,10 @@
             var alt = "A" + pick(["2976", "2985", "2992", "2998", "3001", "3005", "3012"]);
             var cat = sky.cat;
             if (vis === "3SM" || vis === "1 1/2SM") { cat = "IFR"; }
+            var wdirNum = wdir === "VRB" ? null : parseInt(wdir) * 10;
             return {
                 raw: icao + " " + dd + hh + mm + "Z " + wind + " " + vis + " " + sky.raw + " " + tempStr + " " + alt + " RMK AO2",
-                wind: wind, vis: vis, sky: sky.raw, temp: tempStr, alt: alt, cat: cat, wspd: wspd
+                wind: wind, vis: vis, sky: sky.raw, temp: tempStr, alt: alt, cat: cat, wspd: wspd, wdir: wdirNum
             };
         }
 
@@ -425,7 +426,7 @@
                 return {
                     raw: m.rawOb || `${icao} LIVE METAR`,
                     wind, vis: visStr, sky: skyStr, temp: tempStr, alt: altStr,
-                    cat: m.fltcat || "VFR", wspd
+                    cat: m.fltcat || "VFR", wspd, wdir: wdir > 0 ? wdir : null
                 };
             } catch(e) { return null; }
         }
@@ -823,6 +824,34 @@
             );
         }
 
+        // Returns the best runway and crosswind component given a metar and airport.
+        // Picks the runway end with the smallest crosswind component.
+        function getRunwayRecommendation(metar, apt) {
+            if (!metar || !apt || !apt.rwy || apt.rwy.length === 0) return null;
+            if (metar.wdir == null || !metar.wspd || metar.wspd < 3) return null;
+            var windDir = metar.wdir;
+            var windSpd = metar.wspd;
+            var best = null;
+            var bestCross = Infinity;
+            apt.rwy.forEach(function(rwyPair) {
+                rwyPair.split("/").forEach(function(rwyEnd) {
+                    var m = rwyEnd.match(/^(\d+)/);
+                    if (!m) return;
+                    var rwyHdg = parseInt(m[1]) * 10;
+                    var angle = ((windDir - rwyHdg) % 360 + 360) % 360;
+                    if (angle > 180) angle -= 360;
+                    var rad = angle * Math.PI / 180;
+                    var cross = Math.abs(windSpd * Math.sin(rad));
+                    var head = windSpd * Math.cos(rad);
+                    if (cross < bestCross) {
+                        bestCross = cross;
+                        best = { rwy: rwyEnd, crosswind: Math.round(cross), headwind: Math.round(head) };
+                    }
+                });
+            });
+            return best;
+        }
+
         function WeatherDetail({ icao, label }) {
             const [expanded, setExpanded] = useState(false);
             const [aptReady, setAptReady] = useState(!!AIRPORTS[icao]);
@@ -883,6 +912,35 @@
                                 <div><span style={{ color: "var(--md-sys-color-on-surface-variant)", fontSize: 11, display: 'block' }}>TEMP</span><span style={{ fontWeight: 600 }}>{metar.temp}</span></div>
                                 <div><span style={{ color: "var(--md-sys-color-on-surface-variant)", fontSize: 11, display: 'block' }}>ALTM</span><span style={{ fontWeight: 600 }}>{metar.alt}</span></div>
                             </div>
+
+                            {(() => {
+                                var rec = getRunwayRecommendation(metar, apt);
+                                if (!rec) return null;
+                                var crossColor = rec.crosswind <= 10
+                                    ? "var(--md-sys-color-primary)"
+                                    : rec.crosswind <= 15
+                                        ? "var(--cat-mvfr-color)"
+                                        : "var(--md-sys-color-error)";
+                                return (
+                                    <div style={{ marginTop: 12, paddingTop: 12, borderTop: "1px solid var(--md-sys-color-outline-variant)", display: "flex", alignItems: "center", gap: 24, flexWrap: "wrap" }}>
+                                        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                                            <MdIcon name="airline_stops" style={{ fontSize: 16, color: "var(--md-sys-color-on-surface-variant)" }} />
+                                            <span style={{ fontSize: 11, color: "var(--md-sys-color-on-surface-variant)", textTransform: "uppercase", letterSpacing: "0.5px" }}>Recommended Runway</span>
+                                        </div>
+                                        <span className="font-mono" style={{ fontWeight: 700, fontSize: 15 }}>{rec.rwy}</span>
+                                        <div>
+                                            <span style={{ fontSize: 11, color: "var(--md-sys-color-on-surface-variant)", textTransform: "uppercase", letterSpacing: "0.5px" }}>Crosswind </span>
+                                            <span className="font-mono" style={{ fontWeight: 700, fontSize: 14, color: crossColor }}>{rec.crosswind}KT</span>
+                                        </div>
+                                        {rec.headwind > 0 && (
+                                            <div>
+                                                <span style={{ fontSize: 11, color: "var(--md-sys-color-on-surface-variant)", textTransform: "uppercase", letterSpacing: "0.5px" }}>Headwind </span>
+                                                <span className="font-mono" style={{ fontWeight: 700, fontSize: 14 }}>{rec.headwind}KT</span>
+                                            </div>
+                                        )}
+                                    </div>
+                                );
+                            })()}
 
                             <div style={{ marginTop: 16, paddingTop: 16, borderTop: "1px solid var(--md-sys-color-outline-variant)" }}>
                                 <MdButton variant="text" onClick={() => setExpanded(!expanded)} icon={expanded ? "expand_less" : "expand_more"} style={{ padding: '4px 8px', margin: '-4px -8px' }}>
