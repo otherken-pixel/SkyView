@@ -1828,6 +1828,113 @@
             );
         }
 
+        // Error Boundary for weather-panel components.
+        //
+        // React Error Boundaries must be class components.  This one catches render
+        // errors thrown by BriefingPanel or ForecastStrip (e.g. when the AWC API
+        // returns unexpected JSON that causes a null-dereference or bad array access
+        // during rendering) and shows a graceful fallback instead of crashing the
+        // whole app.
+        //
+        // Props:
+        //   label   – human-readable name shown in the fallback ("Flight Briefing")
+        //   compact – true for inline/strip fallbacks; false (default) for full-card
+        //
+        // The "Retry" / "Try again" button resets state.error → children re-mount
+        // fresh, triggering new API fetches in their useEffect hooks.
+        class WxErrorBoundary extends React.Component {
+            constructor(props) {
+                super(props);
+                this.state = { error: null };
+            }
+
+            static getDerivedStateFromError(error) {
+                return { error };
+            }
+
+            componentDidCatch(error, info) {
+                console.error('[WxErrorBoundary]', this.props.label,
+                              error.message, info.componentStack);
+            }
+
+            render() {
+                const { error } = this.state;
+                if (!error) return this.props.children;
+
+                const { label = 'Weather data', compact = false } = this.props;
+                const msg = error.message
+                    ? error.message.slice(0, 140)
+                    : 'Unexpected data structure';
+                const retry = () => this.setState({ error: null });
+
+                if (compact) {
+                    return (
+                        <div style={{
+                            display: 'flex', alignItems: 'center', gap: 10,
+                            padding: '10px 16px', borderRadius: 12,
+                            background: 'var(--md-sys-color-error-container)',
+                            color: 'var(--md-sys-color-on-error-container)',
+                            fontSize: 13,
+                        }}>
+                            <MdIcon name="warning" style={{ fontSize: 18, flexShrink: 0 }} />
+                            <span style={{ flex: 1 }}>
+                                <strong>{label}</strong> — AWC returned unexpected data.
+                            </span>
+                            <button onClick={retry} style={{
+                                background: 'none',
+                                border: '1px solid currentColor',
+                                color: 'inherit', cursor: 'pointer',
+                                fontSize: 12, fontWeight: 500,
+                                padding: '4px 12px', borderRadius: 20,
+                                fontFamily: 'inherit',
+                            }}>Retry</button>
+                        </div>
+                    );
+                }
+
+                return (
+                    <MdCard style={{
+                        background: 'var(--md-sys-color-error-container)',
+                        color: 'var(--md-sys-color-on-error-container)',
+                        padding: '24px',
+                    }}>
+                        <div style={{ display: 'flex', gap: 16, alignItems: 'flex-start' }}>
+                            <MdIcon name="warning" style={{ fontSize: 32, flexShrink: 0, marginTop: 2 }} />
+                            <div style={{ flex: 1 }}>
+                                <div style={{ fontWeight: 600, fontSize: 16, marginBottom: 6 }}>
+                                    {label} failed to render
+                                </div>
+                                <div style={{ fontSize: 14, opacity: 0.85, marginBottom: 16 }}>
+                                    The AWC API returned an unexpected JSON structure.
+                                    Retry to reload live weather, or the app will fall back
+                                    to simulated data.
+                                </div>
+                                <code style={{
+                                    display: 'block',
+                                    fontFamily: 'Roboto Mono, monospace', fontSize: 11,
+                                    background: 'rgba(0,0,0,0.12)',
+                                    padding: '8px 12px', borderRadius: 8, marginBottom: 16,
+                                    wordBreak: 'break-all',
+                                }}>{msg}</code>
+                                <button onClick={retry} style={{
+                                    display: 'inline-flex', alignItems: 'center', gap: 8,
+                                    background: 'var(--md-sys-color-on-error-container)',
+                                    color: 'var(--md-sys-color-error-container)',
+                                    border: 'none', cursor: 'pointer',
+                                    fontSize: 14, fontWeight: 500,
+                                    padding: '10px 24px', borderRadius: 9999,
+                                    fontFamily: 'inherit',
+                                }}>
+                                    <MdIcon name="refresh" style={{ fontSize: 18 }} />
+                                    Try again
+                                </button>
+                            </div>
+                        </div>
+                    </MdCard>
+                );
+            }
+        }
+
         function ForecastStrip({ icao, selectedDay, onSelect }) {
             const [forecasts, setForecasts] = useState(null);
             const [isLive, setIsLive] = useState(false);
@@ -3731,10 +3838,14 @@
 
                                         {/* Scrollable Tab Content */}
                                         <div className="briefing-content" style={{ flex: 1, overflowY: "auto", padding: "24px", maxWidth: "900px", margin: "0 auto", width: "100%" }}>
-                                            {tab === "brief" && <BriefingPanel trip={activeTrip} onScoreUpdate={score => {
-                                                setActiveTrip(prev => prev ? { ...prev, goScore: score } : prev);
-                                                setTrips(prev => prev.map(t => t.id === activeTrip.id ? { ...t, goScore: score } : t));
-                                            }} />}
+                                            {tab === "brief" && (
+                                                <WxErrorBoundary label="Flight Briefing">
+                                                    <BriefingPanel trip={activeTrip} onScoreUpdate={score => {
+                                                        setActiveTrip(prev => prev ? { ...prev, goScore: score } : prev);
+                                                        setTrips(prev => prev.map(t => t.id === activeTrip.id ? { ...t, goScore: score } : t));
+                                                    }} />
+                                                </WxErrorBoundary>
+                                            )}
                                             
                                             {tab === "wx" && (
                                                 <div style={{display: 'flex', flexDirection: 'column', gap: '24px'}}>
@@ -3746,7 +3857,9 @@
                                                                     {label} - {getAirport(rt)?.city || rt}
                                                                 </h2>
                                                                 <WeatherDetail icao={rt} label={label} />
-                                                                <ForecastStrip icao={rt} selectedDay={forecastDay} onSelect={setForecastDay} />
+                                                                <WxErrorBoundary label={`Forecast Strip (${rt})`} compact>
+                                                                    <ForecastStrip icao={rt} selectedDay={forecastDay} onSelect={setForecastDay} />
+                                                                </WxErrorBoundary>
                                                             </div>
                                                         );
                                                     })}
