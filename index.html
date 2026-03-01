@@ -458,6 +458,7 @@
         }
 
         // Fetch live TAF from Aviation Weather Center API
+        // Returns full TAF object: { rawTAF, forecast: [{timeFrom, timeTo, wdir, wspd, wgst, visib, skyCondition[]}] }
         async function fetchLiveTaf(icao) {
             if (!icao) return null;
             icao = icao.trim().toUpperCase();
@@ -469,7 +470,8 @@
                 if (!res.ok) return null;
                 const data = await res.json();
                 if (!data || data.length === 0) return null;
-                return data[0].rawTAF || null;
+                var obj = data[0];
+                return (obj && (obj.forecast || obj.rawTAF)) ? obj : null;
             } catch(e) { return null; }
         }
 
@@ -523,6 +525,69 @@
                 (catScores[arrMetar.cat] || 50) * 0.45 - windPen
             );
             return Math.max(5, Math.min(99, score));
+        }
+
+        /* =========================================
+           TRIP-TIME WEATHER HELPERS
+        ========================================= */
+
+        // Rough UTC offset (hours) from airport longitude — US-focused
+        function estimateUtcOffsetHours(lon) {
+            if (!lon) return -5;
+            if (lon > -75)  return -5;   // Eastern
+            if (lon > -90)  return -6;   // Central
+            if (lon > -105) return -7;   // Mountain
+            return -8;                    // Pacific
+        }
+
+        // Convert trip local date+time to a UTC Date object
+        function getTripTargetUtc(trip, depLon) {
+            if (!trip || !trip.date || !trip.time) return null;
+            var offset = estimateUtcOffsetHours(depLon);
+            var parts = trip.date.split('-').map(Number);
+            var tparts = trip.time.split(':').map(Number);
+            var local = new Date(parts[0], parts[1] - 1, parts[2], tparts[0], tparts[1], 0);
+            return new Date(local.getTime() - offset * 3600000);
+        }
+
+        // Build a METAR-like weather object from a structured TAF forecast period
+        function parseTafPeriod(fp, icao) {
+            if (!fp) return null;
+            var wspd = fp.wspd || 0, wdir = fp.wdir || 0, wgst = fp.wgst || 0;
+            var wdirStr = wdir === 0 ? "VRB" : String(wdir).padStart(3, "0");
+            var wind = `${wdirStr}${String(wspd).padStart(2,"0")}${wgst > 0 ? "G" + String(wgst).padStart(2,"0") : ""}KT`;
+            var visib = fp.visib != null ? fp.visib : 6;
+            var vis = visib >= 6 ? "P6SM" : `${visib}SM`;
+            var skyArr = fp.skyCondition || [];
+            var skyStr = skyArr.length > 0
+                ? skyArr.map(s => `${s.skyCover}${s.cloudBase != null ? String(Math.round(s.cloudBase / 100)).padStart(3,"0") : ""}`).join(" ")
+                : "CLR";
+            // Ceiling and flight category
+            var ceiling = null;
+            skyArr.forEach(s => {
+                if ((s.skyCover === 'BKN' || s.skyCover === 'OVC') && s.cloudBase != null)
+                    if (ceiling === null || s.cloudBase < ceiling) ceiling = s.cloudBase;
+            });
+            var visMi = visib >= 6 ? 10 : visib;
+            var cat = 'VFR';
+            if ((ceiling !== null && ceiling < 500) || visMi < 1) cat = 'LIFR';
+            else if ((ceiling !== null && ceiling < 1000) || visMi < 3) cat = 'IFR';
+            else if ((ceiling !== null && ceiling < 3000) || visMi < 5) cat = 'MVFR';
+            return { raw: `TAF ${icao || ''}`, wind, vis, sky: skyStr, cat, wspd };
+        }
+
+        // Find the TAF period that covers a target UTC date, return weather object
+        function parseTafForTime(tafObj, targetUtc) {
+            if (!tafObj || !tafObj.forecast || !tafObj.forecast.length) return null;
+            var targetTs = targetUtc.getTime() / 1000;
+            var periods = tafObj.forecast;
+            // Walk forward and keep the last period whose start ≤ targetTs
+            var active = null;
+            for (var p of periods) {
+                if (p.timeFrom != null && p.timeFrom <= targetTs) active = p;
+            }
+            if (!active) active = periods[0]; // Default to first if trip precedes TAF start
+            return parseTafPeriod(active, tafObj.stationId || "");
         }
 
         /* =========================================
@@ -903,7 +968,7 @@
             }, [icao]);
 
             var metar = liveMetar || (aptReady ? makeMetar(icao) : null);
-            var taf = liveTaf || makeTaf(icao);
+            var taf = (liveTaf && liveTaf.rawTAF) ? liveTaf.rawTAF : makeTaf(icao);
             var apt = getAirport(icao);
             if (!apt && !loadingWx) { return null; }
             if (!metar && !loadingWx) { return null; }
@@ -1160,6 +1225,19 @@
                 [trip.dep, trip.arr, JSON.stringify(trip.wps)]
             );
 
+            // Trip departure time in UTC (estimated from local + lon-based timezone)
+            var tripTargetUtc = useMemo(() => {
+                var apt = getAirport(trip.dep);
+                var depLon = apt ? apt.lon : -80;
+                return getTripTargetUtc(trip, depLon);
+            }, [trip.dep, trip.date, trip.time]);
+
+            // Hours from now until departure (negative = past/now)
+            var hoursUntilTrip = useMemo(() => {
+                if (!tripTargetUtc) return null;
+                return (tripTargetUtc.getTime() - Date.now()) / 3600000;
+            }, [tripTargetUtc]);
+
             // Auto-fetch weather for all waypoints on mount
             useEffect(() => {
                 setLoadingWx(true);
@@ -1170,6 +1248,30 @@
                 })).then(data => { setWxData(data); setLoadingWx(false); })
                   .catch(() => setLoadingWx(false));
             }, [allRoutePts.join(',')]);
+
+            // Effective weather per station resolved to the trip departure time:
+            //   • METAR  — trip is now/within 2 h, or TAF unavailable
+            //   • TAF    — trip is >2 h away; extract the forecast period at departure
+            var effectiveWxData = useMemo(() => {
+                if (!wxData) return null;
+                return wxData.map(w => {
+                    if (hoursUntilTrip !== null && hoursUntilTrip > 2 && tripTargetUtc) {
+                        if (w.taf) {
+                            var tafWx = parseTafForTime(w.taf, tripTargetUtc);
+                            if (tafWx) {
+                                var hh = String(tripTargetUtc.getUTCHours()).padStart(2, '0');
+                                var mm = String(tripTargetUtc.getUTCMinutes()).padStart(2, '0');
+                                return { ...w, effectiveWx: tafWx, source: 'taf', sourceLabel: `TAF ${hh}${mm}Z` };
+                            }
+                        }
+                        // TAF missing or doesn't cover the time window
+                        var noTafReason = hoursUntilTrip > 30 ? 'beyond TAF range' : 'no TAF';
+                        return { ...w, effectiveWx: w.metar, source: 'metar', sourceLabel: `METAR (${noTafReason})` };
+                    }
+                    // Trip is current/imminent — current METAR is the best data
+                    return { ...w, effectiveWx: w.metar, source: 'metar', sourceLabel: 'METAR' };
+                });
+            }, [wxData, tripTargetUtc, hoursUntilTrip]);
 
             // --- Helpers ---
             function parseCeiling(sky) {
@@ -1195,10 +1297,23 @@
                 return { VFR: 'var(--cat-vfr-color)', MVFR: 'var(--cat-mvfr-color)', IFR: 'var(--cat-ifr-color)', LIFR: 'var(--cat-lifr-color)' }[cat] || 'var(--md-sys-color-on-surface-variant)';
             }
 
-            // --- Auto analysis ---
+            // --- Auto analysis (time-aware: uses TAF forecast for future trips) ---
             var analysis = useMemo(() => {
-                if (!wxData) return null;
-                var cats = wxData.filter(w => w.metar).map(w => w.metar.cat);
+                if (!effectiveWxData) return null;
+
+                // Classify data source for header context
+                var isFutureFlight = hoursUntilTrip !== null && hoursUntilTrip > 2;
+                var anyTaf = effectiveWxData.some(e => e.source === 'taf');
+                var allTaf = effectiveWxData.every(e => e.source === 'taf');
+                var depUtcLabel = tripTargetUtc
+                    ? `${String(tripTargetUtc.getUTCHours()).padStart(2,'0')}${String(tripTargetUtc.getUTCMinutes()).padStart(2,'0')}Z on ${trip.date}`
+                    : trip.date;
+                var dataContext = allTaf   ? `TAF forecast for ${depUtcLabel}`
+                    : anyTaf   ? `mixed METAR/TAF data for ${depUtcLabel}`
+                    : isFutureFlight ? `current METAR (TAF unavailable for ${depUtcLabel})`
+                    : 'current METAR observations';
+
+                var cats = effectiveWxData.filter(e => e.effectiveWx).map(e => e.effectiveWx.cat);
                 var hasLIFR = cats.some(c => c === 'LIFR');
                 var hasIFR  = cats.some(c => c === 'IFR');
                 var hasMVFR = cats.some(c => c === 'MVFR');
@@ -1206,60 +1321,85 @@
                 var verdict, verdictColor, verdictBg, verdictIcon, verdictDesc;
                 if (hasLIFR) {
                     verdict = 'NO-GO'; verdictColor = 'var(--cat-lifr-color)'; verdictBg = 'var(--cat-lifr-bg)';
-                    verdictIcon = 'cancel'; verdictDesc = 'LIFR conditions at one or more stations — flight not recommended.';
+                    verdictIcon = 'cancel';
+                    verdictDesc = `LIFR forecast at one or more stations (${dataContext}) — flight not recommended.`;
                 } else if (hasIFR) {
                     verdict = 'NO-GO'; verdictColor = 'var(--cat-ifr-color)'; verdictBg = 'var(--cat-ifr-bg)';
-                    verdictIcon = 'cancel'; verdictDesc = 'IFR conditions reported — current instrument rating and currency required.';
+                    verdictIcon = 'cancel';
+                    verdictDesc = `IFR conditions in the forecast (${dataContext}) — instrument currency required.`;
                 } else if (hasMVFR) {
                     verdict = 'CAUTION'; verdictColor = 'var(--cat-mvfr-color)'; verdictBg = 'var(--cat-mvfr-bg)';
-                    verdictIcon = 'warning'; verdictDesc = 'Marginal VFR along the route — monitor closely before and during flight.';
+                    verdictIcon = 'warning';
+                    verdictDesc = `Marginal VFR forecast along the route (${dataContext}) — monitor closely.`;
                 } else {
                     verdict = 'GO'; verdictColor = 'var(--cat-vfr-color)'; verdictBg = 'var(--cat-vfr-bg)';
-                    verdictIcon = 'check_circle'; verdictDesc = 'All stations reporting VFR — conditions appear favorable.';
+                    verdictIcon = 'check_circle';
+                    verdictDesc = `All stations forecast VFR (${dataContext}) — conditions appear favorable.`;
                 }
 
                 var concerns = [];
-                wxData.forEach(w => {
-                    if (!w.metar) {
-                        concerns.push({ level: 'medium', icon: 'cloud_off', text: `${w.icao}: No METAR available — verify conditions before flight` });
+
+                // TAF coverage warning: trip is >2h away but some stations have no TAF
+                if (isFutureFlight) {
+                    effectiveWxData.forEach(e => {
+                        if (e.source === 'metar' && hoursUntilTrip > 30) {
+                            concerns.push({ level: 'medium', icon: 'update', text: `${e.icao}: Departure is beyond 30-hour TAF range — long-range forecast unavailable` });
+                        } else if (e.source === 'metar' && hoursUntilTrip > 2 && !e.taf) {
+                            concerns.push({ level: 'medium', icon: 'cloud_off', text: `${e.icao}: No TAF available — showing current METAR only` });
+                        }
+                    });
+                }
+
+                // Per-station analysis using trip-time effective weather
+                effectiveWxData.forEach(e => {
+                    var src = e.source === 'taf' ? `TAF` : 'METAR';
+                    if (!e.effectiveWx) {
+                        concerns.push({ level: 'medium', icon: 'cloud_off', text: `${e.icao}: No weather data available — verify conditions before flight` });
                         return;
                     }
-                    var m = w.metar;
-                    if (m.raw.includes(' TS') || m.sky.includes('CB')) {
-                        concerns.push({ level: 'high', icon: 'thunderstorm', text: `${w.icao}: Thunderstorm activity reported` });
+                    var m = e.effectiveWx;
+                    // Thunderstorm (TAF uses TS token; also check raw)
+                    if ((m.raw || '').includes(' TS') || m.sky.includes('CB') || (e.taf && (e.taf.rawTAF || '').includes(' TS'))) {
+                        concerns.push({ level: 'high', icon: 'thunderstorm', text: `${e.icao}: Thunderstorm activity in ${src} — check convective SIGMETs` });
                     }
                     var ceiling = parseCeiling(m.sky);
                     if (ceiling !== null && ceiling < 1000) {
-                        concerns.push({ level: 'high', icon: 'cloud', text: `${w.icao}: Low ceiling ${ceiling}ft (${m.sky})` });
+                        concerns.push({ level: 'high', icon: 'cloud', text: `${e.icao}: ${src} ceiling ${ceiling}ft — IFR conditions (${m.sky})` });
                     } else if (ceiling !== null && ceiling < 3000) {
-                        concerns.push({ level: 'medium', icon: 'cloud', text: `${w.icao}: Ceiling ${ceiling}ft — monitor for deterioration` });
+                        concerns.push({ level: 'medium', icon: 'cloud', text: `${e.icao}: ${src} ceiling ${ceiling}ft — MVFR, monitor for deterioration` });
                     }
                     if (!m.vis.includes('P6') && !m.vis.startsWith('10')) {
                         var visNum = parseFloat(m.vis) || 10;
-                        if (visNum < 1) concerns.push({ level: 'high', icon: 'visibility_off', text: `${w.icao}: Very low visibility ${m.vis}` });
-                        else if (visNum < 3) concerns.push({ level: 'medium', icon: 'visibility', text: `${w.icao}: Reduced visibility ${m.vis}` });
+                        if (visNum < 1) concerns.push({ level: 'high', icon: 'visibility_off', text: `${e.icao}: ${src} visibility ${m.vis} — very low` });
+                        else if (visNum < 3) concerns.push({ level: 'medium', icon: 'visibility', text: `${e.icao}: ${src} visibility ${m.vis} — reduced` });
                     }
                     var gust = parseGust(m.wind);
                     if (m.wspd > 20 || (gust && gust > 25)) {
-                        concerns.push({ level: 'high', icon: 'air', text: `${w.icao}: Strong winds ${m.wind}` });
+                        concerns.push({ level: 'high', icon: 'air', text: `${e.icao}: ${src} strong winds ${m.wind}` });
                     } else if (m.wspd > 15 || (gust && gust > 20)) {
-                        concerns.push({ level: 'medium', icon: 'air', text: `${w.icao}: Gusty conditions ${m.wind}` });
+                        concerns.push({ level: 'medium', icon: 'air', text: `${e.icao}: ${src} gusty conditions ${m.wind}` });
                     }
-                    var apt = getAirport(w.icao);
+                    var apt = getAirport(e.icao);
                     var rwyRec = getRunwayRecommendation(m, apt);
                     if (rwyRec && rwyRec.crosswind > 15) {
-                        concerns.push({ level: 'high', icon: 'flight_takeoff', text: `${w.icao}: High crosswind ${rwyRec.crosswind}kt on Rwy ${rwyRec.rwy}` });
+                        concerns.push({ level: 'high', icon: 'flight_takeoff', text: `${e.icao}: ${src} high crosswind ${rwyRec.crosswind}kt on Rwy ${rwyRec.rwy}` });
                     } else if (rwyRec && rwyRec.crosswind > 10) {
-                        concerns.push({ level: 'medium', icon: 'flight_takeoff', text: `${w.icao}: Crosswind ${rwyRec.crosswind}kt on Rwy ${rwyRec.rwy}` });
+                        concerns.push({ level: 'medium', icon: 'flight_takeoff', text: `${e.icao}: ${src} crosswind ${rwyRec.crosswind}kt on Rwy ${rwyRec.rwy}` });
                     }
-                    var tempC = parseTempC(m.temp);
-                    if (tempC !== null && tempC <= 2) {
-                        concerns.push({ level: 'medium', icon: 'ac_unit', text: `${w.icao}: Near/below freezing — ${m.temp}°C` });
+                    // Freezing temps only meaningful from METAR (TAF temp not in structured data)
+                    if (e.source === 'metar' && e.metar) {
+                        var tempC = parseTempC(e.metar.temp);
+                        if (tempC !== null && tempC <= 2) {
+                            concerns.push({ level: 'medium', icon: 'ac_unit', text: `${e.icao}: Current temp near/below freezing — ${e.metar.temp}` });
+                        }
                     }
                 });
                 concerns.sort((a, b) => (a.level === 'high' ? 0 : 1) - (b.level === 'high' ? 0 : 1));
 
                 var recs = [];
+                if (isFutureFlight && anyTaf) {
+                    recs.push(`Assessment based on TAF forecast for ${depUtcLabel} — conditions may change. Re-check closer to departure.`);
+                }
                 if (hasIFR || hasLIFR) recs.push('IFR rating and current instrument currency required for this flight.');
                 if (hasMVFR && !hasIFR && !hasLIFR) recs.push('Consider filing IFR or delaying departure until conditions improve to VFR.');
                 if (concerns.some(c => c.icon === 'thunderstorm')) recs.push('Check convective SIGMETs and avoid areas with reported thunderstorm activity.');
@@ -1268,8 +1408,8 @@
                 if (recs.length === 0) recs.push('Conditions appear favorable — complete standard preflight checks and file a flight plan.');
                 recs.push('Always obtain an official briefing at 1800wxbrief.com before departure.');
 
-                return { verdict, verdictColor, verdictBg, verdictIcon, verdictDesc, concerns, recs };
-            }, [wxData]);
+                return { verdict, verdictColor, verdictBg, verdictIcon, verdictDesc, concerns, recs, dataContext, isFutureFlight, anyTaf };
+            }, [effectiveWxData, hoursUntilTrip, tripTargetUtc]);
 
             // --- AI Enhanced briefing ---
             var runAiBriefing = useCallback(async function() {
@@ -1287,7 +1427,7 @@
                 var wxLines = wxData.map(w => {
                     var lines = [];
                     if (w.metar) lines.push(`METAR ${w.icao}: ${w.metar.raw}`);
-                    if (w.taf) lines.push(`TAF ${w.icao}: ${w.taf}`);
+                    if (w.taf && w.taf.rawTAF) lines.push(`TAF ${w.icao}: ${w.taf.rawTAF}`);
                     return lines.join("\n");
                 }).join("\n");
 
@@ -1385,7 +1525,7 @@
                     )}
 
                     {/* ---- Auto briefing ---- */}
-                    {analysis && (
+                    {effectiveWxData && analysis && (
                         <>
                             {/* Go/No-Go banner */}
                             <div style={{ background: analysis.verdictBg, borderRadius: 16, padding: '20px 24px', marginBottom: 16, display: 'flex', alignItems: 'center', gap: 16 }}>
@@ -1399,31 +1539,40 @@
 
                             {/* Route weather table */}
                             <div style={{ background: 'var(--md-sys-color-surface-container)', borderRadius: 16, padding: '16px', marginBottom: 16 }}>
-                                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
-                                    <MdIcon name="routine" style={{ color: 'var(--md-sys-color-secondary)', fontSize: 18 }} />
-                                    <span style={{ fontWeight: 700, fontSize: 13, textTransform: 'uppercase', letterSpacing: '0.5px', color: 'var(--md-sys-color-secondary)' }}>Route Weather Summary</span>
+                                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginBottom: 12, flexWrap: 'wrap' }}>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                                        <MdIcon name="routine" style={{ color: 'var(--md-sys-color-secondary)', fontSize: 18 }} />
+                                        <span style={{ fontWeight: 700, fontSize: 13, textTransform: 'uppercase', letterSpacing: '0.5px', color: 'var(--md-sys-color-secondary)' }}>Route Weather Summary</span>
+                                    </div>
+                                    {analysis && analysis.isFutureFlight && (
+                                        <span style={{ fontSize: 10, fontWeight: 700, color: 'var(--md-sys-color-primary)', background: 'var(--md-sys-color-primary-container)', borderRadius: 4, padding: '2px 6px', letterSpacing: '0.5px', textTransform: 'uppercase' }}>
+                                            {analysis.anyTaf ? 'FORECAST' : 'FUTURE TRIP'}
+                                        </span>
+                                    )}
                                 </div>
-                                {wxData.map((w, idx) => {
-                                    var roleLabel = idx === 0 ? 'DEP' : idx === wxData.length - 1 ? 'ARR' : 'WPT';
-                                    var apt = getAirport(w.icao);
-                                    var rwyRec = w.metar ? getRunwayRecommendation(w.metar, apt) : null;
+                                {effectiveWxData.map((e, idx) => {
+                                    var roleLabel = idx === 0 ? 'DEP' : idx === effectiveWxData.length - 1 ? 'ARR' : 'WPT';
+                                    var apt = getAirport(e.icao);
+                                    var wx = e.effectiveWx;
+                                    var rwyRec = wx ? getRunwayRecommendation(wx, apt) : null;
                                     return (
-                                        <div key={w.icao} style={{ display: 'grid', gridTemplateColumns: '40px 1fr auto', gap: '6px 12px', padding: '10px 0', borderBottom: idx < wxData.length - 1 ? '1px solid var(--md-sys-color-outline-variant)' : 'none', alignItems: 'center' }}>
+                                        <div key={e.icao} style={{ display: 'grid', gridTemplateColumns: '40px 1fr auto', gap: '6px 12px', padding: '10px 0', borderBottom: idx < effectiveWxData.length - 1 ? '1px solid var(--md-sys-color-outline-variant)' : 'none', alignItems: 'center' }}>
                                             <span style={{ fontSize: 9, fontWeight: 700, color: 'var(--md-sys-color-on-surface-variant)', textTransform: 'uppercase', background: 'var(--md-sys-color-surface-container-high)', borderRadius: 4, padding: '2px 4px', textAlign: 'center', letterSpacing: '0.5px' }}>{roleLabel}</span>
                                             <div>
-                                                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 2 }}>
-                                                    <span className="font-mono" style={{ fontWeight: 700, fontSize: 14 }}>{w.icao}</span>
-                                                    {w.metar && <span style={{ fontSize: 11, fontWeight: 700, color: catColor(w.metar.cat) }}>{w.metar.cat}</span>}
-                                                    {!w.metar && <span style={{ fontSize: 11, color: 'var(--md-sys-color-on-surface-variant)' }}>No data</span>}
+                                                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 2, flexWrap: 'wrap' }}>
+                                                    <span className="font-mono" style={{ fontWeight: 700, fontSize: 14 }}>{e.icao}</span>
+                                                    {wx && <span style={{ fontSize: 11, fontWeight: 700, color: catColor(wx.cat) }}>{wx.cat}</span>}
+                                                    {!wx && <span style={{ fontSize: 11, color: 'var(--md-sys-color-on-surface-variant)' }}>No data</span>}
+                                                    <span style={{ fontSize: 9, fontWeight: 600, color: e.source === 'taf' ? 'var(--md-sys-color-primary)' : 'var(--md-sys-color-on-surface-variant)', background: e.source === 'taf' ? 'var(--md-sys-color-primary-container)' : 'var(--md-sys-color-surface-container-high)', borderRadius: 3, padding: '1px 5px', letterSpacing: '0.3px', textTransform: 'uppercase' }}>{e.sourceLabel}</span>
                                                 </div>
-                                                {w.metar && (
+                                                {wx && (
                                                     <div className="font-mono" style={{ fontSize: 11, color: 'var(--md-sys-color-on-surface-variant)', lineHeight: 1.5 }}>
-                                                        {w.metar.wind} &middot; {w.metar.vis} &middot; {w.metar.sky}
+                                                        {wx.wind} &middot; {wx.vis} &middot; {wx.sky}
                                                         {rwyRec && <span> &middot; Rwy <span style={{ color: 'var(--md-sys-color-primary)', fontWeight: 600 }}>{rwyRec.rwy}</span> xwind <span style={{ color: rwyRec.crosswind > 15 ? 'var(--md-sys-color-error)' : rwyRec.crosswind > 10 ? 'var(--cat-mvfr-color)' : 'var(--md-sys-color-primary)', fontWeight: 600 }}>{rwyRec.crosswind}kt</span></span>}
                                                     </div>
                                                 )}
                                             </div>
-                                            {w.metar && <CatBadge cat={w.metar.cat} />}
+                                            {wx && <CatBadge cat={wx.cat} />}
                                         </div>
                                     );
                                 })}
@@ -1464,7 +1613,10 @@
                             </div>
 
                             <div style={{ fontSize: 11, color: 'var(--md-sys-color-on-surface-variant)', textAlign: 'center', padding: '4px 16px 20px', lineHeight: 1.5 }}>
-                                Live weather from <strong>AviationWeather.gov</strong>. For situational awareness only — always obtain an official briefing before flight.
+                                {analysis.isFutureFlight
+                                    ? <>TAF forecast from <strong>AviationWeather.gov</strong> for trip date/time. Conditions may change — <strong>re-check closer to departure</strong>.</>
+                                    : <>Live weather from <strong>AviationWeather.gov</strong>. For situational awareness only.</>
+                                } Always obtain an official briefing at <strong>1800wxbrief.com</strong> before flight.
                             </div>
                         </>
                     )}
