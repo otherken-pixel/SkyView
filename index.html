@@ -3370,7 +3370,19 @@
            MAIN APPLICATION COMPONENT
         ========================================= */
         function App() {
-            var [view, setView] = useState("trips");
+            // Restore the last active view from sessionStorage so that a
+            // pull-to-refresh (which reloads the page but keeps the session)
+            // lands back on the briefing panel rather than the trips list.
+            // We validate that the target trip still exists before restoring.
+            var [view, setView] = useState(() => {
+                try {
+                    if (sessionStorage.getItem('sc_view') !== 'briefing') return 'trips';
+                    var id = sessionStorage.getItem('sc_active_trip_id');
+                    if (!id) return 'trips';
+                    var saved = JSON.parse(localStorage.getItem('flightscore_trips') || '[]');
+                    return saved.some(t => String(t.id) === id) ? 'briefing' : 'trips';
+                } catch(e) { return 'trips'; }
+            });
             var defaultTimeStr = (new Date(Date.now() + 7200000)).toTimeString().slice(0, 5);
 
             var [showDataModal, setShowDataModal] = useState(false);
@@ -3388,6 +3400,23 @@
                 localStorage.setItem('flightscore_theme', darkMode ? 'dark' : 'light');
             }, [darkMode]);
 
+            // Sync navigation state to sessionStorage so pull-to-refresh restores
+            // the user's position.  We only persist the briefing view — trips list
+            // and create form always start fresh on reload.
+            useEffect(function() {
+                try {
+                    if (view === 'briefing' && activeTrip) {
+                        sessionStorage.setItem('sc_view', 'briefing');
+                        sessionStorage.setItem('sc_active_trip_id', String(activeTrip.id));
+                        sessionStorage.setItem('sc_tab', tab);
+                    } else {
+                        sessionStorage.removeItem('sc_view');
+                        sessionStorage.removeItem('sc_active_trip_id');
+                        sessionStorage.removeItem('sc_tab');
+                    }
+                } catch(e) {}
+            }, [view, activeTrip, tab]);
+
             // Trips — initialized from localStorage, falling back to sample trips
             var [trips, setTrips] = useState(() => {
                 try {
@@ -3399,8 +3428,18 @@
                     { id: 2, dep: "KJFK", arr: "KBOS", aircraft: "sr22", date: "2026-03-01", time: "14:30", wps: ["KORH"], name: "New York to Boston", goScore: null },
                 ];
             });
-            var [activeTrip, setActiveTrip] = useState(null);
-            var [tab, setTab] = useState("brief");
+            var [activeTrip, setActiveTrip] = useState(() => {
+                try {
+                    var id = sessionStorage.getItem('sc_active_trip_id');
+                    if (!id) return null;
+                    var saved = JSON.parse(localStorage.getItem('flightscore_trips') || '[]');
+                    return saved.find(t => String(t.id) === id) || null;
+                } catch(e) { return null; }
+            });
+            var [tab, setTab] = useState(() => {
+                try { return sessionStorage.getItem('sc_tab') || 'brief'; }
+                catch(e) { return 'brief'; }
+            });
             var [forecastDay, setForecastDay] = useState(0);
             var [newTrip, setNewTrip] = useState({ route: ["", ""], aircraft: "c172", date: "", time: defaultTimeStr, name: "" });
             var [editingTripId, setEditingTripId] = useState(null); // null = creating, non-null = editing existing
