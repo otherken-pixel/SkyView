@@ -1013,18 +1013,139 @@
             );
         }
 
-        function AIBriefing({ trip }) {
-            var [result, setResult] = useState(null);
-            var [loading, setLoading] = useState(false);
-            var [error, setError] = useState(null);
+        function BriefingPanel({ trip }) {
+            // --- Auto-briefing state ---
+            var [wxData, setWxData] = useState(null);
+            var [loadingWx, setLoadingWx] = useState(true);
+
+            // --- AI Enhanced section state ---
+            var [aiResult, setAiResult] = useState(null);
+            var [aiLoading, setAiLoading] = useState(false);
+            var [aiError, setAiError] = useState(null);
             var [apiKey, setApiKey] = useState("");
+            var [showAI, setShowAI] = useState(false);
 
-            var runBriefing = useCallback(async function() {
-                if (!trip.dep || !trip.arr) return;
-                setLoading(true); setError(null);
+            var ac = AIRCRAFT.find(a => a.id === trip.aircraft) || AIRCRAFT[0];
+            var allRoutePts = useMemo(() =>
+                [trip.dep].concat(trip.wps || []).concat([trip.arr]),
+                [trip.dep, trip.arr, JSON.stringify(trip.wps)]
+            );
 
-                var ac = AIRCRAFT.find(a => a.id === trip.aircraft) || AIRCRAFT[0];
-                var allRoutePts = [trip.dep].concat(trip.wps || []).concat([trip.arr]);
+            // Auto-fetch weather for all waypoints on mount
+            useEffect(() => {
+                setLoadingWx(true);
+                setWxData(null);
+                Promise.all(allRoutePts.map(async icao => {
+                    var [m, t] = await Promise.all([fetchLiveMetar(icao), fetchLiveTaf(icao)]).catch(() => [null, null]);
+                    return { icao, metar: m, taf: t };
+                })).then(data => { setWxData(data); setLoadingWx(false); })
+                  .catch(() => setLoadingWx(false));
+            }, [allRoutePts.join(',')]);
+
+            // --- Helpers ---
+            function parseCeiling(sky) {
+                if (!sky) return null;
+                var min = Infinity;
+                sky.split(' ').forEach(p => {
+                    var m = p.match(/^(BKN|OVC)(\d{3})/);
+                    if (m) min = Math.min(min, parseInt(m[2]) * 100);
+                });
+                return min === Infinity ? null : min;
+            }
+            function parseGust(windStr) {
+                var m = windStr ? windStr.match(/G(\d+)KT/) : null;
+                return m ? parseInt(m[1]) : null;
+            }
+            function parseTempC(tempStr) {
+                if (!tempStr) return null;
+                var m = tempStr.match(/^(M?)(\d+)\//);
+                if (!m) return null;
+                return m[1] === 'M' ? -parseInt(m[2]) : parseInt(m[2]);
+            }
+            function catColor(cat) {
+                return { VFR: 'var(--cat-vfr-color)', MVFR: 'var(--cat-mvfr-color)', IFR: 'var(--cat-ifr-color)', LIFR: 'var(--cat-lifr-color)' }[cat] || 'var(--md-sys-color-on-surface-variant)';
+            }
+
+            // --- Auto analysis ---
+            var analysis = useMemo(() => {
+                if (!wxData) return null;
+                var cats = wxData.filter(w => w.metar).map(w => w.metar.cat);
+                var hasLIFR = cats.some(c => c === 'LIFR');
+                var hasIFR  = cats.some(c => c === 'IFR');
+                var hasMVFR = cats.some(c => c === 'MVFR');
+
+                var verdict, verdictColor, verdictBg, verdictIcon, verdictDesc;
+                if (hasLIFR) {
+                    verdict = 'NO-GO'; verdictColor = 'var(--cat-lifr-color)'; verdictBg = 'var(--cat-lifr-bg)';
+                    verdictIcon = 'cancel'; verdictDesc = 'LIFR conditions at one or more stations — flight not recommended.';
+                } else if (hasIFR) {
+                    verdict = 'NO-GO'; verdictColor = 'var(--cat-ifr-color)'; verdictBg = 'var(--cat-ifr-bg)';
+                    verdictIcon = 'cancel'; verdictDesc = 'IFR conditions reported — current instrument rating and currency required.';
+                } else if (hasMVFR) {
+                    verdict = 'CAUTION'; verdictColor = 'var(--cat-mvfr-color)'; verdictBg = 'var(--cat-mvfr-bg)';
+                    verdictIcon = 'warning'; verdictDesc = 'Marginal VFR along the route — monitor closely before and during flight.';
+                } else {
+                    verdict = 'GO'; verdictColor = 'var(--cat-vfr-color)'; verdictBg = 'var(--cat-vfr-bg)';
+                    verdictIcon = 'check_circle'; verdictDesc = 'All stations reporting VFR — conditions appear favorable.';
+                }
+
+                var concerns = [];
+                wxData.forEach(w => {
+                    if (!w.metar) {
+                        concerns.push({ level: 'medium', icon: 'cloud_off', text: `${w.icao}: No METAR available — verify conditions before flight` });
+                        return;
+                    }
+                    var m = w.metar;
+                    if (m.raw.includes(' TS') || m.sky.includes('CB')) {
+                        concerns.push({ level: 'high', icon: 'thunderstorm', text: `${w.icao}: Thunderstorm activity reported` });
+                    }
+                    var ceiling = parseCeiling(m.sky);
+                    if (ceiling !== null && ceiling < 1000) {
+                        concerns.push({ level: 'high', icon: 'cloud', text: `${w.icao}: Low ceiling ${ceiling}ft (${m.sky})` });
+                    } else if (ceiling !== null && ceiling < 3000) {
+                        concerns.push({ level: 'medium', icon: 'cloud', text: `${w.icao}: Ceiling ${ceiling}ft — monitor for deterioration` });
+                    }
+                    if (!m.vis.includes('P6') && !m.vis.startsWith('10')) {
+                        var visNum = parseFloat(m.vis) || 10;
+                        if (visNum < 1) concerns.push({ level: 'high', icon: 'visibility_off', text: `${w.icao}: Very low visibility ${m.vis}` });
+                        else if (visNum < 3) concerns.push({ level: 'medium', icon: 'visibility', text: `${w.icao}: Reduced visibility ${m.vis}` });
+                    }
+                    var gust = parseGust(m.wind);
+                    if (m.wspd > 20 || (gust && gust > 25)) {
+                        concerns.push({ level: 'high', icon: 'air', text: `${w.icao}: Strong winds ${m.wind}` });
+                    } else if (m.wspd > 15 || (gust && gust > 20)) {
+                        concerns.push({ level: 'medium', icon: 'air', text: `${w.icao}: Gusty conditions ${m.wind}` });
+                    }
+                    var apt = getAirport(w.icao);
+                    var rwyRec = getRunwayRecommendation(m, apt);
+                    if (rwyRec && rwyRec.crosswind > 15) {
+                        concerns.push({ level: 'high', icon: 'flight_takeoff', text: `${w.icao}: High crosswind ${rwyRec.crosswind}kt on Rwy ${rwyRec.rwy}` });
+                    } else if (rwyRec && rwyRec.crosswind > 10) {
+                        concerns.push({ level: 'medium', icon: 'flight_takeoff', text: `${w.icao}: Crosswind ${rwyRec.crosswind}kt on Rwy ${rwyRec.rwy}` });
+                    }
+                    var tempC = parseTempC(m.temp);
+                    if (tempC !== null && tempC <= 2) {
+                        concerns.push({ level: 'medium', icon: 'ac_unit', text: `${w.icao}: Near/below freezing — ${m.temp}°C` });
+                    }
+                });
+                concerns.sort((a, b) => (a.level === 'high' ? 0 : 1) - (b.level === 'high' ? 0 : 1));
+
+                var recs = [];
+                if (hasIFR || hasLIFR) recs.push('IFR rating and current instrument currency required for this flight.');
+                if (hasMVFR && !hasIFR && !hasLIFR) recs.push('Consider filing IFR or delaying departure until conditions improve to VFR.');
+                if (concerns.some(c => c.icon === 'thunderstorm')) recs.push('Check convective SIGMETs and avoid areas with reported thunderstorm activity.');
+                if (concerns.some(c => c.icon === 'ac_unit')) recs.push('Check PIREPs for airframe icing; confirm aircraft icing certification if applicable.');
+                if (concerns.some(c => c.level === 'high' && c.icon === 'air')) recs.push('Verify crosswind does not exceed aircraft published limits; identify an alternate airport.');
+                if (recs.length === 0) recs.push('Conditions appear favorable — complete standard preflight checks and file a flight plan.');
+                recs.push('Always obtain an official briefing at 1800wxbrief.com before departure.');
+
+                return { verdict, verdictColor, verdictBg, verdictIcon, verdictDesc, concerns, recs };
+            }, [wxData]);
+
+            // --- AI Enhanced briefing ---
+            var runAiBriefing = useCallback(async function() {
+                if (!trip.dep || !trip.arr || !wxData) return;
+                setAiLoading(true); setAiError(null);
 
                 var distance = 0;
                 for (var i = 0; i < allRoutePts.length - 1; i++) {
@@ -1033,12 +1154,6 @@
                     if (p1 && p2) distance += calcDist(p1.lat, p1.lon, p2.lat, p2.lon);
                 }
                 var ete = distance / ac.kts;
-
-                // Pre-fetch live METARs and TAFs for all waypoints
-                var wxData = await Promise.all(allRoutePts.map(async icao => {
-                    var [m, t] = await Promise.all([fetchLiveMetar(icao), fetchLiveTaf(icao)]);
-                    return { icao, metar: m, taf: t };
-                }));
 
                 var wxLines = wxData.map(w => {
                     var lines = [];
@@ -1091,21 +1206,19 @@
                 };
 
                 try {
-                    const responseText = await fetchWithRetry();
-                    setResult(responseText);
+                    setAiResult(await fetchWithRetry());
                 } catch (e) {
-                    setError("Briefing failed: " + (e.message || "Please check your API key and try again."));
+                    setAiError("Briefing failed: " + (e.message || "Please check your API key and try again."));
                 } finally {
-                    setLoading(false);
+                    setAiLoading(false);
                 }
-            }, [trip, apiKey]);
+            }, [trip, apiKey, wxData]);
 
-            var sections = useMemo(() => {
-                if (!result) return [];
+            var aiSections = useMemo(() => {
+                if (!aiResult) return [];
                 var out = []; var current = null;
                 var validHeaders = ["GO/NO-GO RECOMMENDATION", "WEATHER SYNOPSIS", "DEPARTURE WINDOW", "EN ROUTE HAZARDS", "RUNWAY ANALYSIS", "NOTAM IMPACT", "ALTERNATE RECOMMENDATIONS", "FREQUENCY GUIDE"];
-
-                result.split("\n").forEach(line => {
+                aiResult.split("\n").forEach(line => {
                     var cleanLine = line.replace(/\*/g, "").trim();
                     if (validHeaders.includes(cleanLine)) {
                         if (current) out.push(current);
@@ -1116,7 +1229,7 @@
                 });
                 if (current) out.push(current);
                 return out;
-            }, [result]);
+            }, [aiResult]);
 
             var sectionMeta = {
                 "GO/NO-GO RECOMMENDATION": { icon: "check_circle", color: "var(--md-sys-color-primary)", bg: "var(--md-sys-color-primary-container)", onBg: "var(--md-sys-color-on-primary-container)" },
@@ -1129,55 +1242,152 @@
                 "FREQUENCY GUIDE": { icon: "podcasts", color: "var(--md-sys-color-secondary)" }
             };
 
-            return (
-                <div style={{ paddingBottom: '32px' }}>
-                    <div style={{ marginBottom: 16 }}>
-                        <MdInput
-                            label="Anthropic API Key"
-                            value={apiKey}
-                            onChange={e => setApiKey(e.target.value)}
-                            placeholder="sk-ant-..."
-                            type="password"
-                        />
-                    </div>
-                    <MdButton
-                        variant={loading ? "tonal" : "sparkle"}
-                        onClick={runBriefing}
-                        disabled={loading || !trip.dep || !trip.arr || !apiKey}
-                        icon="auto_awesome"
-                        style={{ width: "100%", padding: "16px", marginBottom: "24px", fontSize: "16px" }}
-                    >
-                        {loading ? "Fetching live weather & analyzing..." : "Generate AI Briefing"}
-                    </MdButton>
+            var levelColor = { high: 'var(--md-sys-color-error)', medium: 'var(--cat-mvfr-color)' };
 
-                    {error && <MdCard style={{ background: "var(--md-sys-color-error-container)", color: "var(--md-sys-color-on-error-container)", marginBottom: "16px" }}><MdIcon name="error" style={{marginRight: 8}}/>{error}</MdCard>}
-                    
-                    {sections.map((s, i) => {
-                        var meta = sectionMeta[s.title] || { icon: "info", color: "var(--md-sys-color-primary)" };
-                        return (
-                            <div key={i} style={{ 
-                                background: meta.bg || "var(--md-sys-color-surface-container)", 
-                                borderRadius: "16px", padding: "20px", marginBottom: "16px",
-                                color: meta.onBg || "var(--md-sys-color-on-surface)"
-                            }}>
-                                <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 12 }}>
-                                    <MdIcon name={meta.icon} style={{ color: meta.color, fontSize: 24 }} />
-                                    <h3 style={{ margin: 0, fontSize: 16, fontWeight: 700, color: meta.color, letterSpacing: '0.5px' }}>{s.title}</h3>
-                                </div>
-                                <div style={{ fontSize: 14, lineHeight: 1.6, whiteSpace: "pre-wrap", color: meta.onBg || "var(--md-sys-color-on-surface-variant)" }}>
-                                    {s.body.trim().replace(/-/g, "\u2022")}
-                                </div>
-                            </div>
-                        );
-                    })}
-                    {!result && !loading && (
-                        <div style={{ textAlign: "center", padding: "48px 24px", color: "var(--md-sys-color-on-surface-variant)" }}>
-                            <MdIcon name="robot_2" style={{ fontSize: 48, opacity: 0.5, marginBottom: 16 }} />
-                            <div style={{ fontSize: 16, maxWidth: "400px", margin: "0 auto", lineHeight: 1.5 }}>
-                                Claude AI will fetch live METARs &amp; TAFs from AviationWeather.gov, then generate a comprehensive flight briefing. Enter your Anthropic API key above.
-                            </div>
+            return (
+                <div style={{ paddingBottom: 32 }}>
+
+                    {/* ---- Loading state ---- */}
+                    {loadingWx && (
+                        <div style={{ textAlign: 'center', padding: '48px 24px', color: 'var(--md-sys-color-on-surface-variant)' }}>
+                            <MdIcon name="sync" style={{ fontSize: 40, animation: 'spin 1s linear infinite', marginBottom: 12, display: 'block' }} />
+                            <div style={{ fontSize: 14 }}>Fetching live weather from AviationWeather.gov…</div>
                         </div>
                     )}
+
+                    {/* ---- Auto briefing ---- */}
+                    {analysis && (
+                        <>
+                            {/* Go/No-Go banner */}
+                            <div style={{ background: analysis.verdictBg, borderRadius: 16, padding: '20px 24px', marginBottom: 16, display: 'flex', alignItems: 'center', gap: 16 }}>
+                                <MdIcon name={analysis.verdictIcon} style={{ fontSize: 44, color: analysis.verdictColor, flexShrink: 0 }} />
+                                <div>
+                                    <div style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '1px', color: analysis.verdictColor, opacity: 0.75, marginBottom: 2 }}>Go/No-Go Assessment</div>
+                                    <div style={{ fontSize: 30, fontWeight: 800, color: analysis.verdictColor, fontFamily: 'monospace', lineHeight: 1 }}>{analysis.verdict}</div>
+                                    <div style={{ fontSize: 13, color: analysis.verdictColor, opacity: 0.85, marginTop: 4, lineHeight: 1.4 }}>{analysis.verdictDesc}</div>
+                                </div>
+                            </div>
+
+                            {/* Route weather table */}
+                            <div style={{ background: 'var(--md-sys-color-surface-container)', borderRadius: 16, padding: '16px', marginBottom: 16 }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
+                                    <MdIcon name="routine" style={{ color: 'var(--md-sys-color-secondary)', fontSize: 18 }} />
+                                    <span style={{ fontWeight: 700, fontSize: 13, textTransform: 'uppercase', letterSpacing: '0.5px', color: 'var(--md-sys-color-secondary)' }}>Route Weather Summary</span>
+                                </div>
+                                {wxData.map((w, idx) => {
+                                    var roleLabel = idx === 0 ? 'DEP' : idx === wxData.length - 1 ? 'ARR' : 'WPT';
+                                    var apt = getAirport(w.icao);
+                                    var rwyRec = w.metar ? getRunwayRecommendation(w.metar, apt) : null;
+                                    return (
+                                        <div key={w.icao} style={{ display: 'grid', gridTemplateColumns: '40px 1fr auto', gap: '6px 12px', padding: '10px 0', borderBottom: idx < wxData.length - 1 ? '1px solid var(--md-sys-color-outline-variant)' : 'none', alignItems: 'center' }}>
+                                            <span style={{ fontSize: 9, fontWeight: 700, color: 'var(--md-sys-color-on-surface-variant)', textTransform: 'uppercase', background: 'var(--md-sys-color-surface-container-high)', borderRadius: 4, padding: '2px 4px', textAlign: 'center', letterSpacing: '0.5px' }}>{roleLabel}</span>
+                                            <div>
+                                                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 2 }}>
+                                                    <span className="font-mono" style={{ fontWeight: 700, fontSize: 14 }}>{w.icao}</span>
+                                                    {w.metar && <span style={{ fontSize: 11, fontWeight: 700, color: catColor(w.metar.cat) }}>{w.metar.cat}</span>}
+                                                    {!w.metar && <span style={{ fontSize: 11, color: 'var(--md-sys-color-on-surface-variant)' }}>No data</span>}
+                                                </div>
+                                                {w.metar && (
+                                                    <div className="font-mono" style={{ fontSize: 11, color: 'var(--md-sys-color-on-surface-variant)', lineHeight: 1.5 }}>
+                                                        {w.metar.wind} &middot; {w.metar.vis} &middot; {w.metar.sky}
+                                                        {rwyRec && <span> &middot; Rwy <span style={{ color: 'var(--md-sys-color-primary)', fontWeight: 600 }}>{rwyRec.rwy}</span> xwind <span style={{ color: rwyRec.crosswind > 15 ? 'var(--md-sys-color-error)' : rwyRec.crosswind > 10 ? 'var(--cat-mvfr-color)' : 'var(--md-sys-color-primary)', fontWeight: 600 }}>{rwyRec.crosswind}kt</span></span>}
+                                                    </div>
+                                                )}
+                                            </div>
+                                            {w.metar && <CatBadge cat={w.metar.cat} />}
+                                        </div>
+                                    );
+                                })}
+                            </div>
+
+                            {/* Key concerns */}
+                            {analysis.concerns.length > 0 && (
+                                <div style={{ background: 'var(--md-sys-color-surface-container)', borderRadius: 16, padding: 16, marginBottom: 16 }}>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
+                                        <MdIcon name="warning" style={{ color: 'var(--md-sys-color-error)', fontSize: 18 }} />
+                                        <span style={{ fontWeight: 700, fontSize: 13, textTransform: 'uppercase', letterSpacing: '0.5px', color: 'var(--md-sys-color-error)' }}>Key Concerns</span>
+                                    </div>
+                                    <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                                        {analysis.concerns.map((c, i) => (
+                                            <div key={i} style={{ display: 'flex', alignItems: 'flex-start', gap: 10 }}>
+                                                <MdIcon name={c.icon} style={{ fontSize: 17, color: levelColor[c.level] || 'var(--md-sys-color-on-surface-variant)', flexShrink: 0, marginTop: 1 }} />
+                                                <span style={{ fontSize: 13, color: 'var(--md-sys-color-on-surface)', lineHeight: 1.45 }}>{c.text}</span>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* Recommendations */}
+                            <div style={{ background: 'var(--md-sys-color-surface-container)', borderRadius: 16, padding: 16, marginBottom: 16 }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
+                                    <MdIcon name="checklist" style={{ color: 'var(--md-sys-color-tertiary)', fontSize: 18 }} />
+                                    <span style={{ fontWeight: 700, fontSize: 13, textTransform: 'uppercase', letterSpacing: '0.5px', color: 'var(--md-sys-color-tertiary)' }}>Pilot Recommendations</span>
+                                </div>
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                                    {analysis.recs.map((r, i) => (
+                                        <div key={i} style={{ display: 'flex', alignItems: 'flex-start', gap: 10 }}>
+                                            <MdIcon name="arrow_right" style={{ fontSize: 17, color: 'var(--md-sys-color-tertiary)', flexShrink: 0, marginTop: 1 }} />
+                                            <span style={{ fontSize: 13, color: 'var(--md-sys-color-on-surface)', lineHeight: 1.45 }}>{r}</span>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+
+                            <div style={{ fontSize: 11, color: 'var(--md-sys-color-on-surface-variant)', textAlign: 'center', padding: '4px 16px 20px', lineHeight: 1.5 }}>
+                                Live weather from <strong>AviationWeather.gov</strong>. For situational awareness only — always obtain an official briefing before flight.
+                            </div>
+                        </>
+                    )}
+
+                    {/* ---- Enhanced AI Analysis (collapsible) ---- */}
+                    <div style={{ borderTop: '1px solid var(--md-sys-color-outline-variant)', paddingTop: 16 }}>
+                        <button onClick={() => setShowAI(!showAI)} style={{ display: 'flex', alignItems: 'center', gap: 10, width: '100%', background: 'none', border: 'none', cursor: 'pointer', padding: '4px 0 12px', color: 'var(--md-sys-color-on-surface)' }}>
+                            <MdIcon name="auto_awesome" style={{ color: 'var(--md-sys-color-primary)', fontSize: 20 }} />
+                            <span style={{ fontWeight: 600, fontSize: 14, flex: 1, textAlign: 'left' }}>Enhanced AI Analysis</span>
+                            <MdIcon name={showAI ? 'expand_less' : 'expand_more'} style={{ fontSize: 20, color: 'var(--md-sys-color-on-surface-variant)' }} />
+                        </button>
+
+                        {showAI && (
+                            <>
+                                <div style={{ marginBottom: 12 }}>
+                                    <MdInput label="Anthropic API Key" value={apiKey} onChange={e => setApiKey(e.target.value)} placeholder="sk-ant-..." type="password" />
+                                </div>
+                                <MdButton
+                                    variant={aiLoading ? "tonal" : "sparkle"}
+                                    onClick={runAiBriefing}
+                                    disabled={aiLoading || !apiKey || loadingWx}
+                                    icon="auto_awesome"
+                                    style={{ width: '100%', padding: '14px', marginBottom: '20px', fontSize: '15px' }}
+                                >
+                                    {aiLoading ? "Analyzing with Claude…" : "Generate AI Briefing"}
+                                </MdButton>
+
+                                {aiError && <MdCard style={{ background: 'var(--md-sys-color-error-container)', color: 'var(--md-sys-color-on-error-container)', marginBottom: 16 }}><MdIcon name="error" style={{ marginRight: 8 }} />{aiError}</MdCard>}
+
+                                {aiSections.map((s, i) => {
+                                    var meta = sectionMeta[s.title] || { icon: 'info', color: 'var(--md-sys-color-primary)' };
+                                    return (
+                                        <div key={i} style={{ background: meta.bg || 'var(--md-sys-color-surface-container)', borderRadius: 16, padding: 20, marginBottom: 16, color: meta.onBg || 'var(--md-sys-color-on-surface)' }}>
+                                            <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 12 }}>
+                                                <MdIcon name={meta.icon} style={{ color: meta.color, fontSize: 24 }} />
+                                                <h3 style={{ margin: 0, fontSize: 15, fontWeight: 700, color: meta.color, letterSpacing: '0.5px' }}>{s.title}</h3>
+                                            </div>
+                                            <div style={{ fontSize: 14, lineHeight: 1.6, whiteSpace: 'pre-wrap', color: meta.onBg || 'var(--md-sys-color-on-surface-variant)' }}>
+                                                {s.body.trim().replace(/-/g, '\u2022')}
+                                            </div>
+                                        </div>
+                                    );
+                                })}
+
+                                {!aiResult && !aiLoading && (
+                                    <div style={{ textAlign: 'center', padding: '24px', color: 'var(--md-sys-color-on-surface-variant)', fontSize: 13 }}>
+                                        Claude will analyze the live weather data above and generate a detailed narrative briefing.
+                                    </div>
+                                )}
+                            </>
+                        )}
+                    </div>
                 </div>
             );
         }
@@ -1520,7 +1730,7 @@
 
                                         {/* Scrollable Tab Content */}
                                         <div style={{ flex: 1, overflowY: "auto", padding: "24px", maxWidth: "900px", margin: "0 auto", width: "100%" }}>
-                                            {tab === "brief" && <AIBriefing trip={activeTrip} />}
+                                            {tab === "brief" && <BriefingPanel trip={activeTrip} />}
                                             
                                             {tab === "wx" && (
                                                 <div style={{display: 'flex', flexDirection: 'column', gap: '24px'}}>
