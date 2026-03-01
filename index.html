@@ -3139,7 +3139,38 @@
                                             if (p1 && p2) d += calcDist(p1.lat, p1.lon, p2.lat, p2.lon);
                                         }
                                         var ete = ac ? d / ac.kts : 0;
-                                        
+
+                                        var depApt = getAirport(trip.dep);
+                                        var tripTarget = (trip.date && trip.time && depApt) ? getTripTargetUtc(trip, depApt.lon) : null;
+                                        var tripCountdown = null;
+                                        if (tripTarget) {
+                                            var msUntil = tripTarget.getTime() - Date.now();
+                                            var hUntil = msUntil / 3600000;
+                                            if (msUntil < 0) {
+                                                tripCountdown = { label: 'Trip Is Outdated', past: true, soon: false };
+                                            } else {
+                                                var totalMins = Math.round(msUntil / 60000);
+                                                var cdLabel;
+                                                if (totalMins < 60) {
+                                                    cdLabel = 'In ' + totalMins + 'm';
+                                                } else if (hUntil < 24) {
+                                                    var hh = Math.floor(hUntil), mm = Math.round((hUntil - hh) * 60);
+                                                    cdLabel = 'In ' + hh + 'h' + (mm > 0 ? ' ' + mm + 'm' : '');
+                                                } else if (Math.round(hUntil / 24) === 1) {
+                                                    cdLabel = 'Tomorrow';
+                                                } else if (hUntil < 168) {
+                                                    cdLabel = 'In ' + Math.round(hUntil / 24) + ' days';
+                                                } else if (hUntil < 720) {
+                                                    var wks = Math.round(hUntil / 168);
+                                                    cdLabel = 'In ' + wks + (wks === 1 ? ' week' : ' weeks');
+                                                } else {
+                                                    var mos = Math.round(hUntil / 720);
+                                                    cdLabel = 'In ' + mos + (mos === 1 ? ' month' : ' months');
+                                                }
+                                                tripCountdown = { label: cdLabel, past: false, soon: hUntil < 2 };
+                                            }
+                                        }
+
                                         return (
                                             <MdCard key={trip.id} onClick={() => openTrip(trip)} style={{ padding: 0, overflow: 'hidden' }}>
                                                 <div style={{ display: "flex", alignItems: "stretch" }}>
@@ -3167,7 +3198,30 @@
                                                             {ete > 0 && <span className="font-mono" style={{ background: 'var(--md-sys-color-surface-variant)', padding: '2px 8px', borderRadius: '4px', fontSize: 12 }}>{Math.floor(ete)}h{Math.round((ete % 1) * 60)}m</span>}
                                                             <span>{ac.name}</span>
                                                         </div>
-                                                        {(trip.date || trip.time) && <div style={{ fontSize: 13, color: "var(--md-sys-color-on-surface-variant)", marginTop: 8, display: 'flex', alignItems: 'center', gap: 4 }}><MdIcon name="calendar_today" style={{fontSize: 14}}/> {trip.date} {trip.time && `\u2022 ${trip.time}`}</div>}
+                                                        {(trip.date || trip.time) && (
+                                                            <div style={{ fontSize: 13, color: "var(--md-sys-color-on-surface-variant)", marginTop: 8, display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                                                                <MdIcon name="calendar_today" style={{ fontSize: 14 }} />
+                                                                <span>{trip.date}{trip.time && ` \u2022 ${trip.time}`}</span>
+                                                                {tripCountdown && (
+                                                                    <span style={{
+                                                                        fontSize: 11, fontWeight: 700, letterSpacing: '0.3px',
+                                                                        padding: '2px 9px', borderRadius: 12,
+                                                                        background: tripCountdown.past
+                                                                            ? 'var(--md-sys-color-error-container)'
+                                                                            : tripCountdown.soon
+                                                                                ? 'rgba(255,152,0,0.18)'
+                                                                                : 'var(--md-sys-color-primary-container)',
+                                                                        color: tripCountdown.past
+                                                                            ? 'var(--md-sys-color-on-error-container)'
+                                                                            : tripCountdown.soon
+                                                                                ? '#b45309'
+                                                                                : 'var(--md-sys-color-on-primary-container)',
+                                                                    }}>
+                                                                        {tripCountdown.label}
+                                                                    </span>
+                                                                )}
+                                                            </div>
+                                                        )}
                                                     </div>
                                                 </div>
                                             </MdCard>
