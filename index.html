@@ -742,6 +742,112 @@
             } catch(e) { return null; }
         }
 
+        // ── SIGMETs (airsigmet) ──────────────────────────────────────────────────
+        async function fetchSigmets() {
+            try {
+                var res = await timeoutFetch('https://aviationweather.gov/api/data/airsigmet?format=json', {}, 10000);
+                if (!res.ok) return [];
+                var data = await res.json();
+                // Returns GeoJSON FeatureCollection
+                return (data && data.features) ? data.features : [];
+            } catch(e) { return []; }
+        }
+
+        // ── G-AIRMETs ────────────────────────────────────────────────────────────
+        async function fetchGairmets() {
+            try {
+                var res = await timeoutFetch('https://aviationweather.gov/api/data/gairmet?format=json', {}, 10000);
+                if (!res.ok) return [];
+                var data = await res.json();
+                return Array.isArray(data) ? data : [];
+            } catch(e) { return []; }
+        }
+
+        // ── Center Weather Advisories ────────────────────────────────────────────
+        async function fetchCwas() {
+            try {
+                var res = await timeoutFetch('https://aviationweather.gov/api/data/cwa?format=json', {}, 10000);
+                if (!res.ok) return [];
+                var data = await res.json();
+                return Array.isArray(data) ? data : [];
+            } catch(e) { return []; }
+        }
+
+        // ── Winds & Temperatures Aloft ───────────────────────────────────────────
+        async function fetchWindsAloft(region) {
+            try {
+                var url = 'https://aviationweather.gov/api/data/windtemp?format=json&region=' + (region||'us') + '&level=low&fcst=06';
+                var res = await timeoutFetch(url, {}, 10000);
+                if (!res.ok) return [];
+                var data = await res.json();
+                return Array.isArray(data) ? data : [];
+            } catch(e) { return []; }
+        }
+
+        // ── Geographic helpers for route corridor filtering ───────────────────────
+        // Build a bounding box from route airport coordinates + padding degrees
+        function routeBboxFromPts(aptPts, padDeg) {
+            var pad = padDeg || 3;
+            var lats = aptPts.map(function(a) { return a.lat; });
+            var lons = aptPts.map(function(a) { return a.lon; });
+            return { minLat: Math.min.apply(null,lats)-pad, maxLat: Math.max.apply(null,lats)+pad,
+                     minLon: Math.min.apply(null,lons)-pad, maxLon: Math.max.apply(null,lons)+pad };
+        }
+        function ptInBbox(lat, lon, bb) {
+            return lat >= bb.minLat && lat <= bb.maxLat && lon >= bb.minLon && lon <= bb.maxLon;
+        }
+        // GeoJSON coords: [[lon,lat],...]  (outer ring = coords[0])
+        function geojsonPolyInBbox(coords, bb) {
+            var ring = (coords && coords[0]) ? coords[0] : coords;
+            if (!ring) return false;
+            return ring.some(function(pt) { return ptInBbox(pt[1], pt[0], bb); });
+        }
+        // G-AIRMET area: [{lat,lon},...]
+        function latLonPolyInBbox(area, bb) {
+            if (!Array.isArray(area)) return false;
+            return area.some(function(pt) { return ptInBbox(pt.lat, pt.lon, bb); });
+        }
+        // CWA polygon: "lat,lon lat,lon ..." string
+        function cwaPolyInBbox(polyStr, bb) {
+            if (!polyStr) return false;
+            return polyStr.trim().split(/\s+/).some(function(pair) {
+                var parts = pair.split(',');
+                if (parts.length < 2) return false;
+                return ptInBbox(parseFloat(parts[0]), parseFloat(parts[1]), bb);
+            });
+        }
+
+        // ── Wind station helpers ─────────────────────────────────────────────────
+        function closestWindStation(stations, lat, lon) {
+            var best = null, bestD = Infinity;
+            stations.forEach(function(s) {
+                if (s.lat == null || s.lon == null) return;
+                var d = (s.lat-lat)*(s.lat-lat) + (s.lon-lon)*(s.lon-lon);
+                if (d < bestD) { bestD = d; best = s; }
+            });
+            return best;
+        }
+        // Return wind data at (or nearest to) altFt from a windtemp station record
+        function getWindAtAlt(stn, altFt) {
+            if (!stn) return null;
+            var levels = [3,6,9,12,18,24,30,34,39]; // thousands of feet
+            var altK = altFt / 1000;
+            var closest = levels.reduce(function(prev, cur) { return Math.abs(cur-altK) < Math.abs(prev-altK) ? cur : prev; });
+            var wdir = stn['wdir'+closest], wspd = stn['wspd'+closest], temp = stn['temp'+closest];
+            if (wdir == null) return null;
+            var lv = wdir === 990 || wdir === '990';
+            return { altFt: closest*1000, wdir: lv ? 'LV' : String(wdir).padStart(3,'0'), wspd: wspd || 0, temp: temp != null ? temp : null, lv: lv };
+        }
+        // Map route longitude to the best windtemp region string
+        function windRegionForLon(lon) {
+            if (lon > -67) return 'bos';    // New England
+            if (lon > -82) return 'mia';    // SE / Florida
+            if (lon > -96) return 'chi';    // NC / Great Lakes
+            if (lon > -104) return 'dfw';   // SC / Texas
+            if (lon > -112) return 'slc';   // Rockies
+            return 'sfo';                    // Pacific Coast
+        }
+
         function estimateUtcOffsetHours(lon) {
             if (!lon) return -5;
             // Approximate US timezone longitude boundaries
@@ -1202,6 +1308,113 @@
                         );
                     })}
                 </MdCard>
+            );
+        }
+
+        // ── HazardAdvisories component ───────────────────────────────────────────
+        // Shows active SIGMETs, G-AIRMETs, and CWAs along the route corridor
+        function HazardAdvisories({ sigmets, gairmets, cwas, loading }) {
+            if (loading) return (
+                <div style={{ display:'flex', alignItems:'center', gap:8, padding:'10px 14px', background:'var(--md-sys-color-surface-container)', borderRadius:12, marginBottom:12, fontSize:13, color:'var(--md-sys-color-on-surface-variant)' }}>
+                    <MdIcon name="sync" style={{ fontSize:16, animation:'spin 1s linear infinite', flexShrink:0 }} />
+                    <span>Fetching SIGMETs, AIRMETs, CWAs…</span>
+                </div>
+            );
+            var items = [];
+            sigmets.forEach(function(f) {
+                var p = f.properties || {};
+                var hz = (p.hazard || '').toUpperCase();
+                var icon = hz === 'CONVECTIVE' ? 'thunderstorm' : hz === 'TURB' ? 'air' : hz === 'ICE' ? 'ac_unit' : 'warning';
+                var color = hz === 'CONVECTIVE' ? 'var(--md-sys-color-error)' : hz === 'ICE' ? 'var(--cat-mvfr-color)' : 'var(--md-sys-color-warning)';
+                var label = 'SIGMET';
+                var isConv = hz === 'CONVECTIVE';
+                items.push({ icon, color, label: isConv ? 'CONVECTIVE SIGMET' : ('SIGMET · ' + hz), text: p.rawAirSigmet || ('Hazard: ' + hz + (p.severity ? ' SEV:'+p.severity : '')), isConv });
+            });
+            gairmets.forEach(function(g) {
+                var hz = (g.hazard || '').toUpperCase();
+                var icon = hz.includes('TURB') ? 'air' : hz.includes('ICE') ? 'ac_unit' : hz.includes('IFR') || hz.includes('MTN') ? 'cloud' : hz.includes('LLWS') ? 'swap_vert' : 'warning';
+                var color = hz.includes('TURB') ? 'var(--md-sys-color-warning)' : hz.includes('ICE') ? 'var(--cat-mvfr-color)' : 'var(--md-sys-color-on-surface-variant)';
+                var sev = g.severity ? (' · ' + g.severity) : '';
+                var alt = (g.base != null && g.top != null) ? (' · ' + (g.base*100) + '-' + (g.top*100) + 'ft') : '';
+                items.push({ icon, color, label: 'AIRMET ' + (g.tag||'') + ' · ' + hz + sev, text: 'Valid: ' + (g.validTime||'') + alt });
+            });
+            cwas.forEach(function(c) {
+                var hz = (c.hazard || '').toUpperCase();
+                var icon = hz === 'TS' ? 'thunderstorm' : hz === 'TURB' ? 'air' : hz === 'ICE' ? 'ac_unit' : hz === 'IFR' ? 'cloud' : 'warning';
+                var color = hz === 'TS' ? 'var(--md-sys-color-error)' : 'var(--md-sys-color-warning)';
+                var top = c.top ? (' · Top ' + c.top + 'ft') : '';
+                items.push({ icon, color, label: 'CWA · ' + (c.cwsuId||'') + ' · ' + hz + (c.qualifier ? ' ' + c.qualifier : ''), text: (c.rawCWA || ('Hazard: ' + hz)) + top });
+            });
+            if (items.length === 0) return null;
+            return (
+                <div style={{ background:'var(--md-sys-color-surface-container)', borderRadius:16, padding:16, marginBottom:16 }}>
+                    <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:12 }}>
+                        <MdIcon name="notifications_active" style={{ color:'var(--md-sys-color-error)', fontSize:18 }} />
+                        <span style={{ fontWeight:700, fontSize:13, textTransform:'uppercase', letterSpacing:'0.5px', color:'var(--md-sys-color-error)' }}>
+                            Active Hazard Advisories ({items.length})
+                        </span>
+                    </div>
+                    <div style={{ display:'flex', flexDirection:'column', gap:10 }}>
+                        {items.map(function(item, i) {
+                            return (
+                                <div key={i} style={{ background: item.isConv ? 'var(--md-sys-color-error-container)' : 'var(--md-sys-color-surface-container-high)', borderRadius:10, padding:'10px 12px', borderLeft:'3px solid '+item.color }}>
+                                    <div style={{ display:'flex', alignItems:'center', gap:7, marginBottom:4 }}>
+                                        <MdIcon name={item.icon} style={{ fontSize:15, color:item.color, flexShrink:0 }} />
+                                        <span style={{ fontSize:11, fontWeight:700, color:item.color, textTransform:'uppercase', letterSpacing:'0.4px' }}>{item.label}</span>
+                                    </div>
+                                    <div className="font-mono" style={{ fontSize:11, color:'var(--md-sys-color-on-surface)', lineHeight:1.5, whiteSpace:'pre-wrap', wordBreak:'break-word' }}>{item.text}</div>
+                                </div>
+                            );
+                        })}
+                    </div>
+                </div>
+            );
+        }
+
+        // ── WindsAloftCard component ─────────────────────────────────────────────
+        // Shows FD winds & temps aloft at cruise altitude for each route waypoint
+        function WindsAloftCard({ allRoutePts, stations, cruiseAlt }) {
+            if (!stations || stations.length === 0) return null;
+            var alt = cruiseAlt || 6000;
+            var rows = allRoutePts.map(function(icao) {
+                var apt = getAirport(icao);
+                if (!apt) return null;
+                var stn = closestWindStation(stations, apt.lat, apt.lon);
+                var w = stn ? getWindAtAlt(stn, alt) : null;
+                return { icao, apt, w, stnId: stn ? (stn.icaoId || stn.stn || '') : '' };
+            }).filter(Boolean);
+            if (rows.every(function(r) { return !r.w; })) return null;
+            return (
+                <div style={{ background:'var(--md-sys-color-surface-container)', borderRadius:16, padding:16, marginBottom:16 }}>
+                    <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:12 }}>
+                        <MdIcon name="air" style={{ color:'var(--md-sys-color-secondary)', fontSize:18 }} />
+                        <span style={{ fontWeight:700, fontSize:13, textTransform:'uppercase', letterSpacing:'0.5px', color:'var(--md-sys-color-secondary)' }}>Winds Aloft</span>
+                        <span style={{ fontSize:10, fontWeight:700, background:'var(--md-sys-color-secondary-container)', color:'var(--md-sys-color-on-secondary-container)', borderRadius:4, padding:'2px 6px', letterSpacing:'0.5px' }}>
+                            {(alt/1000).toFixed(0)}K FT · FD WINDS
+                        </span>
+                    </div>
+                    <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
+                        {rows.map(function(r) {
+                            return (
+                                <div key={r.icao} style={{ display:'grid', gridTemplateColumns:'50px 1fr', gap:'6px 12px', alignItems:'center', padding:'6px 0', borderBottom:'1px solid var(--md-sys-color-outline-variant)' }}>
+                                    <span className="font-mono" style={{ fontWeight:700, fontSize:13 }}>{r.icao}</span>
+                                    {r.w ? (
+                                        <div className="font-mono" style={{ fontSize:12, color:'var(--md-sys-color-on-surface)' }}>
+                                            {r.w.lv ? 'LGT & VRB' : (r.w.wdir + '° @ ' + r.w.wspd + 'kt')}
+                                            {r.w.temp != null && <span style={{ marginLeft:10, color:'var(--md-sys-color-on-surface-variant)' }}>{r.w.temp > 0 ? '+' : ''}{r.w.temp}°C</span>}
+                                            <span style={{ marginLeft:8, fontSize:10, color:'var(--md-sys-color-on-surface-variant)' }}>(via {r.stnId})</span>
+                                        </div>
+                                    ) : (
+                                        <span style={{ fontSize:11, color:'var(--md-sys-color-on-surface-variant)' }}>No FD data</span>
+                                    )}
+                                </div>
+                            );
+                        })}
+                    </div>
+                    <div style={{ fontSize:10, color:'var(--md-sys-color-on-surface-variant)', marginTop:8, lineHeight:1.5 }}>
+                        Nearest FD reporting station used per waypoint. Source: AviationWeather.gov /api/data/windtemp.
+                    </div>
+                </div>
             );
         }
 
@@ -1767,6 +1980,13 @@
             // --- Voice output ---
             var [speaking, setSpeaking] = useState(false);
 
+            // --- Advisory data (SIGMETs, G-AIRMETs, CWAs, Winds Aloft) ---
+            var [sigmets, setSigmets] = useState([]);
+            var [gairmets, setGairmets] = useState([]);
+            var [cwas, setCwas] = useState([]);
+            var [windsAloft, setWindsAloft] = useState([]);
+            var [loadingAdvisory, setLoadingAdvisory] = useState(true);
+
             var ac = AIRCRAFT.find(a => a.id === trip.aircraft) || AIRCRAFT[0];
             var allRoutePts = useMemo(() =>
                 [trip.dep].concat(trip.wps || []).concat([trip.arr]),
@@ -1832,6 +2052,33 @@
                     setMosData(result);
                     setLoadingMos(false);
                 }).catch(() => { setMosData({}); setLoadingMos(false); });
+            }, [allRoutePts.join(',')]);
+
+            // Fetch SIGMETs, G-AIRMETs, CWAs, and Winds Aloft once on mount
+            useEffect(() => {
+                setLoadingAdvisory(true);
+                var aptPts = allRoutePts.map(getAirport).filter(Boolean);
+                var bb = aptPts.length ? routeBboxFromPts(aptPts, 3) : null;
+                // Pick wind region from midpoint longitude
+                var midLon = aptPts.length ? aptPts.reduce(function(s,a){return s+a.lon;},0)/aptPts.length : -90;
+                var region = windRegionForLon(midLon);
+                Promise.all([fetchSigmets(), fetchGairmets(), fetchCwas(), fetchWindsAloft(region)])
+                    .then(function(results) {
+                        var rawSig = results[0], rawG = results[1], rawC = results[2], rawW = results[3];
+                        if (bb) {
+                            setSigmets(rawSig.filter(function(f) {
+                                return f.geometry && geojsonPolyInBbox(f.geometry.coordinates, bb);
+                            }));
+                            setGairmets(rawG.filter(function(g) { return latLonPolyInBbox(g.area, bb); }));
+                            setCwas(rawC.filter(function(c) { return cwaPolyInBbox(c.polygon, bb); }));
+                        } else {
+                            setSigmets(rawSig);
+                            setGairmets(rawG);
+                            setCwas(rawC);
+                        }
+                        setWindsAloft(rawW);
+                        setLoadingAdvisory(false);
+                    }).catch(function() { setLoadingAdvisory(false); });
             }, [allRoutePts.join(',')]);
 
             // Effective weather per station resolved to the trip departure time:
@@ -2063,6 +2310,37 @@
                 return calcDetailedScore(effectiveWxData, routeDist);
             }, [effectiveWxData, routeDist]);
 
+            // finalVerdict: convective SIGMET or CWA thunderstorm overrides weather-based verdict
+            var finalVerdict = useMemo(function() {
+                if (!analysis) return null;
+                var hasConvSigmet = sigmets.some(function(f) {
+                    var h = ((f.properties || {}).hazard || '').toUpperCase();
+                    return h === 'CONVECTIVE';
+                });
+                var hasCwaTstorm = cwas.some(function(c) {
+                    return (c.hazard || '').toUpperCase() === 'TS';
+                });
+                if (hasConvSigmet || hasCwaTstorm) {
+                    return {
+                        verdict: 'NO-GO',
+                        verdictColor: 'var(--cat-lifr-color)',
+                        verdictBg: 'var(--cat-lifr-bg)',
+                        verdictIcon: 'thunderstorm',
+                        verdictDesc: hasConvSigmet
+                            ? 'Active Convective SIGMET along route — VFR flight strongly discouraged. Obtain official briefing.'
+                            : 'Active Center Weather Advisory for thunderstorms along route — conditions hazardous.',
+                        concerns: analysis.concerns,
+                        recs: ['⚠ Active convective hazard advisory detected. Do not depart VFR into areas of reported convective activity.'].concat(analysis.recs),
+                        dataContext: analysis.dataContext,
+                        isFutureFlight: analysis.isFutureFlight,
+                        anyTaf: analysis.anyTaf,
+                        anyMos: analysis.anyMos,
+                        allMos: analysis.allMos
+                    };
+                }
+                return analysis;
+            }, [analysis, sigmets, cwas]);
+
             // Auto-scroll chat to bottom on new messages
             useEffect(function() {
                 if (chatEndRef.current) chatEndRef.current.scrollIntoView({ behavior: 'smooth' });
@@ -2092,12 +2370,46 @@
                     ? ('Automated Safety Score: ' + detailedScore.total + '/100 — ' + detailedScore.breakdown.map(function(f) { return f.label + ' ' + f.score + '/' + f.max; }).join(', ') + '\n')
                     : '';
 
+                // Build advisory context for AI prompt
+                var advisoryCtx = '';
+                if (sigmets.length) {
+                    advisoryCtx += '\n=== ACTIVE SIGMETS (' + sigmets.length + ') ===\n';
+                    sigmets.forEach(function(f) {
+                        var p = f.properties || {};
+                        advisoryCtx += (p.rawAirSigmet || ('SIGMET · ' + (p.hazard||'') + (p.severity?' SEV:'+p.severity:''))) + '\n';
+                    });
+                }
+                if (gairmets.length) {
+                    advisoryCtx += '\n=== ACTIVE AIRMETS (' + gairmets.length + ') ===\n';
+                    gairmets.forEach(function(g) {
+                        advisoryCtx += 'AIRMET ' + (g.tag||'') + ' · ' + (g.hazard||'') + (g.severity?' '+g.severity:'') + ' Valid:' + (g.validTime||'') + '\n';
+                    });
+                }
+                if (cwas.length) {
+                    advisoryCtx += '\n=== ACTIVE CWAs (' + cwas.length + ') ===\n';
+                    cwas.forEach(function(c) {
+                        advisoryCtx += (c.rawCWA || ('CWA · ' + (c.cwsuId||'') + ' · ' + (c.hazard||''))) + '\n';
+                    });
+                }
+                if (windsAloft.length) {
+                    var aptPtsAi = allRoutePts.map(getAirport).filter(Boolean);
+                    var altFt = ac.alt || 6000;
+                    var windLines = aptPtsAi.map(function(apt) {
+                        var stn = closestWindStation(windsAloft, apt.lat, apt.lon);
+                        var w = stn ? getWindAtAlt(stn, altFt) : null;
+                        if (!w) return null;
+                        return apt.icao + ' @ ' + (altFt/1000).toFixed(0) + 'kft: ' + (w.lv ? 'LGT&VRB' : w.wdir+'°@'+w.wspd+'kt') + (w.temp!=null?' '+w.temp+'°C':'');
+                    }).filter(Boolean);
+                    if (windLines.length) advisoryCtx += '\n=== WINDS ALOFT ===\n' + windLines.join('\n') + '\n';
+                }
+
                 var prompt = `TRIP: ${ac.name} (${ac.cat}) cruise ${ac.kts}kt\n` +
                     `DEPARTURE: ${trip.date} at ${trip.time} Local Time\n` +
                     `ROUTE: ${allRoutePts.join(" -> ")}\n` +
                     `Distance: ${Math.round(distance)}nm  ETE: ${Math.floor(ete)}h${Math.round((ete % 1) * 60)}m\n` +
                     scoreCtx +
-                    `\n=== LIVE WEATHER DATA ===\n${wxLines || "No live weather available."}`;
+                    `\n=== LIVE WEATHER DATA ===\n${wxLines || "No live weather available."}` +
+                    advisoryCtx;
 
                 const url = "https://api.anthropic.com/v1/messages";
                 const payload = {
@@ -2239,7 +2551,7 @@
                     )}
 
                     {/* ---- Auto briefing ---- */}
-                    {effectiveWxData && analysis && (
+                    {effectiveWxData && analysis && finalVerdict && (
                         <>
                             {/* Trip Details card */}
                             <div style={{ background: 'var(--md-sys-color-surface-container)', borderRadius: 16, padding: '16px 20px', marginBottom: 16 }}>
@@ -2285,13 +2597,19 @@
                             {/* Composite Safety Score Breakdown */}
                             {detailedScore && <ScoreBreakdown breakdown={detailedScore.breakdown} total={detailedScore.total} />}
 
-                            {/* Go/No-Go banner */}
-                            <div style={{ background: analysis.verdictBg, borderRadius: 16, padding: '20px 24px', marginBottom: 16, display: 'flex', alignItems: 'center', gap: 16 }}>
-                                <MdIcon name={analysis.verdictIcon} style={{ fontSize: 44, color: analysis.verdictColor, flexShrink: 0 }} />
+                            {/* Active Hazard Advisories (SIGMETs / AIRMETs / CWAs) */}
+                            <HazardAdvisories sigmets={sigmets} gairmets={gairmets} cwas={cwas} loading={loadingAdvisory} />
+
+                            {/* Winds Aloft card */}
+                            <WindsAloftCard allRoutePts={allRoutePts} stations={windsAloft} cruiseAlt={ac.alt || 6000} />
+
+                            {/* Go/No-Go banner — uses finalVerdict (may be overridden by convective SIGMET) */}
+                            <div style={{ background: finalVerdict.verdictBg, borderRadius: 16, padding: '20px 24px', marginBottom: 16, display: 'flex', alignItems: 'center', gap: 16 }}>
+                                <MdIcon name={finalVerdict.verdictIcon} style={{ fontSize: 44, color: finalVerdict.verdictColor, flexShrink: 0 }} />
                                 <div>
-                                    <div style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '1px', color: analysis.verdictColor, opacity: 0.75, marginBottom: 2 }}>Go/No-Go Assessment</div>
-                                    <div style={{ fontSize: 30, fontWeight: 800, color: analysis.verdictColor, fontFamily: 'monospace', lineHeight: 1 }}>{analysis.verdict}</div>
-                                    <div style={{ fontSize: 13, color: analysis.verdictColor, opacity: 0.85, marginTop: 4, lineHeight: 1.4 }}>{analysis.verdictDesc}</div>
+                                    <div style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '1px', color: finalVerdict.verdictColor, opacity: 0.75, marginBottom: 2 }}>Go/No-Go Assessment</div>
+                                    <div style={{ fontSize: 30, fontWeight: 800, color: finalVerdict.verdictColor, fontFamily: 'monospace', lineHeight: 1 }}>{finalVerdict.verdict}</div>
+                                    <div style={{ fontSize: 13, color: finalVerdict.verdictColor, opacity: 0.85, marginTop: 4, lineHeight: 1.4 }}>{finalVerdict.verdictDesc}</div>
                                 </div>
                             </div>
 
@@ -2302,12 +2620,12 @@
                                         <MdIcon name="routine" style={{ color: 'var(--md-sys-color-secondary)', fontSize: 18 }} />
                                         <span style={{ fontWeight: 700, fontSize: 13, textTransform: 'uppercase', letterSpacing: '0.5px', color: 'var(--md-sys-color-secondary)' }}>Route Weather Summary</span>
                                     </div>
-                                    {analysis && analysis.isFutureFlight && (
+                                    {finalVerdict && finalVerdict.isFutureFlight && (
                                         <span style={{ fontSize: 10, fontWeight: 700,
-                                            color: analysis.anyMos ? 'var(--md-sys-color-on-tertiary-container)' : 'var(--md-sys-color-primary)',
-                                            background: analysis.anyMos ? 'var(--md-sys-color-tertiary-container)' : 'var(--md-sys-color-primary-container)',
+                                            color: finalVerdict.anyMos ? 'var(--md-sys-color-on-tertiary-container)' : 'var(--md-sys-color-primary)',
+                                            background: finalVerdict.anyMos ? 'var(--md-sys-color-tertiary-container)' : 'var(--md-sys-color-primary-container)',
                                             borderRadius: 4, padding: '2px 6px', letterSpacing: '0.5px', textTransform: 'uppercase' }}>
-                                            {analysis.anyMos ? 'GFS MODEL' : analysis.anyTaf ? 'TAF FORECAST' : 'FUTURE TRIP'}
+                                            {finalVerdict.anyMos ? 'GFS MODEL' : finalVerdict.anyTaf ? 'TAF FORECAST' : 'FUTURE TRIP'}
                                         </span>
                                     )}
                                 </div>
@@ -2343,14 +2661,14 @@
                             </div>
 
                             {/* Key concerns */}
-                            {analysis.concerns.length > 0 && (
+                            {finalVerdict.concerns.length > 0 && (
                                 <div style={{ background: 'var(--md-sys-color-surface-container)', borderRadius: 16, padding: 16, marginBottom: 16 }}>
                                     <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
                                         <MdIcon name="warning" style={{ color: 'var(--md-sys-color-error)', fontSize: 18 }} />
                                         <span style={{ fontWeight: 700, fontSize: 13, textTransform: 'uppercase', letterSpacing: '0.5px', color: 'var(--md-sys-color-error)' }}>Key Concerns</span>
                                     </div>
                                     <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-                                        {analysis.concerns.map((c, i) => (
+                                        {finalVerdict.concerns.map((c, i) => (
                                             <div key={i} style={{ display: 'flex', alignItems: 'flex-start', gap: 10 }}>
                                                 <MdIcon name={c.icon} style={{ fontSize: 17, color: levelColor[c.level] || 'var(--md-sys-color-on-surface-variant)', flexShrink: 0, marginTop: 1 }} />
                                                 <span style={{ fontSize: 13, color: 'var(--md-sys-color-on-surface)', lineHeight: 1.45 }}>{c.text}</span>
@@ -2361,7 +2679,7 @@
                             )}
 
                             {/* ---- Windy.com visual forecast (shown for GFS model trips >30h) ---- */}
-                            {analysis.anyMos && (
+                            {finalVerdict.anyMos && (
                                 <div style={{ background: 'var(--md-sys-color-surface-container)', borderRadius: 16, padding: '16px', marginBottom: 16 }}>
                                     <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12, flexWrap: 'wrap' }}>
                                         <MdIcon name="air" style={{ color: 'var(--md-sys-color-tertiary)', fontSize: 18 }} />
@@ -2383,7 +2701,7 @@
                                     <span style={{ fontWeight: 700, fontSize: 13, textTransform: 'uppercase', letterSpacing: '0.5px', color: 'var(--md-sys-color-tertiary)' }}>Pilot Recommendations</span>
                                 </div>
                                 <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-                                    {analysis.recs.map((r, i) => (
+                                    {finalVerdict.recs.map((r, i) => (
                                         <div key={i} style={{ display: 'flex', alignItems: 'flex-start', gap: 10 }}>
                                             <MdIcon name={r.startsWith('⚠') ? 'warning' : 'arrow_right'} style={{ fontSize: 17, color: r.startsWith('⚠') ? 'var(--md-sys-color-error)' : 'var(--md-sys-color-tertiary)', flexShrink: 0, marginTop: 1 }} />
                                             <span style={{ fontSize: 13, color: r.startsWith('⚠') ? 'var(--md-sys-color-on-surface)' : 'var(--md-sys-color-on-surface)', lineHeight: 1.45, fontWeight: r.startsWith('⚠') ? 600 : 400 }}>{r.replace(/^⚠ /, '')}</span>
@@ -2393,9 +2711,9 @@
                             </div>
 
                             <div style={{ fontSize: 11, color: 'var(--md-sys-color-on-surface-variant)', textAlign: 'center', padding: '4px 16px 20px', lineHeight: 1.5 }}>
-                                {analysis.anyMos
+                                {finalVerdict.anyMos
                                     ? <>GFS model forecast from <strong>AviationWeather.gov</strong> · visual from <strong>Windy.com</strong>. Long-range accuracy is limited — <strong>re-check with TAF 24h before departure</strong>.</>
-                                    : analysis.isFutureFlight
+                                    : finalVerdict.isFutureFlight
                                     ? <>TAF forecast from <strong>AviationWeather.gov</strong> for trip date/time. Conditions may change — <strong>re-check closer to departure</strong>.</>
                                     : <>Live weather from <strong>AviationWeather.gov</strong>. For situational awareness only.</>
                                 } Always obtain an official briefing at <strong>1800wxbrief.com</strong> before flight.
