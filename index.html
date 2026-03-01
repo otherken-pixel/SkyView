@@ -220,6 +220,32 @@
             KCVG: { name: "Cincinnati/N Kentucky", city: "Cincinnati", state: "OH", lat: 39.049, lon: -84.662, elev: 896, rwy: ["09/27", "18C/36C"], artcc: "Indianapolis Ctr", freq: { atis: "127.375", twr: "118.3", gnd: "121.7", app: "119.7", dep: "125.8", clnc: "121.75" } }
         };
 
+        // FBO data per airport: name, phone, fuel types, hours, services.
+        // Fuel prices change daily — link to AOPA for live pricing.
+        const FBO_DATA = {
+            KCLT: [{ name: "Signature Flight Support", phone: "(704) 359-4730", fuel: [{ type: "100LL", service: "Full Serve" }, { type: "Jet-A", service: "Full Serve" }], hours: "24/7", services: ["GPU", "Crew Car", "Rental Car", "WiFi", "Catering"] }],
+            KATL: [{ name: "Signature Flight Support", phone: "(404) 530-2750", fuel: [{ type: "100LL", service: "Full Serve" }, { type: "Jet-A", service: "Full Serve" }], hours: "24/7", services: ["GPU", "Crew Car", "Rental Car", "Catering"] }],
+            KJFK: [{ name: "Signature Flight Support", phone: "(718) 553-1200", fuel: [{ type: "Jet-A", service: "Full Serve" }], hours: "24/7", services: ["GPU", "Rental Car", "Catering"] }],
+            KORD: [{ name: "Signature Flight Support", phone: "(847) 671-4100", fuel: [{ type: "100LL", service: "Full Serve" }, { type: "Jet-A", service: "Full Serve" }], hours: "24/7", services: ["GPU", "Crew Car", "Rental Car"] }],
+            KLAX: [{ name: "Signature Aviation", phone: "(310) 417-1750", fuel: [{ type: "Jet-A", service: "Full Serve" }], hours: "24/7", services: ["GPU", "Rental Car", "Catering"] }],
+            KSFO: [{ name: "Signature Flight Support", phone: "(650) 877-6800", fuel: [{ type: "100LL", service: "Full Serve" }, { type: "Jet-A", service: "Full Serve" }], hours: "24/7", services: ["GPU", "Crew Car", "Rental Car"] }],
+            KDFW: [{ name: "Signature Flight Support", phone: "(972) 615-7800", fuel: [{ type: "Jet-A", service: "Full Serve" }], hours: "24/7", services: ["GPU", "Rental Car", "Catering"] }],
+            KDEN: [{ name: "Signature Flight Support", phone: "(303) 342-5600", fuel: [{ type: "100LL", service: "Full Serve" }, { type: "Jet-A", service: "Full Serve" }], hours: "24/7", services: ["GPU", "Crew Car", "Rental Car"] }],
+            KMIA: [{ name: "Signature Flight Support", phone: "(305) 526-2000", fuel: [{ type: "100LL", service: "Full Serve" }, { type: "Jet-A", service: "Full Serve" }], hours: "24/7", services: ["GPU", "Crew Car", "Rental Car", "Catering"] }],
+            KSEA: [{ name: "Signature Flight Support", phone: "(206) 433-5481", fuel: [{ type: "100LL", service: "Full Serve" }, { type: "Jet-A", service: "Full Serve" }], hours: "24/7", services: ["GPU", "Crew Car", "Rental Car"] }],
+            KBOS: [{ name: "Signature Flight Support", phone: "(617) 561-2500", fuel: [{ type: "100LL", service: "Full Serve" }, { type: "Jet-A", service: "Full Serve" }], hours: "24/7", services: ["GPU", "Crew Car", "Rental Car"] }],
+            KPHX: [{ name: "Million Air", phone: "(602) 997-5800", fuel: [{ type: "100LL", service: "Full Serve" }, { type: "Jet-A", service: "Full Serve" }], hours: "24/7", services: ["GPU", "Crew Car", "Rental Car"] }],
+            KMCO: [{ name: "Signature Flight Support", phone: "(407) 855-3830", fuel: [{ type: "100LL", service: "Full Serve" }, { type: "Jet-A", service: "Full Serve" }], hours: "24/7", services: ["GPU", "Crew Car", "Rental Car"] }],
+            KCHS: [{ name: "Signature Flight Support", phone: "(843) 767-8200", fuel: [{ type: "100LL", service: "Full Serve" }, { type: "Jet-A", service: "Full Serve" }], hours: "Daily 0600–2200", services: ["GPU", "Crew Car", "Rental Car"] }],
+            KGSP: [{ name: "Signature Flight Support", phone: "(864) 848-6700", fuel: [{ type: "100LL", service: "Full Serve" }, { type: "Jet-A", service: "Full Serve" }], hours: "Daily 0600–2100", services: ["GPU", "Crew Car", "Rental Car"] }],
+            KCAE: [{ name: "Signature Flight Support", phone: "(803) 794-3400", fuel: [{ type: "100LL", service: "Full Serve" }, { type: "Jet-A", service: "Full Serve" }], hours: "Daily 0600–2100", services: ["GPU", "Crew Car", "Rental Car"] }],
+            KRDU: [{ name: "Signature Flight Support", phone: "(919) 840-0073", fuel: [{ type: "100LL", service: "Full Serve" }, { type: "Jet-A", service: "Full Serve" }], hours: "Daily 0600–2200", services: ["GPU", "Crew Car", "Rental Car"] }],
+            KIAD: [{ name: "Signature Flight Support", phone: "(703) 572-0001", fuel: [{ type: "100LL", service: "Full Serve" }, { type: "Jet-A", service: "Full Serve" }], hours: "24/7", services: ["GPU", "Crew Car", "Rental Car", "Catering"] }],
+            KMSY: [{ name: "Signature Flight Support", phone: "(504) 468-7722", fuel: [{ type: "100LL", service: "Full Serve" }, { type: "Jet-A", service: "Full Serve" }], hours: "24/7", services: ["GPU", "Crew Car", "Rental Car"] }],
+            KCVG: [{ name: "Signature Flight Support", phone: "(859) 767-2360", fuel: [{ type: "100LL", service: "Full Serve" }, { type: "Jet-A", service: "Full Serve" }], hours: "24/7", services: ["GPU", "Crew Car", "Rental Car"] }],
+            KUZA: [{ name: "Skytech, Inc.", phone: "(803) 366-5108", fuel: [{ type: "100LL", service: "Full Serve & Self-Serve (24/7)" }, { type: "Jet-A", service: "Full Serve" }], hours: "M–F 7am–8pm · Sa–Su 8am–7pm", services: ["FAA Repair Station", "Pilot Shop", "Crew Car", "Rental Car", "Tie-Down", "Volume Discounts"] }],
+        };
+
         const AIRCRAFT = [
             { id: "c172", name: "Cessna 172 Skyhawk", cat: "SEL", kts: 120 },
             { id: "c182", name: "Cessna 182 Skylane", cat: "SEL", kts: 145 },
@@ -981,6 +1007,109 @@
             );
         }
 
+        function FBOPanel({ icao, label }) {
+            var apt = getAirport(icao);
+            var fbos = FBO_DATA[icao] || [];
+            var aopaUrl = "https://www.aopa.org/destinations/airports/" + icao + "/details";
+
+            // Fuel type badge colors
+            function fuelColor(type) {
+                if (type.startsWith("100LL")) return { bg: "var(--cat-mvfr-bg)", color: "var(--cat-mvfr-color)" };
+                if (type.startsWith("Jet-A"))  return { bg: "var(--cat-ifr-bg)", color: "var(--cat-ifr-color)" };
+                if (type.startsWith("MOGAS"))   return { bg: "var(--cat-vfr-bg)", color: "var(--cat-vfr-color)" };
+                return { bg: "var(--md-sys-color-surface-container)", color: "var(--md-sys-color-on-surface)" };
+            }
+
+            return (
+                <MdCard style={{ marginBottom: 16 }}>
+                    {/* Header */}
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 16 }}>
+                        <div>
+                            <div style={{ fontSize: 12, fontWeight: 600, color: "var(--md-sys-color-primary)", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 4 }}>{label}</div>
+                            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                                <span className="font-mono" style={{ fontSize: 20, fontWeight: 700 }}>{icao}</span>
+                                {apt && <span style={{ fontSize: 14, color: "var(--md-sys-color-on-surface-variant)" }}>{apt.city}, {apt.state}</span>}
+                            </div>
+                        </div>
+                        <a href={aopaUrl} target="_blank" rel="noopener noreferrer" style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 12, fontWeight: 600, color: "var(--md-sys-color-primary)", textDecoration: "none", background: "var(--md-sys-color-primary-container)", borderRadius: 8, padding: "6px 10px" }}>
+                            <MdIcon name="open_in_new" style={{ fontSize: 14 }} />
+                            AOPA
+                        </a>
+                    </div>
+
+                    {fbos.length === 0 && (
+                        <div style={{ color: "var(--md-sys-color-on-surface-variant)", fontSize: 13, padding: "8px 0" }}>
+                            No FBO data on file for {icao}. View current operators and fuel prices on AOPA.
+                        </div>
+                    )}
+
+                    {fbos.map((fbo, i) => (
+                        <div key={i} style={{ borderTop: i > 0 ? "1px solid var(--md-sys-color-outline-variant)" : "none", paddingTop: i > 0 ? 16 : 0 }}>
+                            {/* FBO name + phone */}
+                            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 12, flexWrap: "wrap", gap: 8 }}>
+                                <div>
+                                    <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
+                                        <MdIcon name="local_gas_station" style={{ fontSize: 18, color: "var(--md-sys-color-secondary)" }} />
+                                        <span style={{ fontSize: 17, fontWeight: 700, color: "var(--md-sys-color-on-surface)" }}>{fbo.name}</span>
+                                    </div>
+                                    <a href={"tel:" + fbo.phone.replace(/\D/g, "")} style={{ display: "flex", alignItems: "center", gap: 6, textDecoration: "none", color: "var(--md-sys-color-primary)", fontSize: 15, fontWeight: 600, marginLeft: 26 }}>
+                                        <MdIcon name="call" style={{ fontSize: 16 }} />
+                                        {fbo.phone}
+                                    </a>
+                                </div>
+                                <div style={{ display: "flex", alignItems: "center", gap: 6, color: "var(--md-sys-color-on-surface-variant)", fontSize: 13, marginLeft: 26 }}>
+                                    <MdIcon name="schedule" style={{ fontSize: 15 }} />
+                                    <span>{fbo.hours}</span>
+                                </div>
+                            </div>
+
+                            {/* Fuel types */}
+                            <div style={{ marginBottom: 14 }}>
+                                <div style={{ fontSize: 11, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.5px", color: "var(--md-sys-color-on-surface-variant)", marginBottom: 8 }}>Fuel Available</div>
+                                <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                                    {fbo.fuel.map((f, fi) => {
+                                        var c = fuelColor(f.type);
+                                        return (
+                                            <div key={fi} style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                                                <span className="font-mono" style={{ fontWeight: 700, fontSize: 13, background: c.bg, color: c.color, borderRadius: 6, padding: "3px 8px", minWidth: 52, textAlign: "center" }}>{f.type}</span>
+                                                <span style={{ fontSize: 13, color: "var(--md-sys-color-on-surface-variant)" }}>{f.service}</span>
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+                            </div>
+
+                            {/* Live prices call-out */}
+                            <a href={aopaUrl} target="_blank" rel="noopener noreferrer" style={{ display: "flex", alignItems: "center", gap: 10, textDecoration: "none", background: "var(--md-sys-color-surface-container-high)", borderRadius: 10, padding: "10px 14px", marginBottom: 14 }}>
+                                <MdIcon name="price_check" style={{ fontSize: 20, color: "var(--md-sys-color-primary)", flexShrink: 0 }} />
+                                <div style={{ flex: 1 }}>
+                                    <div style={{ fontSize: 13, fontWeight: 600, color: "var(--md-sys-color-on-surface)" }}>View Live Fuel Prices</div>
+                                    <div style={{ fontSize: 11, color: "var(--md-sys-color-on-surface-variant)" }}>Current 100LL &amp; Jet-A prices at {icao} on AOPA</div>
+                                </div>
+                                <MdIcon name="chevron_right" style={{ fontSize: 18, color: "var(--md-sys-color-on-surface-variant)" }} />
+                            </a>
+
+                            {/* Services */}
+                            {fbo.services.length > 0 && (
+                                <div>
+                                    <div style={{ fontSize: 11, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.5px", color: "var(--md-sys-color-on-surface-variant)", marginBottom: 8 }}>Services</div>
+                                    <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                                        {fbo.services.map((s, si) => (
+                                            <span key={si} style={{ fontSize: 12, background: "var(--md-sys-color-surface-container)", color: "var(--md-sys-color-on-surface-variant)", borderRadius: 6, padding: "3px 8px" }}>{s}</span>
+                                        ))}
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+                    ))}
+
+                    <div style={{ marginTop: 14, paddingTop: 12, borderTop: "1px solid var(--md-sys-color-outline-variant)", fontSize: 11, color: "var(--md-sys-color-on-surface-variant)", lineHeight: 1.5 }}>
+                        Verify phone &amp; hours before flight. Fuel prices change daily — always confirm with the FBO.
+                    </div>
+                </MdCard>
+            );
+        }
+
         function FreqPanel({ icao }) {
             const [aptReady, setAptReady] = useState(!!AIRPORTS[icao]);
             useEffect(() => {
@@ -1478,7 +1607,8 @@
                 { id: "wx", label: "Weather", icon: "partly_cloudy_day" },
                 { id: "notam", label: "NOTAMs", icon: "warning" },
                 { id: "freq", label: "Freqs", icon: "cell_tower" },
-                { id: "map", label: "Map", icon: "map" }
+                { id: "map", label: "Map", icon: "map" },
+                { id: "fbo", label: "FBO", icon: "local_gas_station" }
             ];
 
             return (
@@ -1785,6 +1915,15 @@
 
                                             {tab === "map" && (
                                                 <RouteMap dep={activeTrip.dep} arr={activeTrip.arr} wps={activeTrip.wps || []} />
+                                            )}
+
+                                            {tab === "fbo" && (
+                                                <div style={{ display: 'flex', flexDirection: 'column', gap: '0' }}>
+                                                    {fullRoute.map((rt, idx) => {
+                                                        let label = idx === 0 ? "Departure" : idx === fullRoute.length - 1 ? "Destination" : `Waypoint ${idx}`;
+                                                        return <FBOPanel key={idx} icao={rt} label={label} />;
+                                                    })}
+                                                </div>
                                             )}
                                         </div>
                                     </div>
