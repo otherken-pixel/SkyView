@@ -475,6 +475,23 @@
             } catch(e) { return null; }
         }
 
+        // Fetch GFS MOS data from Aviation Weather Center (extended forecast, up to ~72h)
+        // Returns full MOS object with data[] array of 6-hourly forecast periods
+        async function fetchLiveMos(icao) {
+            if (!icao) return null;
+            icao = icao.trim().toUpperCase();
+            try {
+                const res = await fetch(
+                    `https://aviationweather.gov/api/data/mos?ids=${icao}&format=json`,
+                    { signal: AbortSignal.timeout(10000) }
+                );
+                if (!res.ok) return null;
+                const data = await res.json();
+                if (!data || data.length === 0) return null;
+                return data[0];  // { stationId, model, runtime, data: [...] }
+            } catch(e) { return null; }
+        }
+
         // Fetch 7-day forecast from NWS API for a lat/lon
         async function fetchNwsForecast(lat, lon) {
             if (lat == null || lon == null) return null;
@@ -588,6 +605,81 @@
             }
             if (!active) active = periods[0]; // Default to first if trip precedes TAF start
             return parseTafPeriod(active, tafObj.stationId || "");
+        }
+
+        /* ------ GFS MOS helpers ------ */
+
+        // NWS MOS ceiling category → representative height in feet
+        // Categories: 1=<200 2=200-399 3=400-899 4=900-1999 5=2000-3099 6=3100-6599 7=6600+ 8=CLR
+        function mosCigFt(cat) {
+            var map = { 1: 100, 2: 300, 3: 650, 4: 1400, 5: 2500, 6: 4800, 7: 8000, 8: null };
+            return (cat != null && map[cat] !== undefined) ? map[cat] : null;
+        }
+
+        // NWS MOS visibility category → representative miles
+        // Categories: 1=<0.25 2=0.25-0.49 3=0.5-0.99 4=1-1.99 5=2-2.99 6=3-3.99 7=4-4.99 8=5-5.99 9=6+
+        function mosVisMi(cat) {
+            var map = { 1: 0.1, 2: 0.35, 3: 0.75, 4: 1.5, 5: 2.5, 6: 3.5, 7: 4.5, 8: 5.5, 9: 7 };
+            return (cat != null && map[cat] !== undefined) ? map[cat] : 7;
+        }
+
+        // Derive standard flight category from MOS ceiling + visibility categories
+        function mosToCat(cigCat, visCat) {
+            var cft = mosCigFt(cigCat);
+            var vmi = mosVisMi(visCat);
+            var cRank = cft === null ? 0 : cft < 500 ? 3 : cft < 1000 ? 2 : cft < 3000 ? 1 : 0;
+            var vRank = vmi < 1 ? 3 : vmi < 3 ? 2 : vmi < 5 ? 1 : 0;
+            return ['VFR', 'MVFR', 'IFR', 'LIFR'][Math.max(cRank, vRank)];
+        }
+
+        // Build a METAR-like weather object from a single MOS forecast period
+        function buildMosWx(period, icao) {
+            if (!period) return null;
+            var wspd = period.wspd || 0, wdir = period.wdir || 0, wgst = period.wgst || 0;
+            var wdirStr = wdir === 0 ? "VRB" : String(wdir).padStart(3, "0");
+            var wind = `${wdirStr}${String(wspd).padStart(2,"0")}${wgst > 0 ? "G" + String(wgst).padStart(2,"0") : ""}KT`;
+            // Ceiling and visibility — prefer named fields, fall back to alternates
+            var cigCat = period.cigs ?? period.cig ?? 8;
+            var visCat = period.vsby ?? period.vis ?? 9;
+            var cft = mosCigFt(cigCat);
+            var vmi = mosVisMi(visCat);
+            var sky = cft !== null ? `BKN${String(Math.round(cft / 100)).padStart(3, "0")}` : "CLR";
+            var vis = vmi >= 6 ? "P6SM" : `${vmi}SM`;
+            var cat = mosToCat(cigCat, visCat);
+            return {
+                raw: `GFS MOS ${icao}`,
+                wind, vis, sky, cat, wspd,
+                t06: period.t06 ?? period.t12 ?? 0,   // thunderstorm probability %
+                p06: period.p06 ?? period.p12 ?? 0,   // precipitation probability %
+                obv: period.obv || 'N',                // obstruction: N,F,PF,HZ,K,BS,BD
+                mosRuntime: period._runtime || null,
+            };
+        }
+
+        // Find the MOS period whose valid time is closest to targetUtc
+        // Handles both array format (data:[{ftime,...}]) and keyed-object format
+        function parseMosForTime(mosData, targetUtc) {
+            if (!mosData) return null;
+            var targetTs = targetUtc.getTime() / 1000;
+            var periods = [];
+            var rt = mosData.runtime || mosData.cycleTime || null;
+            if (Array.isArray(mosData.data)) {
+                periods = mosData.data.map(p => ({ ...p, _runtime: rt }));
+            } else if (mosData.data && typeof mosData.data === 'object') {
+                periods = Object.entries(mosData.data).map(([k, v]) => ({ ...v, ftime: k, _runtime: rt }));
+            } else if (mosData.wspd !== undefined || mosData.wdir !== undefined) {
+                // mosData is the period directly
+                return buildMosWx(mosData, '');
+            }
+            if (!periods.length) return null;
+            var closest = null, minDiff = Infinity;
+            for (var p of periods) {
+                var t = p.ftime || p.validTime || p.utcTime;
+                if (!t) continue;
+                var diff = Math.abs(new Date(t).getTime() / 1000 - targetTs);
+                if (diff < minDiff) { minDiff = diff; closest = p; }
+            }
+            return closest ? buildMosWx(closest, '') : null;
         }
 
         /* =========================================
@@ -1207,10 +1299,52 @@
             );
         }
 
+        // Windy.com embedded forecast widget centered on an airport
+        function WindyEmbed({ icao, tripTargetUtc }) {
+            var apt = getAirport(icao);
+            if (!apt) return null;
+            var lat = apt.lat.toFixed(3), lon = apt.lon.toFixed(3);
+            var windyUrl = [
+                `https://embed.windy.com/embed2.html`,
+                `?lat=${lat}&lon=${lon}`,
+                `&detailLat=${lat}&detailLon=${lon}`,
+                `&width=650&height=340&pview=0`,
+                `&level=surface&overlay=wind&product=ecmwf`,
+                `&menu=&message=true&marker=true&calendar=now`,
+                `&type=map&location=coordinates&detail=true`,
+                `&metricWind=kt&metricTemp=%C2%B0C&radarRange=-1`
+            ].join('');
+            var windyFullUrl = `https://www.windy.com/?wind,surface,${lat},${lon},8`;
+            return (
+                <div>
+                    <iframe
+                        src={windyUrl}
+                        title="Windy.com forecast"
+                        style={{ width: '100%', height: 340, border: 'none', borderRadius: 10, display: 'block' }}
+                        allow="geolocation"
+                        loading="lazy"
+                    />
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 8, flexWrap: 'wrap', gap: 6 }}>
+                        <span style={{ fontSize: 11, color: 'var(--md-sys-color-on-surface-variant)' }}>
+                            ECMWF model · wind/clouds overlay · centered on <strong>{icao}</strong>
+                        </span>
+                        <a href={windyFullUrl} target="_blank" rel="noopener noreferrer"
+                            style={{ fontSize: 11, fontWeight: 600, color: 'var(--md-sys-color-primary)', textDecoration: 'none', display: 'flex', alignItems: 'center', gap: 4 }}>
+                            <MdIcon name="open_in_new" style={{ fontSize: 13 }} />
+                            Open Windy.com
+                        </a>
+                    </div>
+                </div>
+            );
+        }
+
         function BriefingPanel({ trip }) {
             // --- Auto-briefing state ---
             var [wxData, setWxData] = useState(null);
             var [loadingWx, setLoadingWx] = useState(true);
+            // Extended forecast from GFS MOS (>30h trips)
+            var [mosData, setMosData] = useState({});   // { ICAO: mosObj }
+            var [loadingMos, setLoadingMos] = useState(false);
 
             // --- AI Enhanced section state ---
             var [aiResult, setAiResult] = useState(null);
@@ -1249,29 +1383,56 @@
                   .catch(() => setLoadingWx(false));
             }, [allRoutePts.join(',')]);
 
+            // Fetch GFS MOS extended forecast for all route points
+            // Used for trips >30h out where TAF coverage ends
+            useEffect(() => {
+                setMosData({});
+                setLoadingMos(true);
+                Promise.all(allRoutePts.map(async icao => {
+                    var mos = await fetchLiveMos(icao).catch(() => null);
+                    return [icao, mos];
+                })).then(entries => {
+                    var result = {};
+                    entries.forEach(([icao, mos]) => { if (mos) result[icao] = mos; });
+                    setMosData(result);
+                    setLoadingMos(false);
+                }).catch(() => { setMosData({}); setLoadingMos(false); });
+            }, [allRoutePts.join(',')]);
+
             // Effective weather per station resolved to the trip departure time:
-            //   • METAR  — trip is now/within 2 h, or TAF unavailable
-            //   • TAF    — trip is >2 h away; extract the forecast period at departure
+            //   • METAR  — trip is now/within 2 h, or no forecast data available
+            //   • TAF    — trip is 2–30 h away; extract the forecast period at departure
+            //   • MOS    — trip is >30 h away; use GFS MOS 6-hourly model forecast
             var effectiveWxData = useMemo(() => {
                 if (!wxData) return null;
+                var hh = tripTargetUtc ? String(tripTargetUtc.getUTCHours()).padStart(2, '0') : '';
+                var mm = tripTargetUtc ? String(tripTargetUtc.getUTCMinutes()).padStart(2, '0') : '';
                 return wxData.map(w => {
                     if (hoursUntilTrip !== null && hoursUntilTrip > 2 && tripTargetUtc) {
+                        if (hoursUntilTrip > 30) {
+                            // Try GFS MOS first for extended range
+                            var mosObj = mosData[w.icao];
+                            if (mosObj) {
+                                var mosPeriod = parseMosForTime(mosObj, tripTargetUtc);
+                                if (mosPeriod) {
+                                    var mosWx = buildMosWx(mosPeriod, w.icao);
+                                    if (mosWx) return { ...w, effectiveWx: mosWx, source: 'mos', sourceLabel: 'GFS Fcst' };
+                                }
+                            }
+                            // MOS unavailable — fall back to current METAR with note
+                            return { ...w, effectiveWx: w.metar, source: 'metar', sourceLabel: 'METAR (no model)' };
+                        }
+                        // 2–30 h: TAF is the best source
                         if (w.taf) {
                             var tafWx = parseTafForTime(w.taf, tripTargetUtc);
-                            if (tafWx) {
-                                var hh = String(tripTargetUtc.getUTCHours()).padStart(2, '0');
-                                var mm = String(tripTargetUtc.getUTCMinutes()).padStart(2, '0');
-                                return { ...w, effectiveWx: tafWx, source: 'taf', sourceLabel: `TAF ${hh}${mm}Z` };
-                            }
+                            if (tafWx) return { ...w, effectiveWx: tafWx, source: 'taf', sourceLabel: `TAF ${hh}${mm}Z` };
                         }
-                        // TAF missing or doesn't cover the time window
-                        var noTafReason = hoursUntilTrip > 30 ? 'beyond TAF range' : 'no TAF';
-                        return { ...w, effectiveWx: w.metar, source: 'metar', sourceLabel: `METAR (${noTafReason})` };
+                        return { ...w, effectiveWx: w.metar, source: 'metar', sourceLabel: 'METAR (no TAF)' };
                     }
-                    // Trip is current/imminent — current METAR is the best data
+                    // Trip is current/imminent — live METAR is the best data
                     return { ...w, effectiveWx: w.metar, source: 'metar', sourceLabel: 'METAR' };
                 });
-            }, [wxData, tripTargetUtc, hoursUntilTrip]);
+            }, [wxData, mosData, tripTargetUtc, hoursUntilTrip]);
 
             // --- Helpers ---
             function parseCeiling(sky) {
@@ -1297,96 +1458,128 @@
                 return { VFR: 'var(--cat-vfr-color)', MVFR: 'var(--cat-mvfr-color)', IFR: 'var(--cat-ifr-color)', LIFR: 'var(--cat-lifr-color)' }[cat] || 'var(--md-sys-color-on-surface-variant)';
             }
 
-            // --- Auto analysis (time-aware: uses TAF forecast for future trips) ---
+            // --- Auto analysis (time-aware: METAR → TAF → GFS MOS as horizon extends) ---
             var analysis = useMemo(() => {
                 if (!effectiveWxData) return null;
 
-                // Classify data source for header context
                 var isFutureFlight = hoursUntilTrip !== null && hoursUntilTrip > 2;
                 var anyTaf = effectiveWxData.some(e => e.source === 'taf');
-                var allTaf = effectiveWxData.every(e => e.source === 'taf');
+                var anyMos = effectiveWxData.some(e => e.source === 'mos');
+                var allMos  = effectiveWxData.every(e => e.source === 'mos');
                 var depUtcLabel = tripTargetUtc
-                    ? `${String(tripTargetUtc.getUTCHours()).padStart(2,'0')}${String(tripTargetUtc.getUTCMinutes()).padStart(2,'0')}Z on ${trip.date}`
+                    ? `${String(tripTargetUtc.getUTCHours()).padStart(2,'0')}${String(tripTargetUtc.getUTCMinutes()).padStart(2,'0')}Z ${trip.date}`
                     : trip.date;
-                var dataContext = allTaf   ? `TAF forecast for ${depUtcLabel}`
-                    : anyTaf   ? `mixed METAR/TAF data for ${depUtcLabel}`
-                    : isFutureFlight ? `current METAR (TAF unavailable for ${depUtcLabel})`
-                    : 'current METAR observations';
+
+                // Build a human-readable description of the data sources used
+                var dataContext = allMos   ? `GFS model forecast · ${depUtcLabel}`
+                    : anyMos   ? `GFS/TAF mixed forecast · ${depUtcLabel}`
+                    : anyTaf   ? `TAF forecast · ${depUtcLabel}`
+                    : isFutureFlight ? `current METAR (no forecast available · ${depUtcLabel})`
+                    : 'current METAR';
 
                 var cats = effectiveWxData.filter(e => e.effectiveWx).map(e => e.effectiveWx.cat);
                 var hasLIFR = cats.some(c => c === 'LIFR');
                 var hasIFR  = cats.some(c => c === 'IFR');
                 var hasMVFR = cats.some(c => c === 'MVFR');
 
+                // Source qualifier for verdict text
+                var srcQual = anyMos ? 'GFS model forecasts'
+                    : anyTaf ? 'TAF forecasts'
+                    : isFutureFlight ? 'METAR shows'
+                    : 'METAR reports';
+
                 var verdict, verdictColor, verdictBg, verdictIcon, verdictDesc;
                 if (hasLIFR) {
                     verdict = 'NO-GO'; verdictColor = 'var(--cat-lifr-color)'; verdictBg = 'var(--cat-lifr-bg)';
                     verdictIcon = 'cancel';
-                    verdictDesc = `LIFR forecast at one or more stations (${dataContext}) — flight not recommended.`;
+                    verdictDesc = `${srcQual} LIFR at one or more stations (${dataContext}) — flight not recommended.`;
                 } else if (hasIFR) {
                     verdict = 'NO-GO'; verdictColor = 'var(--cat-ifr-color)'; verdictBg = 'var(--cat-ifr-bg)';
                     verdictIcon = 'cancel';
-                    verdictDesc = `IFR conditions in the forecast (${dataContext}) — instrument currency required.`;
+                    verdictDesc = `${srcQual} IFR conditions en route (${dataContext}) — instrument currency required.`;
                 } else if (hasMVFR) {
                     verdict = 'CAUTION'; verdictColor = 'var(--cat-mvfr-color)'; verdictBg = 'var(--cat-mvfr-bg)';
                     verdictIcon = 'warning';
-                    verdictDesc = `Marginal VFR forecast along the route (${dataContext}) — monitor closely.`;
+                    verdictDesc = `${srcQual} Marginal VFR along the route (${dataContext}) — monitor closely before departure.`;
                 } else {
                     verdict = 'GO'; verdictColor = 'var(--cat-vfr-color)'; verdictBg = 'var(--cat-vfr-bg)';
                     verdictIcon = 'check_circle';
-                    verdictDesc = `All stations forecast VFR (${dataContext}) — conditions appear favorable.`;
+                    verdictDesc = `${srcQual} VFR at all stations (${dataContext}) — conditions appear favorable.`;
                 }
 
                 var concerns = [];
 
-                // TAF coverage warning: trip is >2h away but some stations have no TAF
+                // ── MOS/forecast coverage warnings ──────────────────────────────────
                 if (isFutureFlight) {
                     effectiveWxData.forEach(e => {
                         if (e.source === 'metar' && hoursUntilTrip > 30) {
-                            concerns.push({ level: 'medium', icon: 'update', text: `${e.icao}: Departure is beyond 30-hour TAF range — long-range forecast unavailable` });
+                            concerns.push({ level: 'medium', icon: 'update', text: `${e.icao}: GFS MOS forecast unavailable — showing current METAR only (beyond TAF range)` });
                         } else if (e.source === 'metar' && hoursUntilTrip > 2 && !e.taf) {
-                            concerns.push({ level: 'medium', icon: 'cloud_off', text: `${e.icao}: No TAF available — showing current METAR only` });
+                            concerns.push({ level: 'medium', icon: 'cloud_off', text: `${e.icao}: No TAF available — showing current METAR; verify conditions closer to departure` });
                         }
                     });
                 }
 
-                // Per-station analysis using trip-time effective weather
+                // ── Per-station weather concerns ─────────────────────────────────────
                 effectiveWxData.forEach(e => {
-                    var src = e.source === 'taf' ? `TAF` : 'METAR';
+                    var src = e.source === 'mos' ? 'GFS' : e.source === 'taf' ? 'TAF' : 'METAR';
                     if (!e.effectiveWx) {
                         concerns.push({ level: 'medium', icon: 'cloud_off', text: `${e.icao}: No weather data available — verify conditions before flight` });
                         return;
                     }
                     var m = e.effectiveWx;
-                    // Thunderstorm (TAF uses TS token; also check raw)
-                    if ((m.raw || '').includes(' TS') || m.sky.includes('CB') || (e.taf && (e.taf.rawTAF || '').includes(' TS'))) {
-                        concerns.push({ level: 'high', icon: 'thunderstorm', text: `${e.icao}: Thunderstorm activity in ${src} — check convective SIGMETs` });
+
+                    // MOS-specific probabilistic concerns
+                    if (e.source === 'mos') {
+                        var t06 = m.t06 || 0, p06 = m.p06 || 0;
+                        if (t06 >= 20) concerns.push({ level: t06 >= 40 ? 'high' : 'medium', icon: 'thunderstorm', text: `${e.icao}: GFS model shows ${t06}% thunderstorm probability at departure time` });
+                        if (p06 >= 40) concerns.push({ level: p06 >= 70 ? 'high' : 'medium', icon: 'water_drop', text: `${e.icao}: GFS model shows ${p06}% precipitation probability at departure time` });
+                        var obvLabels = { F: 'fog', PF: 'patchy fog', BS: 'blowing snow', BD: 'blowing dust', HZ: 'haze', K: 'smoke' };
+                        if (m.obv && m.obv !== 'N' && obvLabels[m.obv]) {
+                            concerns.push({ level: 'medium', icon: 'visibility', text: `${e.icao}: GFS model forecasts ${obvLabels[m.obv]} (${m.obv}) — expect reduced visibility` });
+                        }
                     }
+
+                    // TS/CB (METAR and TAF)
+                    if (e.source !== 'mos' && ((m.raw || '').includes(' TS') || m.sky.includes('CB') || (e.taf && (e.taf.rawTAF || '').includes(' TS')))) {
+                        concerns.push({ level: 'high', icon: 'thunderstorm', text: `${e.icao}: ${src} indicates thunderstorm activity — check convective SIGMETs` });
+                    }
+
+                    // Ceiling
                     var ceiling = parseCeiling(m.sky);
                     if (ceiling !== null && ceiling < 1000) {
-                        concerns.push({ level: 'high', icon: 'cloud', text: `${e.icao}: ${src} ceiling ${ceiling}ft — IFR conditions (${m.sky})` });
+                        concerns.push({ level: 'high', icon: 'cloud', text: `${e.icao}: ${src} ceiling ${ceiling}ft — IFR conditions forecast (${m.sky})` });
                     } else if (ceiling !== null && ceiling < 3000) {
                         concerns.push({ level: 'medium', icon: 'cloud', text: `${e.icao}: ${src} ceiling ${ceiling}ft — MVFR, monitor for deterioration` });
                     }
+
+                    // Visibility
                     if (!m.vis.includes('P6') && !m.vis.startsWith('10')) {
                         var visNum = parseFloat(m.vis) || 10;
-                        if (visNum < 1) concerns.push({ level: 'high', icon: 'visibility_off', text: `${e.icao}: ${src} visibility ${m.vis} — very low` });
+                        if (visNum < 1) concerns.push({ level: 'high', icon: 'visibility_off', text: `${e.icao}: ${src} visibility ${m.vis} — very low, LIFR/IFR conditions` });
                         else if (visNum < 3) concerns.push({ level: 'medium', icon: 'visibility', text: `${e.icao}: ${src} visibility ${m.vis} — reduced` });
                     }
+
+                    // Wind
                     var gust = parseGust(m.wind);
                     if (m.wspd > 20 || (gust && gust > 25)) {
                         concerns.push({ level: 'high', icon: 'air', text: `${e.icao}: ${src} strong winds ${m.wind}` });
                     } else if (m.wspd > 15 || (gust && gust > 20)) {
                         concerns.push({ level: 'medium', icon: 'air', text: `${e.icao}: ${src} gusty conditions ${m.wind}` });
                     }
-                    var apt = getAirport(e.icao);
-                    var rwyRec = getRunwayRecommendation(m, apt);
-                    if (rwyRec && rwyRec.crosswind > 15) {
-                        concerns.push({ level: 'high', icon: 'flight_takeoff', text: `${e.icao}: ${src} high crosswind ${rwyRec.crosswind}kt on Rwy ${rwyRec.rwy}` });
-                    } else if (rwyRec && rwyRec.crosswind > 10) {
-                        concerns.push({ level: 'medium', icon: 'flight_takeoff', text: `${e.icao}: ${src} crosswind ${rwyRec.crosswind}kt on Rwy ${rwyRec.rwy}` });
+
+                    // Crosswind (not available for MOS — wind direction is less precise)
+                    if (e.source !== 'mos') {
+                        var apt = getAirport(e.icao);
+                        var rwyRec = getRunwayRecommendation(m, apt);
+                        if (rwyRec && rwyRec.crosswind > 15) {
+                            concerns.push({ level: 'high', icon: 'flight_takeoff', text: `${e.icao}: ${src} high crosswind ${rwyRec.crosswind}kt on Rwy ${rwyRec.rwy}` });
+                        } else if (rwyRec && rwyRec.crosswind > 10) {
+                            concerns.push({ level: 'medium', icon: 'flight_takeoff', text: `${e.icao}: ${src} crosswind ${rwyRec.crosswind}kt on Rwy ${rwyRec.rwy}` });
+                        }
                     }
-                    // Freezing temps only meaningful from METAR (TAF temp not in structured data)
+
+                    // Freezing temps (METAR only)
                     if (e.source === 'metar' && e.metar) {
                         var tempC = parseTempC(e.metar.temp);
                         if (tempC !== null && tempC <= 2) {
@@ -1397,18 +1590,22 @@
                 concerns.sort((a, b) => (a.level === 'high' ? 0 : 1) - (b.level === 'high' ? 0 : 1));
 
                 var recs = [];
-                if (isFutureFlight && anyTaf) {
+                // Model forecast disclaimer (highest priority for long-range)
+                if (anyMos) {
+                    recs.push(`⚠ Based on GFS model data (${depUtcLabel}) — model accuracy decreases with time. Re-evaluate using TAF data 24h before departure.`);
+                } else if (isFutureFlight && anyTaf) {
                     recs.push(`Assessment based on TAF forecast for ${depUtcLabel} — conditions may change. Re-check closer to departure.`);
                 }
                 if (hasIFR || hasLIFR) recs.push('IFR rating and current instrument currency required for this flight.');
                 if (hasMVFR && !hasIFR && !hasLIFR) recs.push('Consider filing IFR or delaying departure until conditions improve to VFR.');
                 if (concerns.some(c => c.icon === 'thunderstorm')) recs.push('Check convective SIGMETs and avoid areas with reported thunderstorm activity.');
+                if (concerns.some(c => c.icon === 'water_drop')) recs.push('GFS indicates precipitation — review AIRMETs for IFR/turbulence and check PIREPs.');
                 if (concerns.some(c => c.icon === 'ac_unit')) recs.push('Check PIREPs for airframe icing; confirm aircraft icing certification if applicable.');
                 if (concerns.some(c => c.level === 'high' && c.icon === 'air')) recs.push('Verify crosswind does not exceed aircraft published limits; identify an alternate airport.');
-                if (recs.length === 0) recs.push('Conditions appear favorable — complete standard preflight checks and file a flight plan.');
+                if (recs.filter(r => !r.startsWith('⚠')).length === 0) recs.push('Conditions appear favorable — complete standard preflight checks and file a flight plan.');
                 recs.push('Always obtain an official briefing at 1800wxbrief.com before departure.');
 
-                return { verdict, verdictColor, verdictBg, verdictIcon, verdictDesc, concerns, recs, dataContext, isFutureFlight, anyTaf };
+                return { verdict, verdictColor, verdictBg, verdictIcon, verdictDesc, concerns, recs, dataContext, isFutureFlight, anyTaf, anyMos, allMos };
             }, [effectiveWxData, hoursUntilTrip, tripTargetUtc]);
 
             // --- AI Enhanced briefing ---
@@ -1524,6 +1721,14 @@
                         </div>
                     )}
 
+                    {/* Extended forecast loading indicator */}
+                    {!loadingWx && loadingMos && hoursUntilTrip !== null && hoursUntilTrip > 30 && (
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px', background: 'var(--md-sys-color-surface-container)', borderRadius: 12, marginBottom: 12, fontSize: 13, color: 'var(--md-sys-color-on-surface-variant)' }}>
+                            <MdIcon name="sync" style={{ fontSize: 17, animation: 'spin 1s linear infinite', flexShrink: 0 }} />
+                            <span>Loading GFS model forecast for departure date…</span>
+                        </div>
+                    )}
+
                     {/* ---- Auto briefing ---- */}
                     {effectiveWxData && analysis && (
                         <>
@@ -1545,8 +1750,11 @@
                                         <span style={{ fontWeight: 700, fontSize: 13, textTransform: 'uppercase', letterSpacing: '0.5px', color: 'var(--md-sys-color-secondary)' }}>Route Weather Summary</span>
                                     </div>
                                     {analysis && analysis.isFutureFlight && (
-                                        <span style={{ fontSize: 10, fontWeight: 700, color: 'var(--md-sys-color-primary)', background: 'var(--md-sys-color-primary-container)', borderRadius: 4, padding: '2px 6px', letterSpacing: '0.5px', textTransform: 'uppercase' }}>
-                                            {analysis.anyTaf ? 'FORECAST' : 'FUTURE TRIP'}
+                                        <span style={{ fontSize: 10, fontWeight: 700,
+                                            color: analysis.anyMos ? 'var(--md-sys-color-on-tertiary-container)' : 'var(--md-sys-color-primary)',
+                                            background: analysis.anyMos ? 'var(--md-sys-color-tertiary-container)' : 'var(--md-sys-color-primary-container)',
+                                            borderRadius: 4, padding: '2px 6px', letterSpacing: '0.5px', textTransform: 'uppercase' }}>
+                                            {analysis.anyMos ? 'GFS MODEL' : analysis.anyTaf ? 'TAF FORECAST' : 'FUTURE TRIP'}
                                         </span>
                                     )}
                                 </div>
@@ -1563,7 +1771,10 @@
                                                     <span className="font-mono" style={{ fontWeight: 700, fontSize: 14 }}>{e.icao}</span>
                                                     {wx && <span style={{ fontSize: 11, fontWeight: 700, color: catColor(wx.cat) }}>{wx.cat}</span>}
                                                     {!wx && <span style={{ fontSize: 11, color: 'var(--md-sys-color-on-surface-variant)' }}>No data</span>}
-                                                    <span style={{ fontSize: 9, fontWeight: 600, color: e.source === 'taf' ? 'var(--md-sys-color-primary)' : 'var(--md-sys-color-on-surface-variant)', background: e.source === 'taf' ? 'var(--md-sys-color-primary-container)' : 'var(--md-sys-color-surface-container-high)', borderRadius: 3, padding: '1px 5px', letterSpacing: '0.3px', textTransform: 'uppercase' }}>{e.sourceLabel}</span>
+                                                    <span style={{ fontSize: 9, fontWeight: 600,
+                                                        color: e.source === 'mos' ? 'var(--md-sys-color-on-tertiary-container)' : e.source === 'taf' ? 'var(--md-sys-color-primary)' : 'var(--md-sys-color-on-surface-variant)',
+                                                        background: e.source === 'mos' ? 'var(--md-sys-color-tertiary-container)' : e.source === 'taf' ? 'var(--md-sys-color-primary-container)' : 'var(--md-sys-color-surface-container-high)',
+                                                        borderRadius: 3, padding: '1px 5px', letterSpacing: '0.3px', textTransform: 'uppercase' }}>{e.sourceLabel}</span>
                                                 </div>
                                                 {wx && (
                                                     <div className="font-mono" style={{ fontSize: 11, color: 'var(--md-sys-color-on-surface-variant)', lineHeight: 1.5 }}>
@@ -1596,6 +1807,22 @@
                                 </div>
                             )}
 
+                            {/* ---- Windy.com visual forecast (shown for GFS model trips >30h) ---- */}
+                            {analysis.anyMos && (
+                                <div style={{ background: 'var(--md-sys-color-surface-container)', borderRadius: 16, padding: '16px', marginBottom: 16 }}>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12, flexWrap: 'wrap' }}>
+                                        <MdIcon name="air" style={{ color: 'var(--md-sys-color-tertiary)', fontSize: 18 }} />
+                                        <span style={{ fontWeight: 700, fontSize: 13, textTransform: 'uppercase', letterSpacing: '0.5px', color: 'var(--md-sys-color-tertiary)' }}>Visual Forecast</span>
+                                        <span style={{ fontSize: 10, fontWeight: 700, background: 'var(--md-sys-color-tertiary-container)', color: 'var(--md-sys-color-on-tertiary-container)', borderRadius: 4, padding: '2px 7px', letterSpacing: '0.5px' }}>WINDY.COM · ECMWF</span>
+                                        <span style={{ fontSize: 11, color: 'var(--md-sys-color-on-surface-variant)', marginLeft: 'auto' }}>Centered on {effectiveWxData[0].icao} (dep)</span>
+                                    </div>
+                                    <WindyEmbed icao={effectiveWxData[0].icao} tripTargetUtc={tripTargetUtc} />
+                                    <div style={{ fontSize: 11, color: 'var(--md-sys-color-on-surface-variant)', marginTop: 10, lineHeight: 1.5 }}>
+                                        Use the timeline slider in the map to navigate to your departure date/time. Wind barbs show direction and speed in knots.
+                                    </div>
+                                </div>
+                            )}
+
                             {/* Recommendations */}
                             <div style={{ background: 'var(--md-sys-color-surface-container)', borderRadius: 16, padding: 16, marginBottom: 16 }}>
                                 <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
@@ -1605,15 +1832,17 @@
                                 <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
                                     {analysis.recs.map((r, i) => (
                                         <div key={i} style={{ display: 'flex', alignItems: 'flex-start', gap: 10 }}>
-                                            <MdIcon name="arrow_right" style={{ fontSize: 17, color: 'var(--md-sys-color-tertiary)', flexShrink: 0, marginTop: 1 }} />
-                                            <span style={{ fontSize: 13, color: 'var(--md-sys-color-on-surface)', lineHeight: 1.45 }}>{r}</span>
+                                            <MdIcon name={r.startsWith('⚠') ? 'warning' : 'arrow_right'} style={{ fontSize: 17, color: r.startsWith('⚠') ? 'var(--md-sys-color-error)' : 'var(--md-sys-color-tertiary)', flexShrink: 0, marginTop: 1 }} />
+                                            <span style={{ fontSize: 13, color: r.startsWith('⚠') ? 'var(--md-sys-color-on-surface)' : 'var(--md-sys-color-on-surface)', lineHeight: 1.45, fontWeight: r.startsWith('⚠') ? 600 : 400 }}>{r.replace(/^⚠ /, '')}</span>
                                         </div>
                                     ))}
                                 </div>
                             </div>
 
                             <div style={{ fontSize: 11, color: 'var(--md-sys-color-on-surface-variant)', textAlign: 'center', padding: '4px 16px 20px', lineHeight: 1.5 }}>
-                                {analysis.isFutureFlight
+                                {analysis.anyMos
+                                    ? <>GFS model forecast from <strong>AviationWeather.gov</strong> · visual from <strong>Windy.com</strong>. Long-range accuracy is limited — <strong>re-check with TAF 24h before departure</strong>.</>
+                                    : analysis.isFutureFlight
                                     ? <>TAF forecast from <strong>AviationWeather.gov</strong> for trip date/time. Conditions may change — <strong>re-check closer to departure</strong>.</>
                                     : <>Live weather from <strong>AviationWeather.gov</strong>. For situational awareness only.</>
                                 } Always obtain an official briefing at <strong>1800wxbrief.com</strong> before flight.
