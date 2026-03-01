@@ -12,10 +12,6 @@
     <!-- Leaflet Maps -->
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-    <!-- Firebase SDK (compat) -->
-    <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
     <!-- Google Fonts & Material Symbols (MD3) -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -250,74 +246,6 @@
             KCVG: [{ name: "Signature Flight Support", phone: "(859) 767-2360", fuel: [{ type: "100LL", service: "Full Serve" }, { type: "Jet-A", service: "Full Serve" }], hours: "24/7", services: ["GPU", "Crew Car", "Rental Car"] }],
             KUZA: [{ name: "Skytech, Inc.", phone: "(803) 366-5108", fuel: [{ type: "100LL", service: "Full Serve & Self-Serve (24/7)" }, { type: "Jet-A", service: "Full Serve" }], hours: "M–F 7am–8pm · Sa–Su 8am–7pm", services: ["FAA Repair Station", "Pilot Shop", "Crew Car", "Rental Car", "Tie-Down", "Volume Discounts"] }],
         };
-
-        /* =========================================
-           FIREBASE CONFIG & INITIALIZATION
-           Replace with your Firebase project config from:
-           https://console.firebase.google.com → Project Settings → Your apps
-        ========================================= */
-        const FIREBASE_CONFIG = {
-            apiKey: "",
-            authDomain: "",
-            projectId: "",
-            storageBucket: "",
-            messagingSenderId: "",
-            appId: ""
-        };
-
-        var _firebaseAuth = null;
-        var _firebaseDb = null;
-
-        // Supports runtime initialization from a config saved in localStorage
-        function tryInitFirebase(config) {
-            try {
-                if (!config || !config.apiKey) return false;
-                // Delete any previous apps to avoid duplicate-app errors
-                if (firebase.apps && firebase.apps.length) {
-                    firebase.apps.slice().forEach(a => { try { a.delete(); } catch(e){} });
-                }
-                var app = firebase.initializeApp(config);
-                _firebaseAuth = firebase.auth(app);
-                _firebaseDb = firebase.firestore(app);
-                return true;
-            } catch(e) {
-                console.warn('Firebase init error:', e.message);
-                return false;
-            }
-        }
-
-        // On load: prefer a config saved by the user in localStorage over the hardcoded one
-        (function() {
-            try {
-                var saved = localStorage.getItem('skyclear_firebase_config');
-                var cfg = saved ? JSON.parse(saved) : FIREBASE_CONFIG;
-                tryInitFirebase(cfg);
-            } catch(e) {}
-        })();
-
-        // Firestore trip helpers
-        async function saveTripsToCloud(uid, trips) {
-            if (!_firebaseDb || !uid) return;
-            try {
-                var ref = _firebaseDb.collection('users').doc(uid).collection('trips');
-                var batch = _firebaseDb.batch();
-                // Delete existing trips
-                var existing = await ref.get();
-                existing.docs.forEach(d => batch.delete(d.ref));
-                // Add current trips
-                trips.forEach(t => batch.set(ref.doc(String(t.id)), t));
-                await batch.commit();
-            } catch(e) { console.warn('Cloud save error:', e.message); }
-        }
-
-        async function loadTripsFromCloud(uid) {
-            if (!_firebaseDb || !uid) return null;
-            try {
-                var snap = await _firebaseDb.collection('users').doc(uid).collection('trips').orderBy('id').get();
-                if (snap.empty) return null;
-                return snap.docs.map(d => d.data());
-            } catch(e) { console.warn('Cloud load error:', e.message); return null; }
-        }
 
         const AIRCRAFT = [
             { id: "c172", name: "Cessna 172 Skyhawk", cat: "SEL", kts: 120 },
@@ -1976,252 +1904,80 @@
         }
 
         /* =========================================
-           AUTH MODAL COMPONENT
+           EXPORT / IMPORT MODAL
         ========================================= */
-        function AuthModal({ onClose }) {
-            // mode: 'signin' | 'signup' | 'forgotpw' | 'setup'
-            var [mode, setMode] = useState(_firebaseAuth ? 'signin' : 'setup');
-            var [email, setEmail] = useState('');
-            var [password, setPassword] = useState('');
-            var [confirmPw, setConfirmPw] = useState('');
-            var [displayName, setDisplayName] = useState('');
-            var [loading, setLoading] = useState(false);
-            var [error, setError] = useState('');
-            var [info, setInfo] = useState('');
-            var [firebaseConfigInput, setFirebaseConfigInput] = useState('');
+        function DataModal({ trips, onImport, onClose }) {
+            var [toast, setToast] = useState('');
+            var importRef = React.useRef();
 
-            function pwStrength(pw) {
-                if (!pw) return 0;
-                var score = 0;
-                if (pw.length >= 8) score++;
-                if (/[A-Z]/.test(pw)) score++;
-                if (/[0-9]/.test(pw)) score++;
-                if (/[^A-Za-z0-9]/.test(pw)) score++;
-                return score; // 0-4
+            function showToast(msg) {
+                setToast(msg);
+                setTimeout(() => setToast(''), 2500);
             }
 
-            function firebaseErrMsg(code) {
-                var msgs = {
-                    'auth/user-not-found': 'No account found with this email.',
-                    'auth/wrong-password': 'Incorrect password.',
-                    'auth/invalid-credential': 'Incorrect email or password.',
-                    'auth/email-already-in-use': 'This email is already registered.',
-                    'auth/weak-password': 'Password must be at least 6 characters.',
-                    'auth/invalid-email': 'Please enter a valid email address.',
-                    'auth/too-many-requests': 'Too many attempts. Please try again later.',
-                    'auth/network-request-failed': 'Network error. Check your connection.',
-                    'auth/popup-closed-by-user': 'Sign-in popup was closed.',
-                    'auth/popup-blocked': 'Popup was blocked. Allow popups for this site.',
+            function handleExport() {
+                var blob = new Blob([JSON.stringify(trips, null, 2)], { type: 'application/json' });
+                var url = URL.createObjectURL(blob);
+                var a = Object.assign(document.createElement('a'), {
+                    href: url,
+                    download: 'skyclear-trips-' + new Date().toISOString().slice(0, 10) + '.json'
+                });
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                URL.revokeObjectURL(url);
+                showToast('Trips exported!');
+            }
+
+            function handleImportFile(e) {
+                var file = e.target.files[0];
+                if (!file) return;
+                var reader = new FileReader();
+                reader.onload = ev => {
+                    try {
+                        var data = JSON.parse(ev.target.result);
+                        if (!Array.isArray(data)) throw new Error();
+                        onImport(data);
+                        showToast(data.length + ' trip(s) imported!');
+                        setTimeout(onClose, 1500);
+                    } catch(ex) {
+                        showToast('Invalid file — could not import.');
+                    }
+                    e.target.value = '';
                 };
-                return msgs[code] || ('Error: ' + (code || 'Unknown'));
+                reader.readAsText(file);
             }
-
-            function noFirebase() {
-                setMode('setup');
-                setError('');
-                setInfo('');
-            }
-
-            async function handleSaveConfig(e) {
-                e && e.preventDefault();
-                setError('');
-                var raw = firebaseConfigInput.trim();
-                // Accept either a bare JSON object or the full assignment statement
-                var jsonStr = raw.replace(/^.*?(\{[\s\S]*\}).*$/, '$1');
-                var cfg;
-                try { cfg = JSON.parse(jsonStr); } catch(ex) {
-                    setError('Could not parse JSON. Copy the exact config object from Firebase Console.');
-                    return;
-                }
-                if (!cfg.apiKey) { setError('Missing apiKey — make sure you copied the full config.'); return; }
-                setLoading(true);
-                var ok = tryInitFirebase(cfg);
-                if (ok) {
-                    try { localStorage.setItem('skyclear_firebase_config', JSON.stringify(cfg)); } catch(ex) {}
-                    setInfo('Firebase connected! You can now sign in.');
-                    setMode('signin');
-                } else {
-                    setError('Firebase failed to initialize. Check the config values and try again.');
-                }
-                setLoading(false);
-            }
-
-            async function handleSignIn(e) {
-                e && e.preventDefault();
-                if (!_firebaseAuth) { noFirebase(); return; }
-                if (!email || !password) { setError('Please enter your email and password.'); return; }
-                setLoading(true); setError('');
-                try {
-                    await _firebaseAuth.signInWithEmailAndPassword(email, password);
-                    onClose();
-                } catch(ex) { setError(firebaseErrMsg(ex.code)); }
-                setLoading(false);
-            }
-
-            async function handleSignUp(e) {
-                e && e.preventDefault();
-                if (!_firebaseAuth) { noFirebase(); return; }
-                if (!displayName.trim()) { setError('Please enter your name.'); return; }
-                if (!email) { setError('Please enter an email address.'); return; }
-                if (pwStrength(password) < 2) { setError('Password is too weak. Use 8+ characters with uppercase letters and numbers.'); return; }
-                if (password !== confirmPw) { setError('Passwords do not match.'); return; }
-                setLoading(true); setError('');
-                try {
-                    var cred = await _firebaseAuth.createUserWithEmailAndPassword(email, password);
-                    await cred.user.updateProfile({ displayName: displayName.trim() });
-                    await cred.user.sendEmailVerification();
-                    setInfo('Account created! Check your email to verify your address, then sign in.');
-                    setMode('signin');
-                } catch(ex) { setError(firebaseErrMsg(ex.code)); }
-                setLoading(false);
-            }
-
-            async function handleGoogleSignIn() {
-                if (!_firebaseAuth) { noFirebase(); return; }
-                setLoading(true); setError('');
-                try {
-                    var provider = new firebase.auth.GoogleAuthProvider();
-                    await _firebaseAuth.signInWithPopup(provider);
-                    onClose();
-                } catch(ex) { setError(firebaseErrMsg(ex.code)); }
-                setLoading(false);
-            }
-
-            async function handleForgotPw(e) {
-                e && e.preventDefault();
-                if (!_firebaseAuth) { noFirebase(); return; }
-                if (!email) { setError('Enter your email address above first.'); return; }
-                setLoading(true); setError('');
-                try {
-                    await _firebaseAuth.sendPasswordResetEmail(email);
-                    setInfo('Password reset email sent! Check your inbox.');
-                    setMode('signin');
-                } catch(ex) { setError(firebaseErrMsg(ex.code)); }
-                setLoading(false);
-            }
-
-            var strength = pwStrength(password);
-            var strengthColors = ['#e53935','#fb8c00','#fdd835','#43a047','#00897b'];
-            var strengthLabels = ['','Weak','Fair','Good','Strong'];
-
-            var GoogleBtn = ({ label }) => (
-                <button type="button" onClick={handleGoogleSignIn} disabled={loading}
-                    style={{ display:'flex', alignItems:'center', justifyContent:'center', gap:10, border:'1px solid var(--md-sys-color-outline)', borderRadius:20, padding:'10px 24px', background:'var(--md-sys-color-surface)', color:'var(--md-sys-color-on-surface)', fontSize:14, cursor:'pointer', fontFamily:'Roboto, sans-serif', width:'100%' }}>
-                    <svg width="18" height="18" viewBox="0 0 18 18">
-                        <path fill="#4285F4" d="M17.64 9.2c0-.637-.057-1.251-.164-1.84H9v3.481h4.844a4.14 4.14 0 01-1.796 2.716v2.259h2.908c1.702-1.567 2.684-3.875 2.684-6.615z"/>
-                        <path fill="#34A853" d="M9 18c2.43 0 4.467-.806 5.956-2.184l-2.908-2.259c-.806.54-1.837.86-3.048.86-2.344 0-4.328-1.584-5.036-3.711H.957v2.332A8.997 8.997 0 009 18z"/>
-                        <path fill="#FBBC05" d="M3.964 10.706A5.41 5.41 0 013.682 9c0-.593.102-1.17.282-1.706V4.962H.957A8.996 8.996 0 000 9c0 1.452.348 2.827.957 4.038l3.007-2.332z"/>
-                        <path fill="#EA4335" d="M9 3.58c1.321 0 2.508.454 3.44 1.345l2.582-2.58C13.463.891 11.426 0 9 0A8.997 8.997 0 00.957 4.962L3.964 7.294C4.672 5.163 6.656 3.58 9 3.58z"/>
-                    </svg>
-                    {loading ? 'Please wait…' : label}
-                </button>
-            );
 
             return (
                 <div onClick={e => { if (e.target === e.currentTarget) onClose(); }}
                     style={{ position:'fixed', inset:0, background:'rgba(0,0,0,0.55)', zIndex:2000, display:'flex', alignItems:'center', justifyContent:'center', padding:16 }}>
-                    <div style={{ background:'var(--md-sys-color-surface)', borderRadius:28, padding:32, width:'min(440px,100%)', maxHeight:'90vh', overflowY:'auto', boxShadow:'0 8px 32px rgba(0,0,0,0.3)' }}>
-                        <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:24 }}>
-                            <div style={{ fontSize:22, fontWeight:500, color:'var(--md-sys-color-on-surface)' }}>
-                                {mode === 'signin' ? 'Sign In' : mode === 'signup' ? 'Create Account' : mode === 'forgotpw' ? 'Reset Password' : 'Connect Firebase'}
-                            </div>
+                    <div style={{ background:'var(--md-sys-color-surface)', borderRadius:28, padding:32, width:'min(420px,100%)', boxShadow:'0 8px 32px rgba(0,0,0,0.3)' }}>
+                        <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:20 }}>
+                            <div style={{ fontSize:20, fontWeight:500 }}>My Trip Data</div>
                             <MdButton variant="text" icon="close" onClick={onClose} style={{ padding:8 }} />
                         </div>
 
-                        {info && (
-                            <div style={{ background:'var(--md-sys-color-primary-container)', color:'var(--md-sys-color-on-primary-container)', borderRadius:12, padding:'12px 16px', marginBottom:16, fontSize:14 }}>{info}</div>
-                        )}
-                        {error && (
-                            <div style={{ background:'#fde0dc', color:'#410001', borderRadius:12, padding:'12px 16px', marginBottom:16, fontSize:14 }}>{error}</div>
+                        {toast && (
+                            <div style={{ background:'var(--md-sys-color-primary-container)', color:'var(--md-sys-color-on-primary-container)', borderRadius:12, padding:'10px 16px', marginBottom:16, fontSize:14, textAlign:'center' }}>{toast}</div>
                         )}
 
-                        {mode === 'signin' && (
-                            <form onSubmit={handleSignIn} style={{ display:'flex', flexDirection:'column', gap:16 }}>
-                                <MdInput label="Email" type="email" value={email} onChange={e => setEmail(e.target.value)} />
-                                <MdInput label="Password" type="password" value={password} onChange={e => setPassword(e.target.value)} />
-                                <MdButton variant="primary" onClick={handleSignIn} disabled={loading}>{loading ? 'Signing in…' : 'Sign In'}</MdButton>
-                                <div style={{ display:'flex', alignItems:'center', gap:8 }}>
-                                    <div style={{ flex:1, height:1, background:'var(--md-sys-color-outline-variant)' }} />
-                                    <span style={{ fontSize:12, color:'var(--md-sys-color-on-surface-variant)' }}>or</span>
-                                    <div style={{ flex:1, height:1, background:'var(--md-sys-color-outline-variant)' }} />
-                                </div>
-                                <GoogleBtn label="Continue with Google" />
-                                <div style={{ display:'flex', justifyContent:'space-between', marginTop:4 }}>
-                                    <button type="button" onClick={() => { setMode('signup'); setError(''); setInfo(''); }} style={{ background:'none', border:'none', color:'var(--md-sys-color-primary)', cursor:'pointer', fontSize:14, padding:0 }}>Create account</button>
-                                    <button type="button" onClick={() => { setMode('forgotpw'); setError(''); setInfo(''); }} style={{ background:'none', border:'none', color:'var(--md-sys-color-primary)', cursor:'pointer', fontSize:14, padding:0 }}>Forgot password?</button>
-                                </div>
-                                {!_firebaseAuth && (
-                                    <button type="button" onClick={() => { setMode('setup'); setError(''); setInfo(''); }} style={{ background:'none', border:'1px dashed var(--md-sys-color-outline)', borderRadius:8, color:'var(--md-sys-color-on-surface-variant)', cursor:'pointer', fontSize:12, padding:'8px 12px', textAlign:'center', width:'100%' }}>
-                                        ⚙ Set up Firebase to enable accounts
-                                    </button>
-                                )}
-                            </form>
-                        )}
+                        <div style={{ fontSize:13, color:'var(--md-sys-color-on-surface-variant)', marginBottom:20, lineHeight:1.6 }}>
+                            Trips are automatically saved in this browser. Use export/import to move trips between devices, or to keep a backup.
+                        </div>
 
-                        {mode === 'signup' && (
-                            <form onSubmit={handleSignUp} style={{ display:'flex', flexDirection:'column', gap:16 }}>
-                                <MdInput label="Full Name" value={displayName} onChange={e => setDisplayName(e.target.value)} />
-                                <MdInput label="Email" type="email" value={email} onChange={e => setEmail(e.target.value)} />
-                                <div>
-                                    <MdInput label="Password" type="password" value={password} onChange={e => setPassword(e.target.value)} />
-                                    {password.length > 0 && (
-                                        <div style={{ marginTop:8 }}>
-                                            <div style={{ display:'flex', gap:4, marginBottom:4 }}>
-                                                {[1,2,3,4].map(i => (
-                                                    <div key={i} style={{ flex:1, height:4, borderRadius:2, background: i <= strength ? strengthColors[strength] : 'var(--md-sys-color-outline-variant)', transition:'background 0.2s' }} />
-                                                ))}
-                                            </div>
-                                            {strength > 0 && <div style={{ fontSize:12, color: strengthColors[strength] }}>{strengthLabels[strength]}</div>}
-                                        </div>
-                                    )}
-                                </div>
-                                <MdInput label="Confirm Password" type="password" value={confirmPw} onChange={e => setConfirmPw(e.target.value)} />
-                                <MdButton variant="primary" onClick={handleSignUp} disabled={loading}>{loading ? 'Creating account…' : 'Create Account'}</MdButton>
-                                <div style={{ display:'flex', alignItems:'center', gap:8 }}>
-                                    <div style={{ flex:1, height:1, background:'var(--md-sys-color-outline-variant)' }} />
-                                    <span style={{ fontSize:12, color:'var(--md-sys-color-on-surface-variant)' }}>or</span>
-                                    <div style={{ flex:1, height:1, background:'var(--md-sys-color-outline-variant)' }} />
-                                </div>
-                                <GoogleBtn label="Sign up with Google" />
-                                <button type="button" onClick={() => { setMode('signin'); setError(''); setInfo(''); }} style={{ background:'none', border:'none', color:'var(--md-sys-color-primary)', cursor:'pointer', fontSize:14, textAlign:'center' }}>Already have an account? Sign in</button>
-                            </form>
-                        )}
+                        <div style={{ display:'flex', flexDirection:'column', gap:12 }}>
+                            <MdButton variant="tonal" icon="download" onClick={handleExport}>
+                                Export trips as JSON ({trips.length} trip{trips.length !== 1 ? 's' : ''})
+                            </MdButton>
+                            <input ref={importRef} type="file" accept=".json,application/json" style={{ display:'none' }} onChange={handleImportFile} />
+                            <MdButton variant="outlined" icon="upload" onClick={() => importRef.current && importRef.current.click()}>
+                                Import trips from JSON
+                            </MdButton>
+                        </div>
 
-                        {mode === 'forgotpw' && (
-                            <form onSubmit={handleForgotPw} style={{ display:'flex', flexDirection:'column', gap:16 }}>
-                                <div style={{ fontSize:14, color:'var(--md-sys-color-on-surface-variant)' }}>Enter your email address and we'll send you a password reset link.</div>
-                                <MdInput label="Email" type="email" value={email} onChange={e => setEmail(e.target.value)} />
-                                <MdButton variant="primary" onClick={handleForgotPw} disabled={loading}>{loading ? 'Sending…' : 'Send Reset Email'}</MdButton>
-                                <button type="button" onClick={() => { setMode('signin'); setError(''); setInfo(''); }} style={{ background:'none', border:'none', color:'var(--md-sys-color-primary)', cursor:'pointer', fontSize:14, textAlign:'center' }}>Back to sign in</button>
-                            </form>
-                        )}
-
-                        {mode === 'setup' && (
-                            <form onSubmit={handleSaveConfig} style={{ display:'flex', flexDirection:'column', gap:16 }}>
-                                <div style={{ background:'var(--md-sys-color-surface-container-highest)', borderRadius:12, padding:16 }}>
-                                    <div style={{ fontWeight:500, marginBottom:10, fontSize:14 }}>One-time setup — 3 minutes</div>
-                                    <ol style={{ margin:0, paddingLeft:20, fontSize:13, color:'var(--md-sys-color-on-surface-variant)', lineHeight:2 }}>
-                                        <li>Open <a href="https://console.firebase.google.com" target="_blank" rel="noopener" style={{ color:'var(--md-sys-color-primary)' }}>console.firebase.google.com</a> and create a project</li>
-                                        <li>Go to <b>Authentication → Sign-in method</b> and enable <b>Email/Password</b> and <b>Google</b></li>
-                                        <li>Go to <b>Firestore Database → Create database</b> (start in test mode)</li>
-                                        <li>Go to <b>Project Settings → Your apps → Add app (Web)</b></li>
-                                        <li>Copy the <code style={{ background:'var(--md-sys-color-surface-container)', padding:'1px 4px', borderRadius:4 }}>firebaseConfig</code> object and paste it below</li>
-                                        <li>Add your site URL to <b>Authentication → Settings → Authorized domains</b></li>
-                                    </ol>
-                                </div>
-                                <div style={{ fontSize:13, color:'var(--md-sys-color-on-surface-variant)' }}>Paste your Firebase config JSON:</div>
-                                <textarea
-                                    placeholder={'{\n  "apiKey": "AIza...",\n  "authDomain": "your-project.firebaseapp.com",\n  "projectId": "your-project",\n  "storageBucket": "your-project.appspot.com",\n  "messagingSenderId": "123456",\n  "appId": "1:123:web:abc"\n}'}
-                                    value={firebaseConfigInput}
-                                    onChange={e => setFirebaseConfigInput(e.target.value)}
-                                    style={{ width:'100%', height:170, fontFamily:'Roboto Mono, monospace', fontSize:12, padding:12, border:'1px solid var(--md-sys-color-outline)', borderRadius:12, background:'var(--md-sys-color-surface-container)', color:'var(--md-sys-color-on-surface)', resize:'vertical', boxSizing:'border-box' }}
-                                />
-                                <MdButton variant="primary" onClick={handleSaveConfig} disabled={loading || !firebaseConfigInput.trim()}>{loading ? 'Connecting…' : 'Save & Connect'}</MdButton>
-                                {_firebaseAuth && (
-                                    <button type="button" onClick={() => { setMode('signin'); setError(''); setInfo(''); }} style={{ background:'none', border:'none', color:'var(--md-sys-color-primary)', cursor:'pointer', fontSize:14, textAlign:'center' }}>← Back to sign in</button>
-                                )}
-                            </form>
-                        )}
+                        <div style={{ marginTop:20, padding:'14px 16px', background:'var(--md-sys-color-surface-container)', borderRadius:12, fontSize:12, color:'var(--md-sys-color-on-surface-variant)', lineHeight:1.7 }}>
+                            <b>Tip:</b> To sync across devices, export on one device and import on another. To share a single trip, use the <MdIcon name="share" style={{ fontSize:14, verticalAlign:'middle' }} /> link button on the trip card.
+                        </div>
                     </div>
                 </div>
             );
@@ -2234,9 +1990,7 @@
             var [view, setView] = useState("trips");
             var defaultTimeStr = (new Date(Date.now() + 7200000)).toTimeString().slice(0, 5);
 
-            // Auth state
-            var [currentUser, setCurrentUser] = useState(null);
-            var [showAuthModal, setShowAuthModal] = useState(false);
+            var [showDataModal, setShowDataModal] = useState(false);
 
             // Trips — initialized from localStorage, falling back to sample trips
             var [trips, setTrips] = useState(() => {
@@ -2255,6 +2009,7 @@
             var [newTrip, setNewTrip] = useState({ route: ["", ""], aircraft: "c172", date: "", time: defaultTimeStr, name: "" });
             // Bump this counter to force re-renders after async airport fetches resolve
             var [aptVersion, setAptVersion] = useState(0);
+            var [copiedTripId, setCopiedTripId] = useState(null);
 
             useEffect(() => {
                 // Fetch live METARs for each trip to compute live Go/No-Go scores
@@ -2267,36 +2022,48 @@
                 });
             }, []);
 
-            // Firebase auth listener — loads cloud trips on sign-in, clears on sign-out
-            useEffect(() => {
-                if (!_firebaseAuth) return;
-                var unsub = _firebaseAuth.onAuthStateChanged(async user => {
-                    setCurrentUser(user || null);
-                    if (user) {
-                        var cloudTrips = await loadTripsFromCloud(user.uid);
-                        if (cloudTrips && cloudTrips.length > 0) {
-                            setTrips(cloudTrips);
-                            try { localStorage.setItem('skyclear_trips', JSON.stringify(cloudTrips)); } catch(e) {}
-                        } else {
-                            // First sign-in: upload local trips to cloud
-                            try {
-                                var localStr = localStorage.getItem('skyclear_trips');
-                                var localTrips = localStr ? JSON.parse(localStr) : null;
-                                if (localTrips && localTrips.length > 0) await saveTripsToCloud(user.uid, localTrips);
-                            } catch(e) {}
-                        }
-                    }
-                });
-                return unsub;
-            }, []);
-
-            // Persist trips to localStorage (and debounced cloud save when signed in)
+            // Persist trips to localStorage on every change
             useEffect(() => {
                 try { localStorage.setItem('skyclear_trips', JSON.stringify(trips)); } catch(e) {}
-                if (!currentUser) return;
-                var timer = setTimeout(() => saveTripsToCloud(currentUser.uid, trips), 1500);
-                return () => clearTimeout(timer);
-            }, [trips, currentUser]);
+            }, [trips]);
+
+            // Handle #share= URL hash — offer to import a shared trip on load
+            useEffect(() => {
+                var hash = window.location.hash;
+                if (!hash.startsWith('#share=')) return;
+                try {
+                    var encoded = hash.slice(7);
+                    var json = decodeURIComponent(escape(atob(encoded)));
+                    var sharedTrip = JSON.parse(json);
+                    if (sharedTrip && sharedTrip.dep && sharedTrip.arr) {
+                        var label = sharedTrip.name || (sharedTrip.dep + ' → ' + sharedTrip.arr);
+                        if (window.confirm('Add shared trip "' + label + '" to your list?')) {
+                            setTrips(prev => [{ ...sharedTrip, id: Date.now() }, ...prev]);
+                        }
+                    }
+                } catch(e) {}
+                history.replaceState(null, '', window.location.pathname + window.location.search);
+            }, []);
+
+            function importTrips(data) {
+                setTrips(prev => {
+                    var existingIds = new Set(prev.map(t => String(t.id)));
+                    var toAdd = data.filter(t => !existingIds.has(String(t.id)));
+                    return toAdd.length ? [...toAdd, ...prev] : prev;
+                });
+            }
+
+            function copyTripLink(trip, e) {
+                e && e.stopPropagation();
+                try {
+                    var encoded = btoa(unescape(encodeURIComponent(JSON.stringify(trip))));
+                    var url = window.location.href.split('#')[0] + '#share=' + encoded;
+                    navigator.clipboard.writeText(url).then(() => {
+                        setCopiedTripId(trip.id);
+                        setTimeout(() => setCopiedTripId(null), 2000);
+                    });
+                } catch(ex) {}
+            }
 
             // Auto-fetch real data for any unknown ICAOs typed in the create form
             useEffect(() => {
@@ -2379,19 +2146,10 @@
                         </div>
                         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                             <MdButton variant="tonal" icon="add" onClick={() => setView("create")}>New Trip</MdButton>
-                            {currentUser ? (
-                                <div style={{ display:'flex', alignItems:'center', gap:6 }}>
-                                    <div style={{ fontSize:13, color:'var(--md-sys-color-on-surface)', maxWidth:110, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap', padding:'0 4px' }}>
-                                        {currentUser.displayName || currentUser.email}
-                                    </div>
-                                    <MdButton variant="text" icon="logout" title="Sign out" onClick={() => _firebaseAuth && _firebaseAuth.signOut().then(() => setCurrentUser(null))} style={{ padding:'8px', color:'var(--md-sys-color-on-surface-variant)' }} />
-                                </div>
-                            ) : (
-                                <MdButton variant="text" icon="account_circle" title="Sign in / Create account" onClick={() => setShowAuthModal(true)} style={{ padding: '8px' }} />
-                            )}
+                            <MdButton variant="text" icon="import_export" title="Export / Import trips" onClick={() => setShowDataModal(true)} style={{ padding: '8px' }} />
                         </div>
                     </header>
-                    {showAuthModal && <AuthModal onClose={() => setShowAuthModal(false)} />}
+                    {showDataModal && <DataModal trips={trips} onImport={importTrips} onClose={() => setShowDataModal(false)} />}
 
                     <main style={{ flex: 1, overflowY: "auto", background: "var(--md-sys-color-background)" }}>
                         
@@ -2429,7 +2187,10 @@
                                                                     </React.Fragment>
                                                                 ))}
                                                             </div>
-                                                            <MdButton variant="text" icon="delete" onClick={(e) => { e.stopPropagation(); deleteTrip(trip.id); }} style={{ padding: '8px', margin: '-8px', color: 'var(--md-sys-color-outline)' }} />
+                                                            <div style={{ display:'flex', gap:0 }}>
+                                                                <MdButton variant="text" icon={copiedTripId === trip.id ? "check" : "share"} title="Copy shareable link" onClick={(e) => copyTripLink(trip, e)} style={{ padding: '8px', color: copiedTripId === trip.id ? 'var(--md-sys-color-primary)' : 'var(--md-sys-color-outline)' }} />
+                                                                <MdButton variant="text" icon="delete" onClick={(e) => { e.stopPropagation(); deleteTrip(trip.id); }} style={{ padding: '8px', color: 'var(--md-sys-color-outline)' }} />
+                                                            </div>
                                                         </div>
                                                         <div style={{ display: "flex", alignItems: "center", gap: 16, fontSize: 14, color: "var(--md-sys-color-on-surface-variant)", flexWrap: "wrap" }}>
                                                             <span>{fullRoute.map(rt => getAirport(rt)?.city).filter(Boolean).join(" \u2794 ")}</span>
