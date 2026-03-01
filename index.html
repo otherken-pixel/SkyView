@@ -757,18 +757,18 @@
                     fetchNwsForecast(apt.lat, apt.lon).then(data => {
                         if (data) { setForecasts(data); setIsLive(true); }
                         else setForecasts(makeForecast(icao));
-                    });
+                    }).catch(() => setForecasts(makeForecast(icao)));
                 } else {
                     fetchAirportInfo(icao).then(a => {
                         if (a) {
                             fetchNwsForecast(a.lat, a.lon).then(data => {
                                 if (data) { setForecasts(data); setIsLive(true); }
                                 else setForecasts(makeForecast(icao));
-                            });
+                            }).catch(() => setForecasts(makeForecast(icao)));
                         } else {
                             setForecasts(makeForecast(icao));
                         }
-                    });
+                    }).catch(() => setForecasts(makeForecast(icao)));
                 }
             }, [icao]);
 
@@ -1149,7 +1149,7 @@
                         var score = dm && am ? calcGoScoreFromMetars(dm, am)
                             : (getAirport(t.dep) && getAirport(t.arr) ? calcGoScore(t.dep, t.arr) : 50);
                         setTrips(prev => prev.map(x => x.id === t.id ? { ...x, goScore: score } : x));
-                    });
+                    }).catch(() => {});
                 });
             }, []);
 
@@ -1161,7 +1161,7 @@
                 if (candidates.length === 0) return;
                 Promise.all(candidates.map(fetchAirportInfo)).then(results => {
                     if (results.some(Boolean)) setAptVersion(v => v + 1);
-                });
+                }).catch(() => {});
             }, [newTrip.route.join(',')]);
 
             function createTrip() {
@@ -1185,7 +1185,7 @@
                 // Async update go score with live METARs
                 Promise.all([fetchLiveMetar(t.dep), fetchLiveMetar(t.arr)]).then(([dm, am]) => {
                     if (dm && am) setTrips(prev => prev.map(x => x.id === t.id ? { ...x, goScore: calcGoScoreFromMetars(dm, am) } : x));
-                });
+                }).catch(() => {});
                 setNewTrip({ route: ["", ""], aircraft: "c172", date: "", time: defaultTimeStr, name: "" });
                 setView("trips");
             }
@@ -1197,7 +1197,7 @@
                 // Async refresh go score with live METARs
                 Promise.all([fetchLiveMetar(trip.dep), fetchLiveMetar(trip.arr)]).then(([dm, am]) => {
                     if (dm && am) setActiveTrip(prev => prev && prev.id === trip.id ? { ...prev, goScore: calcGoScoreFromMetars(dm, am) } : prev);
-                });
+                }).catch(() => {});
             }
 
             function deleteTrip(id) {
