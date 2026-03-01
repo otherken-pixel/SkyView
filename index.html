@@ -749,6 +749,16 @@
         ========================================= */
 
         // Rough UTC offset (hours) from airport longitude — US-focused
+        // Flight category severity ranking — shared by scoring and TAF period selection.
+        var CAT_RANK = { VFR: 0, MVFR: 1, IFR: 2, LIFR: 3 };
+
+        // Returns true for FM/initial TAF periods; false for temporary/probability groups.
+        function isPersistentPeriod(changeIndicator) {
+            var ci = (changeIndicator || '').toUpperCase();
+            return ci !== 'TEMPO' && ci !== 'BECMG' &&
+                   ci !== 'PROB'  && ci !== 'PROB30' && ci !== 'PROB40';
+        }
+
         // ── Composite Safety Score (0-100) with per-factor breakdown ────────────
         function calcDetailedScore(effectiveWxData, routeDist) {
             if (!effectiveWxData || effectiveWxData.length === 0) return { total: 50, breakdown: [] };
@@ -760,10 +770,9 @@
             var breakdown = [];
 
             // 1. Flight category (0-25 pts)
-            var catRank = { VFR: 0, MVFR: 1, IFR: 2, LIFR: 3 };
             var worstCat = effectiveWxData.reduce(function(w, e) {
                 if (!e.effectiveWx) return w;
-                return (catRank[e.effectiveWx.cat] || 0) > (catRank[w] || 0) ? e.effectiveWx.cat : w;
+                return (CAT_RANK[e.effectiveWx.cat] || 0) > (CAT_RANK[w] || 0) ? e.effectiveWx.cat : w;
             }, 'VFR');
             var catPts = { VFR: 25, MVFR: 16, IFR: 7, LIFR: 0 }[worstCat] || 25;
             var catCol = { VFR: 'var(--cat-vfr-color)', MVFR: 'var(--cat-mvfr-color)', IFR: 'var(--cat-ifr-color)', LIFR: 'var(--cat-lifr-color)' }[worstCat] || 'var(--cat-vfr-color)';
@@ -1063,43 +1072,39 @@
             var targetTs = targetUtc.getTime() / 1000;
             var periods  = tafObj.forecast;
             var icao     = tafObj.stationId || '';
-            var catRank  = { VFR: 0, MVFR: 1, IFR: 2, LIFR: 3 };
 
             function rank(period) {
-                return catRank[(parseTafPeriod(period, icao) || {}).cat || 'VFR'] || 0;
+                return CAT_RANK[(parseTafPeriod(period, icao) || {}).cat || 'VFR'] || 0;
             }
 
             // Step 1: base — last persistent (non-TEMPO/non-PROB) period that has started
             var base = null;
             for (var p of periods) {
-                var ci = (p.changeIndicator || '').toUpperCase();
-                if (ci === 'TEMPO' || ci === 'PROB30' || ci === 'PROB40' || ci === 'PROB') continue;
-                if (ci === 'BECMG') continue;                 // handled in step 2
+                if (!isPersistentPeriod(p.changeIndicator)) continue;
                 var ft = tafTs(p.timeFrom);
                 if (ft !== null && ft <= targetTs) base = p;
             }
-            // Fallback: use the first non-TEMPO/non-PROB period if none has started yet
+            // Fallback: use the first persistent period if none has started yet
             if (!base) {
                 for (var p of periods) {
-                    var ci = (p.changeIndicator || '').toUpperCase();
-                    if (ci !== 'TEMPO' && ci !== 'PROB30' && ci !== 'PROB40' &&
-                        ci !== 'PROB'  && ci !== 'BECMG') { base = p; break; }
+                    if (isPersistentPeriod(p.changeIndicator)) { base = p; break; }
                 }
             }
             if (!base) return null;
 
             // Step 2: BECMG — apply conservatively during window; replace base after timeTo
             var active = base;
+            var activeRank = rank(active);
             for (var p of periods) {
                 if ((p.changeIndicator || '').toUpperCase() !== 'BECMG') continue;
                 var ft = tafTs(p.timeFrom), tt = tafTs(p.timeTo);
                 if (ft === null || ft > targetTs) continue;   // hasn't started yet
                 if (tt !== null && targetTs >= tt) {
                     // Fully transitioned — BECMG conditions are now the persistent base
-                    active = p;
-                } else if (rank(p) > rank(active)) {
+                    active = p; activeRank = rank(p);
+                } else if (rank(p) > activeRank) {
                     // Inside transition window — apply conservatively if worse
-                    active = p;
+                    active = p; activeRank = rank(p);
                 }
             }
 
@@ -1108,7 +1113,10 @@
                 if ((p.changeIndicator || '').toUpperCase() !== 'TEMPO') continue;
                 var ft = tafTs(p.timeFrom), tt = tafTs(p.timeTo);
                 if (ft === null || tt === null) continue;
-                if (ft <= targetTs && targetTs < tt && rank(p) > rank(active)) active = p;
+                if (ft <= targetTs && targetTs < tt) {
+                    var pr = rank(p);
+                    if (pr > activeRank) { active = p; activeRank = pr; }
+                }
             }
 
             return parseTafPeriod(active, icao);
