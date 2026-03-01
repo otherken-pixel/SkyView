@@ -281,6 +281,24 @@
             }
             .briefing-content { padding: 16px 12px 80px !important; }
         }
+
+        /* ── Print: hide everything except the export region ───────────────── */
+        @media print {
+            .no-print { display: none !important; }
+            body * { visibility: hidden; }
+            #export-printable, #export-printable * { visibility: visible; }
+            #export-printable {
+                position: fixed;
+                top: 0; left: 0; right: 0;
+                background: #fff;
+                color: #1a1a1a;
+                font-family: Roboto, Arial, sans-serif;
+                z-index: 9999;
+                border: none !important;
+                border-radius: 0 !important;
+            }
+            @page { size: A4 portrait; margin: 12mm 15mm; }
+        }
     </style>
 </head>
 <body>
@@ -3123,7 +3141,8 @@
                 { id: "notam", label: "NOTAMs", icon: "warning" },
                 { id: "freq", label: "Freqs", icon: "cell_tower" },
                 { id: "map", label: "Map", icon: "map" },
-                { id: "fbo", label: "FBO", icon: "local_gas_station" }
+                { id: "fbo", label: "FBO", icon: "local_gas_station" },
+                { id: "export", label: "Export", icon: "print" }
             ];
 
             return (
@@ -3508,6 +3527,269 @@
                                                     })}
                                                 </div>
                                             )}
+
+                                            {tab === "export" && (() => {
+                                                var now = new Date();
+                                                var nowUtcStr = `${String(now.getUTCHours()).padStart(2,'0')}${String(now.getUTCMinutes()).padStart(2,'0')}Z ${now.getUTCFullYear()}-${String(now.getUTCMonth()+1).padStart(2,'0')}-${String(now.getUTCDate()).padStart(2,'0')}`;
+                                                var depUtcStr = tripTargetUtc
+                                                    ? `${String(tripTargetUtc.getUTCHours()).padStart(2,'0')}${String(tripTargetUtc.getUTCMinutes()).padStart(2,'0')}Z`
+                                                    : '--';
+                                                var altFt = ac.alt || 6000;
+
+                                                function catClr(c) { return ({VFR:'#1b5e20',MVFR:'#1565c0',IFR:'#b71c1c',LIFR:'#6a1b9a'})[c]||'#555'; }
+                                                function catBg(c)  { return ({VFR:'#e8f5e9',MVFR:'#e3f2fd',IFR:'#ffebee',LIFR:'#f3e5f5'})[c]||'#eee'; }
+                                                function scoreClr(pct) { return pct >= 0.85 ? '#2e7d32' : pct >= 0.65 ? '#1565c0' : '#c62828'; }
+
+                                                var verd = finalVerdict || analysis;
+                                                var vClr = !verd ? '#1b5e20' : verd.verdict === 'GO' ? '#1b5e20' : verd.verdict === 'CAUTION' ? '#e65100' : '#b71c1c';
+                                                var vBg  = !verd ? '#e8f5e9' : verd.verdict === 'GO' ? '#e8f5e9' : verd.verdict === 'CAUTION' ? '#fff3e0' : '#ffebee';
+
+                                                var windRows = allRoutePts.map(icao => {
+                                                    var apt = getAirport(icao);
+                                                    if (!apt) return { icao, w: null };
+                                                    var stn = closestWindStation(windsAloft, apt.lat, apt.lon);
+                                                    return { icao, w: stn ? getWindAtAlt(stn, altFt) : null };
+                                                });
+
+                                                var advisoryCount = sigmets.length + gairmets.length + cwas.length;
+
+                                                var sh = { fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '1px', color: '#0b57d0', borderBottom: '2px solid #0b57d0', paddingBottom: 5, marginBottom: 12, marginTop: 0 };
+                                                var cell = { fontSize: 13, padding: '7px 10px', borderBottom: '1px solid #e8e8e8' };
+                                                var cellHd = { ...cell, fontSize: 10, fontWeight: 700, color: '#777', background: '#f5f5f5', textTransform: 'uppercase', letterSpacing: '0.5px' };
+
+                                                return (
+                                                    <div>
+                                                        {/* Toolbar — hidden when printing */}
+                                                        <div className="no-print" style={{ display: 'flex', alignItems: 'center', gap: 16, paddingBottom: 20, flexWrap: 'wrap' }}>
+                                                            <button onClick={() => window.print()} style={{ display: 'flex', alignItems: 'center', gap: 8, background: '#0b57d0', color: '#fff', border: 'none', borderRadius: 20, padding: '10px 24px', fontSize: 14, fontWeight: 600, cursor: 'pointer', boxShadow: '0 2px 8px rgba(11,87,208,0.3)' }}>
+                                                                <MdIcon name="print" style={{ fontSize: 18 }} /> Print / Save as PDF
+                                                            </button>
+                                                            <span style={{ fontSize: 12, color: 'var(--md-sys-color-on-surface-variant)', lineHeight: 1.5 }}>
+                                                                Choose <strong>Save as PDF</strong> in the print dialog to export a file.
+                                                            </span>
+                                                        </div>
+
+                                                        {/* ══ PRINTABLE REGION ══ */}
+                                                        <div id="export-printable" style={{ background: '#fff', color: '#1a1a1a', fontFamily: 'Roboto, Arial, sans-serif', border: '1px solid #ddd', borderRadius: 10, overflow: 'hidden', boxShadow: '0 4px 24px rgba(0,0,0,0.10)' }}>
+
+                                                            {/* ── Header band ── */}
+                                                            <div style={{ background: 'linear-gradient(135deg,#0b57d0 0%,#1a73e8 100%)', color: '#fff', padding: '20px 28px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16 }}>
+                                                                <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+                                                                    <MdIcon name="flight" style={{ fontSize: 32, opacity: 0.9 }} />
+                                                                    <div>
+                                                                        <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: '2.5px', textTransform: 'uppercase', opacity: 0.75, marginBottom: 2 }}>SkyClear Aviation</div>
+                                                                        <div style={{ fontSize: 22, fontWeight: 800, letterSpacing: '-0.5px', lineHeight: 1 }}>FLIGHT BRIEF</div>
+                                                                        {trip.name && <div style={{ fontSize: 12, opacity: 0.8, marginTop: 3 }}>{trip.name}</div>}
+                                                                    </div>
+                                                                </div>
+                                                                {detailedScore && verd && (
+                                                                    <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+                                                                        <div style={{ textAlign: 'right' }}>
+                                                                            <div style={{ fontSize: 42, fontWeight: 900, lineHeight: 1, fontFamily: 'monospace' }}>{detailedScore.total}</div>
+                                                                            <div style={{ fontSize: 9, fontWeight: 700, opacity: 0.7, letterSpacing: '1.5px', textTransform: 'uppercase' }}>/ 100 SCORE</div>
+                                                                        </div>
+                                                                        <div style={{ background: vBg, color: vClr, borderRadius: 10, padding: '8px 18px', textAlign: 'center', minWidth: 88 }}>
+                                                                            <MdIcon name={verd.verdictIcon} style={{ fontSize: 24, display: 'block', margin: '0 auto 3px' }} />
+                                                                            <div style={{ fontSize: 15, fontWeight: 900, letterSpacing: '1px' }}>{verd.verdict}</div>
+                                                                        </div>
+                                                                    </div>
+                                                                )}
+                                                            </div>
+
+                                                            {/* ── Trip meta bar ── */}
+                                                            <div style={{ background: '#f7f9ff', borderBottom: '1px solid #e0e0e0', padding: '14px 28px', display: 'grid', gridTemplateColumns: 'auto 1fr', gap: '0 36px', alignItems: 'center' }}>
+                                                                <div>
+                                                                    <div style={{ fontSize: 10, color: '#888', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: 3 }}>Route</div>
+                                                                    <div style={{ fontFamily: 'monospace', fontWeight: 800, fontSize: 22, letterSpacing: '1px', color: '#0b57d0' }}>
+                                                                        {allRoutePts.join(' → ')}
+                                                                    </div>
+                                                                </div>
+                                                                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '4px 20px' }}>
+                                                                    {[
+                                                                        ['Aircraft', ac.name],
+                                                                        ['Date', trip.date],
+                                                                        ['Departure', `${trip.time} local · ${depUtcStr}`],
+                                                                        ['ETE / Dist', `${eteStr} · ${routeDist} NM`],
+                                                                    ].map(([lbl, val]) => (
+                                                                        <div key={lbl}>
+                                                                            <div style={{ fontSize: 10, color: '#999', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.3px' }}>{lbl}</div>
+                                                                            <div style={{ fontSize: 12, fontWeight: 600, color: '#222', fontFamily: lbl==='Departure'||lbl==='ETE / Dist'?'monospace':'inherit' }}>{val}</div>
+                                                                        </div>
+                                                                    ))}
+                                                                </div>
+                                                            </div>
+
+                                                            {/* ── Body sections ── */}
+                                                            <div style={{ padding: '22px 28px', display: 'flex', flexDirection: 'column', gap: 26 }}>
+
+                                                                {/* Route table */}
+                                                                <div>
+                                                                    <div style={sh}>Route Airports</div>
+                                                                    <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                                                                        <thead><tr>{['ICAO','Airport Name','City / State','Role','Leg'].map(h=><th key={h} style={{...cellHd,textAlign:'left'}}>{h}</th>)}</tr></thead>
+                                                                        <tbody>
+                                                                            {allRoutePts.map((icao, idx) => {
+                                                                                var apt = getAirport(icao);
+                                                                                var role = idx===0 ? 'Departure' : idx===allRoutePts.length-1 ? 'Destination' : `Waypoint ${idx}`;
+                                                                                var legDist = '—';
+                                                                                if (idx > 0) { var prev=getAirport(allRoutePts[idx-1]); if(prev&&apt) legDist=Math.round(calcDist(prev.lat,prev.lon,apt.lat,apt.lon))+' NM'; }
+                                                                                return (
+                                                                                    <tr key={icao} style={{background: idx%2===0?'#fff':'#fafafa'}}>
+                                                                                        <td style={{...cell,fontFamily:'monospace',fontWeight:800,fontSize:15,color:'#0b57d0'}}>{icao}</td>
+                                                                                        <td style={cell}>{apt?apt.name:'—'}</td>
+                                                                                        <td style={{...cell,color:'#555'}}>{apt?`${apt.city}, ${apt.state}`:'—'}</td>
+                                                                                        <td style={{...cell,color:'#777',fontSize:12}}>{role}</td>
+                                                                                        <td style={{...cell,fontFamily:'monospace',color:'#555'}}>{legDist}</td>
+                                                                                    </tr>
+                                                                                );
+                                                                            })}
+                                                                        </tbody>
+                                                                    </table>
+                                                                    <div style={{fontSize:11,color:'#888',marginTop:6}}>
+                                                                        Total distance: <strong>{routeDist} NM</strong> · Est. time en route: <strong>{eteStr}</strong> @ {ac.kts} kts · Cruise: <strong>{(altFt/1000).toFixed(1)}k ft</strong>
+                                                                    </div>
+                                                                </div>
+
+                                                                {/* Score breakdown */}
+                                                                {detailedScore && (
+                                                                    <div>
+                                                                        <div style={sh}>Composite Safety Score — {detailedScore.total} / 100</div>
+                                                                        <div style={{display:'flex',flexDirection:'column',gap:10}}>
+                                                                            {detailedScore.breakdown.map((b,i) => (
+                                                                                <div key={i} style={{display:'grid',gridTemplateColumns:'140px 1fr 58px 130px',alignItems:'center',gap:10}}>
+                                                                                    <span style={{fontSize:12,fontWeight:600,color:'#333'}}>{b.label}</span>
+                                                                                    <div style={{height:9,background:'#ececec',borderRadius:5,overflow:'hidden'}}>
+                                                                                        <div style={{height:'100%',width:(b.score/b.max*100)+'%',background:scoreClr(b.score/b.max),borderRadius:5,transition:'width 0.5s'}} />
+                                                                                    </div>
+                                                                                    <span style={{fontFamily:'monospace',fontSize:12,fontWeight:700,textAlign:'right',color:scoreClr(b.score/b.max)}}>{b.score}/{b.max}</span>
+                                                                                    <span style={{fontSize:11,color:'#666',textAlign:'right'}}>{b.detail}</span>
+                                                                                </div>
+                                                                            ))}
+                                                                        </div>
+                                                                        {verd && <div style={{marginTop:12,padding:'10px 14px',background:vBg,borderRadius:8,border:`1px solid ${vClr}22`,fontSize:12,color:vClr,lineHeight:1.5}}>{verd.verdictDesc}</div>}
+                                                                    </div>
+                                                                )}
+
+                                                                {/* Weather table */}
+                                                                {effectiveWxData && (
+                                                                    <div>
+                                                                        <div style={sh}>Weather at Route Airports</div>
+                                                                        <table style={{width:'100%',borderCollapse:'collapse'}}>
+                                                                            <thead><tr>{['ICAO','Cat','Wind','Vis','Sky / Clouds','Temp','Altm','Source'].map(h=><th key={h} style={{...cellHd,textAlign:'left'}}>{h}</th>)}</tr></thead>
+                                                                            <tbody>
+                                                                                {effectiveWxData.map((e,idx) => {
+                                                                                    var m = e.effectiveWx;
+                                                                                    var cat = m ? m.cat : '—';
+                                                                                    return (
+                                                                                        <tr key={e.icao} style={{background:idx%2===0?'#fff':'#fafafa'}}>
+                                                                                            <td style={{...cell,fontFamily:'monospace',fontWeight:800,color:'#0b57d0'}}>{e.icao}</td>
+                                                                                            <td style={cell}>{m&&<span style={{background:catBg(cat),color:catClr(cat),borderRadius:4,padding:'2px 8px',fontSize:11,fontWeight:700,whiteSpace:'nowrap'}}>{cat}</span>}</td>
+                                                                                            <td style={{...cell,fontFamily:'monospace',fontSize:12}}>{m?m.wind:'—'}</td>
+                                                                                            <td style={{...cell,fontFamily:'monospace',fontSize:12}}>{m?m.vis:'—'}</td>
+                                                                                            <td style={{...cell,fontFamily:'monospace',fontSize:12}}>{m?m.sky:'—'}</td>
+                                                                                            <td style={{...cell,fontFamily:'monospace',fontSize:12}}>{m?m.temp:'—'}</td>
+                                                                                            <td style={{...cell,fontFamily:'monospace',fontSize:12}}>{m?m.alt:'—'}</td>
+                                                                                            <td style={{...cell,fontSize:11,color:'#666'}}>{e.sourceLabel}</td>
+                                                                                        </tr>
+                                                                                    );
+                                                                                })}
+                                                                            </tbody>
+                                                                        </table>
+                                                                        {/* Raw METAR strings */}
+                                                                        {effectiveWxData.some(e=>e.effectiveWx&&e.effectiveWx.raw) && (
+                                                                            <div style={{marginTop:10,display:'flex',flexDirection:'column',gap:4}}>
+                                                                                {effectiveWxData.filter(e=>e.effectiveWx&&e.effectiveWx.raw).map(e=>(
+                                                                                    <div key={e.icao} style={{fontFamily:'monospace',fontSize:11,background:'#f5f5f5',borderRadius:5,padding:'6px 10px',color:'#444',lineHeight:1.6,wordBreak:'break-all'}}>{e.effectiveWx.raw}</div>
+                                                                                ))}
+                                                                            </div>
+                                                                        )}
+                                                                    </div>
+                                                                )}
+
+                                                                {/* Key concerns */}
+                                                                {finalVerdict && (
+                                                                    <div>
+                                                                        <div style={sh}>Key Concerns</div>
+                                                                        {finalVerdict.concerns.length === 0 ? (
+                                                                            <div style={{display:'flex',alignItems:'center',gap:9,color:'#2e7d32',fontSize:13,fontWeight:500}}>
+                                                                                <MdIcon name="check_circle" style={{fontSize:18}} />
+                                                                                No flight concerns identified — conditions look good across all route airports.
+                                                                            </div>
+                                                                        ) : (
+                                                                            <div style={{display:'flex',flexDirection:'column',gap:7}}>
+                                                                                {finalVerdict.concerns.map((c,i)=>(
+                                                                                    <div key={i} style={{display:'flex',alignItems:'flex-start',gap:9,fontSize:13,color:c.level==='high'?'#b71c1c':'#e65100'}}>
+                                                                                        <MdIcon name={c.icon} style={{fontSize:15,marginTop:2,flexShrink:0}} />
+                                                                                        <span>{c.text}</span>
+                                                                                    </div>
+                                                                                ))}
+                                                                            </div>
+                                                                        )}
+                                                                    </div>
+                                                                )}
+
+                                                                {/* Winds aloft */}
+                                                                {windsAloft.length > 0 && windRows.some(r=>r.w) && (
+                                                                    <div>
+                                                                        <div style={sh}>Winds Aloft — {(altFt/1000).toFixed(0)}K ft (FD)</div>
+                                                                        <table style={{width:'100%',borderCollapse:'collapse'}}>
+                                                                            <thead><tr>{['Airport','Direction','Speed','Temp'].map(h=><th key={h} style={{...cellHd,textAlign:'left'}}>{h}</th>)}</tr></thead>
+                                                                            <tbody>
+                                                                                {windRows.map(({icao,w},idx)=>(
+                                                                                    <tr key={icao} style={{background:idx%2===0?'#fff':'#fafafa'}}>
+                                                                                        <td style={{...cell,fontFamily:'monospace',fontWeight:700}}>{icao}</td>
+                                                                                        <td style={{...cell,fontFamily:'monospace'}}>{w?(w.lv?'LGT & VRB':`${w.wdir}°`):'No data'}</td>
+                                                                                        <td style={{...cell,fontFamily:'monospace'}}>{w&&!w.lv?`${w.wspd} kt`:'—'}</td>
+                                                                                        <td style={{...cell,fontFamily:'monospace'}}>{w&&w.temp!=null?`${w.temp>0?'+':''}${w.temp}°C`:'—'}</td>
+                                                                                    </tr>
+                                                                                ))}
+                                                                            </tbody>
+                                                                        </table>
+                                                                    </div>
+                                                                )}
+
+                                                                {/* Recommendations */}
+                                                                {finalVerdict && finalVerdict.recs && finalVerdict.recs.length > 0 && (
+                                                                    <div>
+                                                                        <div style={sh}>Recommendations</div>
+                                                                        <div style={{display:'flex',flexDirection:'column',gap:6}}>
+                                                                            {finalVerdict.recs.map((r,i)=>(
+                                                                                <div key={i} style={{display:'flex',alignItems:'flex-start',gap:9,fontSize:13,color:'#222'}}>
+                                                                                    <span style={{color:'#0b57d0',fontWeight:700,flexShrink:0,marginTop:1}}>•</span>
+                                                                                    <span style={{lineHeight:1.5}}>{r}</span>
+                                                                                </div>
+                                                                            ))}
+                                                                        </div>
+                                                                    </div>
+                                                                )}
+
+                                                                {/* Active advisories */}
+                                                                {advisoryCount > 0 && (
+                                                                    <div>
+                                                                        <div style={{...sh,color:'#b71c1c',borderBottomColor:'#b71c1c'}}>Active Advisories ({advisoryCount})</div>
+                                                                        <div style={{display:'flex',flexDirection:'column',gap:5}}>
+                                                                            {sigmets.length > 0 && <div style={{fontSize:13,color:'#b71c1c'}}><strong>{sigmets.length} SIGMET(s)</strong> active along route — obtain full text from aviationweather.gov.</div>}
+                                                                            {gairmets.length > 0 && <div style={{fontSize:13,color:'#e65100'}}><strong>{gairmets.length} G-AIRMET(s)</strong> active — review for IFR conditions, turbulence, or icing.</div>}
+                                                                            {cwas.length > 0 && <div style={{fontSize:13,color:'#b71c1c'}}><strong>{cwas.length} Center Weather Advisory(s)</strong> — check for convective activity.</div>}
+                                                                        </div>
+                                                                    </div>
+                                                                )}
+
+                                                            </div>{/* end body */}
+
+                                                            {/* ── Footer ── */}
+                                                            <div style={{background:'#f5f7fa',borderTop:'1px solid #e0e0e0',padding:'12px 28px',display:'flex',justifyContent:'space-between',alignItems:'center',flexWrap:'wrap',gap:8}}>
+                                                                <div style={{fontSize:11,color:'#555'}}>
+                                                                    Generated by <strong>SkyClear Aviation Dashboard</strong> · {nowUtcStr}
+                                                                </div>
+                                                                <div style={{fontSize:11,color:'#888',textAlign:'right',maxWidth:380,lineHeight:1.5}}>
+                                                                    For flight planning reference only. Always obtain an official briefing at <strong>1800wxbrief.com</strong> before departure.
+                                                                </div>
+                                                            </div>
+                                                        </div>{/* end #export-printable */}
+                                                    </div>
+                                                );
+                                            })()}
                                         </div>
                                     </div>
                                 </div>
