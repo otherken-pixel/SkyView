@@ -818,10 +818,11 @@
             // 5. Data confidence (0-10 pts)
             var noLive = effectiveWxData.some(function(e) { return !e.metarLive; });
             var isMos  = effectiveWxData.some(function(e) { return e.source === 'mos'; });
+            var isNws  = effectiveWxData.some(function(e) { return e.source === 'nws'; });
             var isTaf  = effectiveWxData.some(function(e) { return e.source === 'taf'; });
-            var confPts = noLive ? 4 : isMos ? 5 : isTaf ? 8 : 10;
+            var confPts = noLive ? 4 : isMos ? 5 : isNws ? 6 : isTaf ? 8 : 10;
             var confCol = confPts >= 8 ? 'var(--cat-vfr-color)' : confPts >= 5 ? 'var(--cat-mvfr-color)' : 'var(--cat-ifr-color)';
-            var confTxt = noLive ? 'Simulated stations present' : isMos ? 'GFS model (72h+ horizon)' : isTaf ? 'TAF forecast' : 'Live METAR';
+            var confTxt = noLive ? 'Simulated stations present' : isMos ? 'GFS model (72h+ horizon)' : isNws ? 'NWS 7-day forecast' : isTaf ? 'TAF forecast' : 'Live METAR';
             breakdown.push({ label: 'Data Quality', score: confPts, max: 10, icon: 'verified', color: confCol, detail: confTxt });
 
             // 6. Icing / freezing risk (0-10 pts)
@@ -1171,44 +1172,93 @@
             };
         }
 
+        // Pick the fetchNwsForecast day whose dateStr matches the target UTC time.
+        // Both this code and fetchNwsForecast use toLocaleDateString('en-US', …) so
+        // they produce the same string in the same browser timezone — no mismatch.
+        // Falls back to the first day when no exact date match exists.
+        function pickNwsDay(nwsDays, targetUtc) {
+            if (!nwsDays || !nwsDays.length) return null;
+            var target = targetUtc.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+            return nwsDays.find(d => d.dateStr === target) || nwsDays[0];
+        }
+
+        // Convert one fetchNwsForecast day object to the effectiveWx shape that
+        // calcDetailedScore and the briefing panel expect.
+        // • Wind speed: mph → knots (×0.869).  Direction is not in the NWS day
+        //   object so we use VRB; the score only uses wspd for wind penalties.
+        // • Ceiling/vis: inferred from the flight category that fetchNwsForecast
+        //   already assigned from the shortForecast text.
+        function nwsDayToEffectiveWx(day, icao) {
+            if (!day) return null;
+            var wspd = Math.round((day.ws || 0) * 0.869);
+            var catVis = { VFR: 'P6SM', MVFR: '4SM',   IFR: '1SM',   LIFR: '1/4SM' };
+            var catSky = { VFR: 'FEW030', MVFR: 'BKN020', IFR: 'OVC007', LIFR: 'OVC002' };
+            var cat = day.cat || 'VFR';
+            return {
+                raw:  `NWS 7-Day ${icao}`,
+                wind: `VRB${String(wspd).padStart(2, '0')}KT`,
+                wspd, cat,
+                vis: catVis[cat] || 'P6SM',
+                sky: catSky[cat] || 'CLR',
+            };
+        }
+
+        // Resolve airport coordinates — static dict first, live lookup as fallback.
+        async function resolveAptCoords(icao) {
+            var a = getAirport(icao);
+            return a || fetchAirportInfo(icao).catch(() => null);
+        }
+
         // Fetch and resolve weather for a trip at its departure time.
         // Returns effectiveWxData array compatible with calcDetailedScore:
-        //   TAF  — used when departure is 2–30 h away
-        //   MOS  — used when departure is >30 h away
-        //   METAR — used for current/past departures or as fallback
+        //   TAF   — departure 2–30 h away (exact period from AWC TAF)
+        //   NWS   — departure >30 h away, or TAF unavailable (NWS 7-day day-match)
+        //   METAR — current/past departures, or final fallback
         async function fetchEffectiveWxForTrip(trip, allPts) {
             var depApt = getAirport(trip.dep);
             var targetUtc = getTripTargetUtc(trip, depApt ? (depApt.tz || lonToIanaTz(depApt.lon)) : 'America/New_York');
             var hoursUntil = targetUtc ? (targetUtc.getTime() - Date.now()) / 3600000 : null;
 
             if (hoursUntil !== null && hoursUntil > 30) {
-                // Extended range — GFS MOS + METAR fallback
-                var [metarArr, mosArr] = await Promise.all([
+                // Extended range — NWS 7-day replaces the defunct MOS endpoint.
+                // METAR and NWS fetches run in parallel; NWS needs lat/lon so we
+                // resolve airport coords first (sync for static dict, async fallback).
+                var [metarArr, nwsArr] = await Promise.all([
                     Promise.all(allPts.map(icao => fetchLiveMetar(icao).catch(() => null))),
-                    Promise.all(allPts.map(icao => fetchLiveMos(icao).catch(() => null)))
+                    Promise.all(allPts.map(icao =>
+                        resolveAptCoords(icao).then(a =>
+                            a ? fetchNwsForecast(a.lat, a.lon).catch(() => null) : null
+                        )
+                    ))
                 ]);
                 return allPts.map((icao, idx) => {
-                    var m = metarArr[idx], mosObj = mosArr[idx];
+                    var m = metarArr[idx], nwsDays = nwsArr[idx];
                     var metarLive = !!m, metar = m || makeMetar(icao);
-                    if (mosObj) {
-                        var mosPeriod = parseMosForTime(mosObj, targetUtc);
-                        if (mosPeriod) {
-                            var mosWx = buildMosWx(mosPeriod, icao);
-                            if (mosWx) return { icao, effectiveWx: mosWx, metarLive, source: 'mos', sourceLabel: 'GFS Fcst' };
-                        }
+                    if (nwsDays) {
+                        var nwsWx = nwsDayToEffectiveWx(pickNwsDay(nwsDays, targetUtc), icao);
+                        if (nwsWx) return { icao, effectiveWx: nwsWx, metarLive, source: 'nws', sourceLabel: 'NWS 7-Day' };
                     }
-                    return { icao, effectiveWx: metar, metarLive, source: 'metar', sourceLabel: metarLive ? 'METAR (no model)' : 'No data' };
+                    return { icao, effectiveWx: metar, metarLive, source: 'metar', sourceLabel: metarLive ? 'METAR (no fcst)' : 'No data' };
                 }).filter(e => e.effectiveWx);
 
             } else if (hoursUntil !== null && hoursUntil > 2) {
-                // Near-future — TAF preferred, MOS fallback, then METAR
-                var [metarArr, tafArr, mosArr] = await Promise.all([
+                // Near-future — TAF preferred; NWS 7-day fallback for TAF-less airports.
+                // Round 1: METAR + TAF in parallel (TAF result determines who needs NWS).
+                var [metarArr, tafArr] = await Promise.all([
                     Promise.all(allPts.map(icao => fetchLiveMetar(icao).catch(() => null))),
-                    Promise.all(allPts.map(icao => fetchLiveTaf(icao).catch(() => null))),
-                    Promise.all(allPts.map(icao => fetchLiveMos(icao).catch(() => null)))
+                    Promise.all(allPts.map(icao => fetchLiveTaf(icao).catch(() => null)))
                 ]);
+                // Round 2: NWS only for airports whose TAF was unavailable or yielded
+                // no matching period — avoids unnecessary fetches when TAF is present.
+                var nwsArr = await Promise.all(allPts.map((icao, idx) => {
+                    var taf = tafArr[idx];
+                    if (taf && parseTafForTime(taf, targetUtc)) return Promise.resolve(null);
+                    return resolveAptCoords(icao).then(a =>
+                        a ? fetchNwsForecast(a.lat, a.lon).catch(() => null) : null
+                    );
+                }));
                 return allPts.map((icao, idx) => {
-                    var m = metarArr[idx], taf = tafArr[idx], mosObj = mosArr[idx];
+                    var m = metarArr[idx], taf = tafArr[idx], nwsDays = nwsArr[idx];
                     var metarLive = !!m, metar = m || makeMetar(icao);
                     if (taf) {
                         var tafWx = parseTafForTime(taf, targetUtc);
@@ -1217,13 +1267,10 @@
                             return { icao, effectiveWx: tafWx, metarLive, source: 'taf', sourceLabel: lbl };
                         }
                     }
-                    // No TAF (small airport) — try GFS MOS before falling back to live METAR
-                    if (mosObj) {
-                        var mosPeriod = parseMosForTime(mosObj, targetUtc);
-                        if (mosPeriod) {
-                            var mosWx = buildMosWx(mosPeriod, icao);
-                            if (mosWx) return { icao, effectiveWx: mosWx, metarLive, source: 'mos', sourceLabel: 'GFS Fcst' };
-                        }
+                    // No usable TAF — try NWS 7-day before falling back to live METAR
+                    if (nwsDays) {
+                        var nwsWx = nwsDayToEffectiveWx(pickNwsDay(nwsDays, targetUtc), icao);
+                        if (nwsWx) return { icao, effectiveWx: nwsWx, metarLive, source: 'nws', sourceLabel: 'NWS Fcst' };
                     }
                     return { icao, effectiveWx: metar, metarLive, source: 'metar', sourceLabel: metarLive ? 'METAR (no fcst)' : 'No data' };
                 }).filter(e => e.effectiveWx);
