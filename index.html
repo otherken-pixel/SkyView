@@ -2241,16 +2241,13 @@
 
                 var concerns = [];
 
-                // ── MOS/forecast coverage warnings ──────────────────────────────────
+                // ── MOS/forecast coverage warnings (very long-range only) ───────────
                 if (isFutureFlight) {
                     effectiveWxData.forEach(e => {
                         if (e.source === 'metar' && hoursUntilTrip > 30) {
                             concerns.push({ level: 'medium', icon: 'update', text: `${e.icao}: GFS MOS forecast unavailable — showing current METAR only (beyond TAF range)` });
-                        } else if (e.source === 'metar' && hoursUntilTrip > 2 && !e.taf && e.metarLive) {
-                            // Only flag missing TAF when we have a real live METAR — simulated stations
-                            // already show the (sim) label; no need to double-warn
-                            concerns.push({ level: 'medium', icon: 'cloud_off', text: `${e.icao}: No TAF available — showing current METAR; verify conditions closer to departure` });
                         }
+                        // "No TAF" is already shown in the weather source label — omit from Key Concerns
                     });
                 }
 
@@ -2706,13 +2703,22 @@
                                 })}
                             </div>
 
-                            {/* Key concerns */}
-                            {finalVerdict.concerns.length > 0 && (
-                                <div style={{ background: 'var(--md-sys-color-surface-container)', borderRadius: 16, padding: 16, marginBottom: 16 }}>
-                                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
-                                        <MdIcon name="warning" style={{ color: 'var(--md-sys-color-error)', fontSize: 18 }} />
-                                        <span style={{ fontWeight: 700, fontSize: 13, textTransform: 'uppercase', letterSpacing: '0.5px', color: 'var(--md-sys-color-error)' }}>Key Concerns</span>
+                            {/* Key concerns — always shown; positive message when conditions are clear */}
+                            <div style={{ background: 'var(--md-sys-color-surface-container)', borderRadius: 16, padding: 16, marginBottom: 16 }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
+                                    <MdIcon name={finalVerdict.concerns.length > 0 ? 'warning' : 'check_circle'}
+                                        style={{ color: finalVerdict.concerns.length > 0 ? 'var(--md-sys-color-error)' : 'var(--cat-vfr-color)', fontSize: 18 }} />
+                                    <span style={{ fontWeight: 700, fontSize: 13, textTransform: 'uppercase', letterSpacing: '0.5px',
+                                        color: finalVerdict.concerns.length > 0 ? 'var(--md-sys-color-error)' : 'var(--cat-vfr-color)' }}>Key Concerns</span>
+                                </div>
+                                {finalVerdict.concerns.length === 0 ? (
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                                        <MdIcon name="check_circle" style={{ fontSize: 17, color: 'var(--cat-vfr-color)', flexShrink: 0 }} />
+                                        <span style={{ fontSize: 13, color: 'var(--md-sys-color-on-surface)', lineHeight: 1.45 }}>
+                                            No flight concerns identified — conditions look good across all route airports.
+                                        </span>
                                     </div>
+                                ) : (
                                     <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
                                         {finalVerdict.concerns.map((c, i) => (
                                             <div key={i} style={{ display: 'flex', alignItems: 'flex-start', gap: 10 }}>
@@ -2721,8 +2727,8 @@
                                             </div>
                                         ))}
                                     </div>
-                                </div>
-                            )}
+                                )}
+                            </div>
 
                             {/* ---- Windy.com visual forecast (shown for GFS model trips >30h) ---- */}
                             {finalVerdict.anyMos && (
