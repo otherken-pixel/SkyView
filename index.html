@@ -2007,7 +2007,7 @@
             );
         }
 
-        function BriefingPanel({ trip }) {
+        function BriefingPanel({ trip, onScoreUpdate }) {
             // --- Auto-briefing state ---
             var [wxData, setWxData] = useState(null);
             var [loadingWx, setLoadingWx] = useState(true);
@@ -2358,6 +2358,11 @@
                 if (!effectiveWxData) return null;
                 return calcDetailedScore(effectiveWxData, routeDist);
             }, [effectiveWxData, routeDist]);
+
+            // Propagate the authoritative score up to the trip header ring
+            useEffect(function() {
+                if (detailedScore && onScoreUpdate) onScoreUpdate(detailedScore.total);
+            }, [detailedScore && detailedScore.total]);
 
             // finalVerdict: convective SIGMET or CWA thunderstorm overrides weather-based verdict
             var finalVerdict = useMemo(function() {
@@ -3441,7 +3446,10 @@
 
                                         {/* Scrollable Tab Content */}
                                         <div className="briefing-content" style={{ flex: 1, overflowY: "auto", padding: "24px", maxWidth: "900px", margin: "0 auto", width: "100%" }}>
-                                            {tab === "brief" && <BriefingPanel trip={activeTrip} />}
+                                            {tab === "brief" && <BriefingPanel trip={activeTrip} onScoreUpdate={score => {
+                                                setActiveTrip(prev => prev ? { ...prev, goScore: score } : prev);
+                                                setTrips(prev => prev.map(t => t.id === activeTrip.id ? { ...t, goScore: score } : t));
+                                            }} />}
                                             
                                             {tab === "wx" && (
                                                 <div style={{display: 'flex', flexDirection: 'column', gap: '24px'}}>
