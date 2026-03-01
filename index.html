@@ -282,23 +282,7 @@
             .briefing-content { padding: 16px 12px 80px !important; }
         }
 
-        /* ── Print: hide everything except the export region ───────────────── */
-        @media print {
-            .no-print { display: none !important; }
-            body * { visibility: hidden; }
-            #export-printable, #export-printable * { visibility: visible; }
-            #export-printable {
-                position: fixed;
-                top: 0; left: 0; right: 0;
-                background: #fff;
-                color: #1a1a1a;
-                font-family: Roboto, Arial, sans-serif;
-                z-index: 9999;
-                border: none !important;
-                border-radius: 0 !important;
-            }
-            @page { size: A4 portrait; margin: 12mm 15mm; }
-        }
+        /* Print styles live in the standalone tab opened by handlePrint(), not here. */
     </style>
 </head>
 <body>
@@ -4022,15 +4006,45 @@
                                                 var cell = { fontSize: 13, padding: '7px 10px', borderBottom: '1px solid #e8e8e8' };
                                                 var cellHd = { ...cell, fontSize: 10, fontWeight: 700, color: '#777', background: '#f5f5f5', textTransform: 'uppercase', letterSpacing: '0.5px' };
 
+                                                // Opens the printable brief in a standalone tab so that
+                                                // window.print() never runs inside the SPA.  On iOS Safari,
+                                                // calling print() in-page blanks the SPA and leaves no back
+                                                // button; opening a new tab means closing it always returns
+                                                // the user to the briefing panel cleanly.
+                                                function handlePrint() {
+                                                    var el = document.getElementById('export-printable');
+                                                    if (!el) return;
+                                                    // On desktop, auto-trigger the print dialog in the new tab.
+                                                    // On touch-only devices (iOS/Android) skip the auto-trigger
+                                                    // so the user can share/print via the native sheet instead.
+                                                    var isMobile = navigator.maxTouchPoints > 1;
+                                                    var html = '<!DOCTYPE html><html><head>' +
+                                                        '<meta charset="UTF-8">' +
+                                                        '<meta name="viewport" content="width=device-width,initial-scale=1">' +
+                                                        '<title>Flight Brief</title>' +
+                                                        '<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;700;900&display=swap">' +
+                                                        '<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200">' +
+                                                        '<style>body{margin:0;padding:16px;background:#f5f5f5;}' +
+                                                        '@media print{body{padding:0;background:#fff;}}</style>' +
+                                                        '</head><body>' +
+                                                        el.outerHTML +
+                                                        (isMobile ? '' : '<scr' + 'ipt>window.onload=function(){window.print();}<\/scr' + 'ipt>') +
+                                                        '</body></html>';
+                                                    var win = window.open('', '_blank');
+                                                    if (!win) { window.print(); return; } // popup blocked — last resort
+                                                    win.document.write(html);
+                                                    win.document.close();
+                                                }
+
                                                 return (
                                                     <div>
-                                                        {/* Toolbar — hidden when printing */}
-                                                        <div className="no-print" style={{ display: 'flex', alignItems: 'center', gap: 16, paddingBottom: 20, flexWrap: 'wrap' }}>
-                                                            <button onClick={() => window.print()} style={{ display: 'flex', alignItems: 'center', gap: 8, background: '#0b57d0', color: '#fff', border: 'none', borderRadius: 20, padding: '10px 24px', fontSize: 14, fontWeight: 600, cursor: 'pointer', boxShadow: '0 2px 8px rgba(11,87,208,0.3)' }}>
+                                                        {/* Toolbar */}
+                                                        <div style={{ display: 'flex', alignItems: 'center', gap: 16, paddingBottom: 20, flexWrap: 'wrap' }}>
+                                                            <button onClick={handlePrint} style={{ display: 'flex', alignItems: 'center', gap: 8, background: '#0b57d0', color: '#fff', border: 'none', borderRadius: 20, padding: '10px 24px', fontSize: 14, fontWeight: 600, cursor: 'pointer', boxShadow: '0 2px 8px rgba(11,87,208,0.3)' }}>
                                                                 <MdIcon name="print" style={{ fontSize: 18 }} /> Print / Save as PDF
                                                             </button>
                                                             <span style={{ fontSize: 12, color: 'var(--md-sys-color-on-surface-variant)', lineHeight: 1.5 }}>
-                                                                Choose <strong>Save as PDF</strong> in the print dialog to export a file.
+                                                                Opens in a new tab. On mobile use <strong>Share → Print</strong>; on desktop choose <strong>Save as PDF</strong>.
                                                             </span>
                                                         </div>
 
