@@ -1058,19 +1058,28 @@
                 }).filter(e => e.effectiveWx);
 
             } else if (hoursUntil !== null && hoursUntil > 2) {
-                // Near-future — TAF + METAR fallback
-                var [metarArr, tafArr] = await Promise.all([
+                // Near-future — TAF preferred, MOS fallback, then METAR
+                var [metarArr, tafArr, mosArr] = await Promise.all([
                     Promise.all(allPts.map(icao => fetchLiveMetar(icao).catch(() => null))),
-                    Promise.all(allPts.map(icao => fetchLiveTaf(icao).catch(() => null)))
+                    Promise.all(allPts.map(icao => fetchLiveTaf(icao).catch(() => null))),
+                    Promise.all(allPts.map(icao => fetchLiveMos(icao).catch(() => null)))
                 ]);
                 return allPts.map((icao, idx) => {
-                    var m = metarArr[idx], taf = tafArr[idx];
+                    var m = metarArr[idx], taf = tafArr[idx], mosObj = mosArr[idx];
                     var metarLive = !!m, metar = m || makeMetar(icao);
                     if (taf) {
                         var tafWx = parseTafForTime(taf, targetUtc);
                         if (tafWx) return { icao, effectiveWx: tafWx, metarLive, source: 'taf', sourceLabel: 'TAF' };
                     }
-                    return { icao, effectiveWx: metar, metarLive, source: 'metar', sourceLabel: metarLive ? 'METAR (no TAF)' : 'No data' };
+                    // No TAF (small airport) — try GFS MOS before falling back to live METAR
+                    if (mosObj) {
+                        var mosPeriod = parseMosForTime(mosObj, targetUtc);
+                        if (mosPeriod) {
+                            var mosWx = buildMosWx(mosPeriod, icao);
+                            if (mosWx) return { icao, effectiveWx: mosWx, metarLive, source: 'mos', sourceLabel: 'GFS Fcst' };
+                        }
+                    }
+                    return { icao, effectiveWx: metar, metarLive, source: 'metar', sourceLabel: metarLive ? 'METAR (no fcst)' : 'No data' };
                 }).filter(e => e.effectiveWx);
 
             } else {
@@ -2233,12 +2242,20 @@
                             // MOS unavailable — fall back to current METAR with note
                             return { ...w, effectiveWx: w.metar, source: 'metar', sourceLabel: 'METAR (no model)' + simSuffix };
                         }
-                        // 2–30 h: TAF is the best source
+                        // 2–30 h: TAF preferred, GFS MOS fallback (for airports with no TAF), then METAR
                         if (w.taf) {
                             var tafWx = parseTafForTime(w.taf, tripTargetUtc);
                             if (tafWx) return { ...w, effectiveWx: tafWx, source: 'taf', sourceLabel: `TAF ${hh}${mm}Z` };
                         }
-                        return { ...w, effectiveWx: w.metar, source: 'metar', sourceLabel: 'METAR (no TAF)' + simSuffix };
+                        var mosObj2 = mosData[w.icao];
+                        if (mosObj2) {
+                            var mosPeriod2 = parseMosForTime(mosObj2, tripTargetUtc);
+                            if (mosPeriod2) {
+                                var mosWx2 = buildMosWx(mosPeriod2, w.icao);
+                                if (mosWx2) return { ...w, effectiveWx: mosWx2, source: 'mos', sourceLabel: 'GFS Fcst' };
+                            }
+                        }
+                        return { ...w, effectiveWx: w.metar, source: 'metar', sourceLabel: 'METAR (no fcst)' + simSuffix };
                     }
                     // Trip is current/imminent — live METAR is the best data
                     return { ...w, effectiveWx: w.metar, source: 'metar', sourceLabel: 'METAR' + simSuffix };
