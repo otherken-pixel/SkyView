@@ -643,7 +643,7 @@
                     const data = await res.json();
                     if (!Array.isArray(data) || data.length === 0) return null;
                     var obj = data[0];
-                    return (obj && (obj.forecast || obj.rawTAF)) ? obj : null;
+                    return (obj && (obj.fcsts || obj.forecast || obj.rawTAF)) ? obj : null;
                 } catch(e) { return null; }
             }
             // Try the exact station first
@@ -1068,9 +1068,9 @@
         //            (tafTs(timeFrom) ≤ targetTs < tafTs(timeTo)) AND is worse.
         //            PROB30/PROB40 groups are never applied.
         function parseTafForTime(tafObj, targetUtc) {
-            if (!tafObj || !tafObj.forecast || !tafObj.forecast.length) return null;
+            var periods = tafObj.fcsts || tafObj.forecast;
+            if (!tafObj || !periods || !periods.length) return null;
             var targetTs = targetUtc.getTime() / 1000;
-            var periods  = tafObj.forecast;
             var icao     = tafObj.stationId || '';
 
             function rank(period) {
