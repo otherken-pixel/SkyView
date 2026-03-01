@@ -633,16 +633,48 @@
         async function fetchLiveTaf(icao) {
             if (!icao) return null;
             icao = icao.trim().toUpperCase();
+            // Try the exact station first
             try {
                 const res = await timeoutFetch(
                     `https://aviationweather.gov/api/data/taf?ids=${icao}&format=json`,
                     {}, 8000
                 );
-                if (!res.ok) return null;
-                const data = await res.json();
-                if (!Array.isArray(data) || data.length === 0) return null;
-                var obj = data[0];
-                return (obj && (obj.forecast || obj.rawTAF)) ? obj : null;
+                if (res.ok) {
+                    const data = await res.json();
+                    if (Array.isArray(data) && data.length > 0) {
+                        var obj = data[0];
+                        if (obj && (obj.forecast || obj.rawTAF)) return obj;
+                    }
+                }
+            } catch(e) {}
+            // No TAF issued for this station (common for small GA airports).
+            // Search for the nearest TAF-issuing station within ~25 nm using a bbox query,
+            // the same approach ForeFlight uses when it shows e.g. "KCLT TAF 14 nm NE".
+            var apt = getAirport(icao);
+            if (!apt) return null;
+            var dlat = 0.42;
+            var dlon = 0.42 / Math.max(Math.cos(apt.lat * Math.PI / 180), 0.1);
+            var bbox = [apt.lat - dlat, apt.lon - dlon, apt.lat + dlat, apt.lon + dlon]
+                           .map(n => n.toFixed(3)).join(',');
+            try {
+                const res2 = await timeoutFetch(
+                    `https://aviationweather.gov/api/data/taf?bbox=${bbox}&format=json`,
+                    {}, 8000
+                );
+                if (!res2.ok) return null;
+                const data2 = await res2.json();
+                if (!Array.isArray(data2) || data2.length === 0) return null;
+                var candidates = data2.filter(t => t && (t.forecast || t.rawTAF) && t.stationId !== icao);
+                if (!candidates.length) return null;
+                // Pick the geographically closest station
+                var nearest = candidates.reduce((best, t) => {
+                    if (t.lat == null || t.lon == null) return best;
+                    var d = Math.hypot(t.lat - apt.lat, t.lon - apt.lon);
+                    return (!best || d < best.d) ? { t, d } : best;
+                }, null);
+                var result = nearest ? nearest.t : candidates[0];
+                // Tag with _nearbyStation so callers can label it correctly
+                return { ...result, _nearbyStation: result.stationId };
             } catch(e) { return null; }
         }
 
@@ -1069,7 +1101,10 @@
                     var metarLive = !!m, metar = m || makeMetar(icao);
                     if (taf) {
                         var tafWx = parseTafForTime(taf, targetUtc);
-                        if (tafWx) return { icao, effectiveWx: tafWx, metarLive, source: 'taf', sourceLabel: 'TAF' };
+                        if (tafWx) {
+                            var lbl = taf._nearbyStation ? `TAF ${taf._nearbyStation}` : 'TAF';
+                            return { icao, effectiveWx: tafWx, metarLive, source: 'taf', sourceLabel: lbl };
+                        }
                     }
                     // No TAF (small airport) — try GFS MOS before falling back to live METAR
                     if (mosObj) {
@@ -2245,7 +2280,12 @@
                         // 2–30 h: TAF preferred, GFS MOS fallback (for airports with no TAF), then METAR
                         if (w.taf) {
                             var tafWx = parseTafForTime(w.taf, tripTargetUtc);
-                            if (tafWx) return { ...w, effectiveWx: tafWx, source: 'taf', sourceLabel: `TAF ${hh}${mm}Z` };
+                            if (tafWx) {
+                                var tafLbl = w.taf._nearbyStation
+                                    ? `TAF ${w.taf._nearbyStation} ${hh}${mm}Z`
+                                    : `TAF ${hh}${mm}Z`;
+                                return { ...w, effectiveWx: tafWx, source: 'taf', sourceLabel: tafLbl };
+                            }
                         }
                         var mosObj2 = mosData[w.icao];
                         if (mosObj2) {
