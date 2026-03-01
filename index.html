@@ -981,7 +981,10 @@
             var wspd = fp.wspd || 0, wdir = fp.wdir || 0, wgst = fp.wgst || 0;
             var wdirStr = wdir === 0 ? "VRB" : String(wdir).padStart(3, "0");
             var wind = `${wdirStr}${String(wspd).padStart(2,"0")}${wgst > 0 ? "G" + String(wgst).padStart(2,"0") : ""}KT`;
-            var visib = fp.visib != null ? fp.visib : 6;
+            // AWC returns visib as a string like "6+", "3", "1/2" — parseFloat handles
+            // all of these: "6+" → 6, "3" → 3, "1/2" → 0.5.  Numeric values pass through.
+            var visib = fp.visib != null ? parseFloat(fp.visib) : 6;
+            if (isNaN(visib)) visib = 6;
             var vis = visib >= 6 ? "P6SM" : `${visib}SM`;
             var skyArr = fp.skyCondition || [];
             var skyStr = skyArr.length > 0
@@ -1001,17 +1004,48 @@
             return { raw: `TAF ${icao || ''}`, wind, vis, sky: skyStr, cat, wspd };
         }
 
-        // Find the TAF period that covers a target UTC date, return weather object
+        // Convert AWC TAF time field to Unix seconds.
+        // AWC returns timeFrom/timeTo as ISO-8601 strings ("2026-03-02T09:00:00Z") even
+        // though the old ADDS API used integer seconds.  Comparing an ISO string directly
+        // against a numeric Unix timestamp gives NaN (always false), so we must coerce.
+        function tafTs(t) {
+            if (t == null) return null;
+            if (typeof t === 'number') return t;
+            var d = new Date(t);
+            return isNaN(d.getTime()) ? null : d.getTime() / 1000;
+        }
+
+        // Find the TAF period that covers a target UTC date, return weather object.
+        // Step 1: find the base FM period whose window contains targetTs.
+        // Step 2: if a TEMPO is active at targetTs and is worse, use that instead.
         function parseTafForTime(tafObj, targetUtc) {
             if (!tafObj || !tafObj.forecast || !tafObj.forecast.length) return null;
             var targetTs = targetUtc.getTime() / 1000;
             var periods = tafObj.forecast;
-            // Walk forward and keep the last period whose start ≤ targetTs
-            var active = null;
+            var catRank = { VFR: 0, MVFR: 1, IFR: 2, LIFR: 3 };
+
+            // Step 1: last FM/base period whose start ≤ targetTs (these set the persistent fcst)
+            var base = null;
             for (var p of periods) {
-                if (p.timeFrom != null && p.timeFrom <= targetTs) active = p;
+                var ci = (p.changeIndicator || '').toUpperCase();
+                if (ci === 'TEMPO' || ci === 'PROB30' || ci === 'PROB40') continue;
+                var ft = tafTs(p.timeFrom);
+                if (ft !== null && ft <= targetTs) base = p;
             }
-            if (!active) active = periods[0]; // Default to first if trip precedes TAF start
+            if (!base) base = periods[0];
+
+            // Step 2: apply any active TEMPO that is worse than the base (conservative go/no-go)
+            var active = base;
+            for (var p of periods) {
+                if ((p.changeIndicator || '').toUpperCase() !== 'TEMPO') continue;
+                var ft = tafTs(p.timeFrom), tt = tafTs(p.timeTo);
+                if (ft == null || tt == null) continue;
+                if (ft <= targetTs && targetTs < tt) {
+                    var tempoCat  = (parseTafPeriod(p,    tafObj.stationId || '') || {}).cat || 'VFR';
+                    var activeCat = (parseTafPeriod(active, tafObj.stationId || '') || {}).cat || 'VFR';
+                    if ((catRank[tempoCat] || 0) > (catRank[activeCat] || 0)) active = p;
+                }
+            }
             return parseTafPeriod(active, tafObj.stationId || "");
         }
 
