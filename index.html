@@ -2382,6 +2382,10 @@
             // Extended forecast from GFS MOS (>30h trips)
             var [mosData, setMosData] = useState({});   // { ICAO: mosObj }
             var [loadingMos, setLoadingMos] = useState(false);
+            // NWS 7-day forecast — fallback for 2-30h trips when the TAF doesn't
+            // reach all the way to the departure time (e.g. departure is 22h out
+            // but the current TAF was issued ~4h ago and expires in 20h).
+            var [nwsData, setNwsData] = useState({});   // { ICAO: nwsDays[] }
 
             // --- AI Enhanced section state ---
             var [aiResult, setAiResult] = useState(null);
@@ -2473,6 +2477,22 @@
                 }).catch(() => { setMosData({}); setLoadingMos(false); });
             }, [allRoutePts.join(',')]);
 
+            // Fetch NWS 7-day forecast — used as fallback when the TAF doesn't
+            // cover the departure time, mirroring fetchEffectiveWxForTrip's logic.
+            useEffect(() => {
+                setNwsData({});
+                Promise.all(allRoutePts.map(async icao => {
+                    var a = await resolveAptCoords(icao).catch(() => null);
+                    if (!a) return [icao, null];
+                    var nws = await fetchNwsForecast(a.lat, a.lon).catch(() => null);
+                    return [icao, nws];
+                })).then(entries => {
+                    var result = {};
+                    entries.forEach(([icao, nws]) => { if (nws) result[icao] = nws; });
+                    setNwsData(result);
+                }).catch(() => setNwsData({}));
+            }, [allRoutePts.join(',')]);
+
             // Fetch SIGMETs, G-AIRMETs, CWAs, and Winds Aloft once on mount
             useEffect(() => {
                 setLoadingAdvisory(true);
@@ -2543,12 +2563,21 @@
                                 if (mosWx2) return { ...w, effectiveWx: mosWx2, source: 'mos', sourceLabel: 'GFS Fcst' };
                             }
                         }
+                        // NWS 7-day is the last resort before falling back to the
+                        // current METAR.  This mirrors fetchEffectiveWxForTrip and
+                        // is the key fallback when the TAF doesn't reach the departure
+                        // time (e.g. trip is 22h out but the TAF expires in 20h).
+                        var nwsDays = nwsData[w.icao];
+                        if (nwsDays) {
+                            var nwsWx = nwsDayToEffectiveWx(pickNwsDay(nwsDays, tripTargetUtc), w.icao);
+                            if (nwsWx) return { ...w, effectiveWx: nwsWx, source: 'nws', sourceLabel: 'NWS Fcst' };
+                        }
                         return { ...w, effectiveWx: w.metar, source: 'metar', sourceLabel: 'METAR (no fcst)' + simSuffix };
                     }
                     // Trip is current/imminent — live METAR is the best data
                     return { ...w, effectiveWx: w.metar, source: 'metar', sourceLabel: 'METAR' + simSuffix };
                 });
-            }, [wxData, mosData, tripTargetUtc, hoursUntilTrip]);
+            }, [wxData, mosData, nwsData, tripTargetUtc, hoursUntilTrip]);
 
             // --- Helpers ---
             function parseCeiling(sky) {
