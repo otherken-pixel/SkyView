@@ -525,72 +525,87 @@
         }
 
         // Derive VFR/MVFR/IFR/LIFR from raw ceiling array and visibility miles
-        // Used as fallback when the API doesn't return an fltcat field
-        function deriveCat(skyArr, visibMi) {
-            var ceiling = null;
-            (Array.isArray(skyArr) ? skyArr : []).forEach(function(s) {
-                if (s && (s.skyCover === 'BKN' || s.skyCover === 'OVC') && s.cloudBase != null) {
-                    if (ceiling === null || s.cloudBase < ceiling) ceiling = s.cloudBase;
-                }
-            });
-            var v = visibMi != null ? visibMi : 10;
-            if ((ceiling !== null && ceiling < 500) || v < 1) return 'LIFR';
-            if ((ceiling !== null && ceiling < 1000) || v < 3) return 'IFR';
-            if ((ceiling !== null && ceiling < 3000) || v < 5) return 'MVFR';
+        // Derive VFR/MVFR/IFR/LIFR from ceiling (feet, or null = clear) and visibility (statute miles)
+        function deriveCat(ceilingFt, visMi) {
+            var v = visMi != null ? visMi : 10;
+            var c = ceilingFt; // null = no ceiling (SKC/CLR/FEW)
+            if ((c !== null && c < 500)  || v < 1) return 'LIFR';
+            if ((c !== null && c < 1000) || v < 3) return 'IFR';
+            if ((c !== null && c < 3000) || v < 5) return 'MVFR';
             return 'VFR';
         }
 
-        // Fetch live METAR from Aviation Weather Center API
+        // Fetch live METAR via NWS api.weather.gov — proper CORS support, no API key needed.
+        // aviationweather.gov omits Access-Control-Allow-Origin, making it unusable from browsers.
         async function fetchLiveMetar(icao) {
             if (!icao) return null;
             icao = icao.trim().toUpperCase();
             try {
+                // NWS requires Accept header but NOT a custom User-Agent (that triggers CORS preflight failure)
                 const res = await timeoutFetch(
-                    `https://aviationweather.gov/api/data/metar?ids=${icao}&format=json&hours=2`,
-                    {}, 8000
+                    `https://api.weather.gov/stations/${icao}/observations/latest`,
+                    { headers: { 'Accept': 'application/geo+json' } },
+                    10000
                 );
-                if (!res.ok) { console.warn('[METAR] HTTP error', res.status, 'for', icao); return null; }
+                if (!res.ok) { console.warn('[METAR] NWS HTTP', res.status, icao); return null; }
                 const data = await res.json();
-                // Guard: API must return a non-empty array; some error responses are plain objects
-                if (!Array.isArray(data) || data.length === 0) {
-                    console.warn('[METAR] Empty or non-array response for', icao, data);
-                    return null;
+                const p = data && data.properties;
+                if (!p) return null;
+
+                // Wind — NWS returns speed in km_h-1 or m_s-1 depending on version
+                function nwsKts(ws) {
+                    if (!ws || ws.value == null) return 0;
+                    const u = ws.unitCode || '';
+                    if (u.includes('km_h') || u.includes('kmh')) return Math.round(ws.value / 1.852);
+                    if (u.includes('mi_h') || u.includes('mph')) return Math.round(ws.value * 0.868976);
+                    return Math.round(ws.value * 1.944); // assume m/s
                 }
-                const m = data[0];
-                if (!m || typeof m !== 'object') return null;
-                const wspd = m.wspd || 0;
-                // AviationWeather.gov uses wdir=990 for light-and-variable
-                const wdirRaw = m.wdir != null ? m.wdir : 0;
-                const wdir = wdirRaw;
-                const wgst = m.wgst || 0;
-                const visib = m.visib != null ? m.visib : 10;
-                const temp = m.temp != null ? m.temp : 15;
-                const dewp = m.dewp != null ? m.dewp : 5;
-                const altim = m.altim || 29.92;
-                const isVrb = (wdirRaw === 0 || wdirRaw === 990);
-                const wdirStr = isVrb ? "VRB" : String(wdirRaw).padStart(3, "0");
-                const wspdStr = String(wspd).padStart(2, "0");
-                const gustStr = wgst > 0 ? `G${String(wgst).padStart(2, "0")}` : "";
-                const wind = `${wdirStr}${wspdStr}${gustStr}KT`;
-                const visStr = visib >= 6 ? "P6SM" : `${visib}SM`;
-                let skyStr = "CLR";
-                const skyArr = Array.isArray(m.skyCondition) ? m.skyCondition : [];
-                if (skyArr.length > 0) {
-                    skyStr = skyArr.map(s => {
-                        if (!s || !s.skyCover) return '';
-                        return `${s.skyCover}${s.cloudBase ? String(Math.round(s.cloudBase / 100)).padStart(3, "0") : ""}`;
-                    }).filter(Boolean).join(" ") || "CLR";
+                const wspd   = nwsKts(p.windSpeed);
+                const wgst   = nwsKts(p.windGust);
+                const wdirRaw = (p.windDirection && p.windDirection.value != null) ? Math.round(p.windDirection.value) : 0;
+                const isVrb  = (wspd === 0 && wdirRaw === 0);
+                const wdirStr = isVrb ? 'VRB' : String(wdirRaw).padStart(3, '0');
+                const wind   = `${wdirStr}${String(wspd).padStart(2,'0')}${wgst > 0 ? 'G'+String(wgst).padStart(2,'0') : ''}KT`;
+
+                // Visibility — NWS returns meters
+                const visM  = (p.visibility && p.visibility.value != null) ? p.visibility.value : 16093;
+                const visMi = visM / 1609.34;
+                const visStr = visMi >= 6 ? 'P6SM' : `${Math.round(visMi)}SM`;
+
+                // Cloud layers — base in meters, amount as SKC/CLR/FEW/SCT/BKN/OVC/VV
+                const coverMap = { CLR:'CLR', SKC:'CLR', NSC:'CLR', CAVOK:'CLR',
+                                   FEW:'FEW', SCT:'SCT', BKN:'BKN', OVC:'OVC', VV:'OVC' };
+                const layers = Array.isArray(p.cloudLayers) ? p.cloudLayers : [];
+                let skyStr = 'CLR', ceilingFt = null;
+                if (layers.length > 0) {
+                    const parts = layers.map(layer => {
+                        const cover  = coverMap[layer.amount] || layer.amount || '';
+                        const baseM  = (layer.base && layer.base.value != null) ? layer.base.value : null;
+                        const baseFt = baseM != null ? Math.round(baseM * 3.281) : null;
+                        if ((cover === 'BKN' || cover === 'OVC') && baseFt != null)
+                            if (ceilingFt === null || baseFt < ceilingFt) ceilingFt = baseFt;
+                        if (cover === 'CLR') return '';
+                        return `${cover}${baseFt != null ? String(Math.round(baseFt/100)).padStart(3,'0') : ''}`;
+                    }).filter(Boolean);
+                    if (parts.length > 0) skyStr = parts.join(' ');
                 }
-                const tI = Math.round(temp), dI = Math.round(dewp);
-                const tempStr = `${tI < 0 ? "M" : ""}${Math.abs(tI) < 10 ? "0" : ""}${Math.abs(tI)}/${dI < 0 ? "M" : ""}${Math.abs(dI) < 10 ? "0" : ""}${Math.abs(dI)}`;
-                const altStr = `A${String(Math.round(altim * 100)).padStart(4, "0")}`;
-                // fltcat is the field name in the AWC API; fall back to deriving from ceiling/vis
-                const fltcat = m.fltcat || m.flightCategory || m.flight_category;
-                const cat = fltcat || deriveCat(skyArr, visib);
+
+                // Temperature / Dewpoint (Celsius)
+                const tempC = (p.temperature && p.temperature.value != null) ? p.temperature.value : 15;
+                const dewpC = (p.dewpoint  && p.dewpoint.value  != null) ? p.dewpoint.value  : 5;
+                const tI = Math.round(tempC), dI = Math.round(dewpC);
+                const tempStr = `${tI<0?'M':''}${Math.abs(tI)<10?'0':''}${Math.abs(tI)}/${dI<0?'M':''}${Math.abs(dI)<10?'0':''}${Math.abs(dI)}`;
+
+                // Altimeter — NWS returns barometric pressure in Pascals
+                const pressurePa = (p.barometricPressure && p.barometricPressure.value != null)
+                    ? p.barometricPressure.value : 101325;
+                const altStr = `A${String(Math.round(pressurePa / 3386.39 * 100)).padStart(4,'0')}`;
+
                 return {
-                    raw: m.rawOb || m.rawob || `${icao} LIVE METAR`,
+                    raw:  p.rawMessage || `${icao} METAR`,
                     wind, vis: visStr, sky: skyStr, temp: tempStr, alt: altStr,
-                    cat, wspd, wdir: (!isVrb && wdirRaw > 0) ? wdirRaw : null
+                    cat:  deriveCat(ceilingFt, visMi),
+                    wspd, wdir: (!isVrb && wdirRaw > 0) ? wdirRaw : null
                 };
             } catch(e) { console.warn('[METAR] Exception for', icao, e); return null; }
         }
