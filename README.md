@@ -1,6 +1,6 @@
-SkyClear Aviation Dashboard ✈️
+FlightScore ✈️
 
-SkyClear is a single-page, React-based aviation trip planning dashboard. It provides pilots with live weather data (METARs/TAFs from AviationWeather.gov), NWS 7-day forecasts, an interactive Windy.com radar map, NOTAMs, frequency guides, route mapping, and AI-powered flight briefings via Claude—all wrapped in a modern Material Design 3 (Material You) interface.
+FlightScore is a single-page, React-based aviation trip planning dashboard. It provides pilots with live weather data (METARs/TAFs from AviationWeather.gov), NWS 7-day forecasts, an interactive Windy.com radar map, NOTAMs, frequency guides, route mapping, and AI-powered flight briefings via Claude—all wrapped in a modern Material Design 3 (Material You) interface.
 
 🌟 Features
 

@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>SkyClear Aviation Dashboard</title>
+    <title>FlightScore</title>
     <!-- React & ReactDOM -->
     <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
@@ -2925,7 +2925,7 @@
                 var url = URL.createObjectURL(blob);
                 var a = Object.assign(document.createElement('a'), {
                     href: url,
-                    download: 'skyclear-trips-' + new Date().toISOString().slice(0, 10) + '.json'
+                    download: 'flightscore-trips-' + new Date().toISOString().slice(0, 10) + '.json'
                 });
                 document.body.appendChild(a);
                 a.click();
@@ -2999,7 +2999,7 @@
 
             // Dark mode: JS toggle overrides system @media preference
             var [darkMode, setDarkMode] = useState(function() {
-                var saved = localStorage.getItem('skyclear_theme');
+                var saved = localStorage.getItem('flightscore_theme');
                 if (saved === 'dark') return true;
                 if (saved === 'light') return false;
                 return !!(window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches);
@@ -3007,13 +3007,13 @@
             useEffect(function() {
                 document.body.classList.toggle('dark-theme', darkMode);
                 document.body.classList.toggle('light-theme', !darkMode);
-                localStorage.setItem('skyclear_theme', darkMode ? 'dark' : 'light');
+                localStorage.setItem('flightscore_theme', darkMode ? 'dark' : 'light');
             }, [darkMode]);
 
             // Trips — initialized from localStorage, falling back to sample trips
             var [trips, setTrips] = useState(() => {
                 try {
-                    var saved = localStorage.getItem('skyclear_trips');
+                    var saved = localStorage.getItem('flightscore_trips');
                     if (saved) return JSON.parse(saved);
                 } catch(e) {}
                 return [
@@ -3056,7 +3056,7 @@
 
             // Persist trips to localStorage on every change
             useEffect(() => {
-                try { localStorage.setItem('skyclear_trips', JSON.stringify(trips)); } catch(e) {}
+                try { localStorage.setItem('flightscore_trips', JSON.stringify(trips)); } catch(e) {}
             }, [trips]);
 
             // Handle #share= URL hash — offer to import a shared trip on load
@@ -3212,7 +3212,7 @@
                             ) : (
                                 <MdIcon name="flight" style={{ color: 'var(--md-sys-color-primary)', fontSize: 28, marginLeft: 8 }} />
                             )}
-                            <div style={{ fontSize: 22, fontWeight: 500 }}>SkyClear</div>
+                            <div style={{ fontSize: 22, fontWeight: 500 }}>FlightScore</div>
                         </div>
                         <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
                             <MdButton variant="tonal" icon="add" onClick={() => setView("create")}>New Trip</MdButton>
@@ -3629,7 +3629,7 @@
                                                                 <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
                                                                     <MdIcon name="flight" style={{ fontSize: 32, opacity: 0.9 }} />
                                                                     <div>
-                                                                        <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: '2.5px', textTransform: 'uppercase', opacity: 0.75, marginBottom: 2 }}>SkyClear Aviation</div>
+                                                                        <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: '2.5px', textTransform: 'uppercase', opacity: 0.75, marginBottom: 2 }}>FlightScore</div>
                                                                         <div style={{ fontSize: 22, fontWeight: 800, letterSpacing: '-0.5px', lineHeight: 1 }}>FLIGHT BRIEF</div>
                                                                         {trip.name && <div style={{ fontSize: 12, opacity: 0.8, marginTop: 3 }}>{trip.name}</div>}
                                                                     </div>
@@ -3832,7 +3832,7 @@
                                                             {/* ── Footer ── */}
                                                             <div style={{background:'#f5f7fa',borderTop:'1px solid #e0e0e0',padding:'12px 28px',display:'flex',justifyContent:'space-between',alignItems:'center',flexWrap:'wrap',gap:8}}>
                                                                 <div style={{fontSize:11,color:'#555'}}>
-                                                                    Generated by <strong>SkyClear Aviation Dashboard</strong> · {nowUtcStr}
+                                                                    Generated by <strong>FlightScore</strong> · {nowUtcStr}
                                                                 </div>
                                                                 <div style={{fontSize:11,color:'#888',textAlign:'right',maxWidth:380,lineHeight:1.5}}>
                                                                     For flight planning reference only. Always obtain an official briefing at <strong>1800wxbrief.com</strong> before departure.
