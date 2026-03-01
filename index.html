@@ -904,14 +904,20 @@
             return -8;                    // Pacific
         }
 
-        // Convert trip local date+time to a UTC Date object
+        // Convert trip local date+time to a UTC Date object.
+        // The stored time is LOCAL time at the departure airport.
+        // Date.UTC() avoids browser-timezone double-counting:
+        //   new Date(y,m,d,h,min) shifts by the *browser* TZ; subtracting the
+        //   airport offset on top would then double-count the offset.
         function getTripTargetUtc(trip, depLon) {
             if (!trip || !trip.date || !trip.time) return null;
             var offset = estimateUtcOffsetHours(depLon);
-            var parts = trip.date.split('-').map(Number);
+            var parts  = trip.date.split('-').map(Number);
             var tparts = trip.time.split(':').map(Number);
-            var local = new Date(parts[0], parts[1] - 1, parts[2], tparts[0], tparts[1], 0);
-            return new Date(local.getTime() - offset * 3600000);
+            // Treat the stored time as airport-local by first anchoring it to UTC
+            // via Date.UTC, then shifting by the airport's UTC offset.
+            var localAsUtcMs = Date.UTC(parts[0], parts[1] - 1, parts[2], tparts[0], tparts[1], 0);
+            return new Date(localAsUtcMs - offset * 3600000);
         }
 
         // Build a METAR-like weather object from a structured TAF forecast period
