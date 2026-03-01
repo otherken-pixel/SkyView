@@ -331,7 +331,7 @@
             KIAD: { name: "Washington Dulles Intl", city: "Washington", state: "DC", lat: 38.947, lon: -77.46, elev: 313, rwy: ["01L/19R", "01C/19C"], artcc: "Washington Ctr", freq: { atis: "134.85", twr: "120.1", gnd: "121.9", app: "120.45", dep: "125.05", clnc: "118.55" } },
             KMSY: { name: "New Orleans Intl", city: "New Orleans", state: "LA", lat: 29.993, lon: -90.258, elev: 4, rwy: ["02/20", "11/29"], artcc: "Houston Ctr", freq: { atis: "128.35", twr: "119.45", gnd: "121.9", app: "123.8", dep: "120.6", clnc: "119.05" } },
             KCVG: { name: "Cincinnati/N Kentucky", city: "Cincinnati", state: "OH", lat: 39.049, lon: -84.662, elev: 896, rwy: ["09/27", "18C/36C"], artcc: "Indianapolis Ctr", freq: { atis: "127.375", twr: "118.3", gnd: "121.7", app: "119.7", dep: "125.8", clnc: "121.75" } },
-            KUZA: { name: "Rock Hill/York County", city: "Rock Hill", state: "SC", lat: 34.987, lon: -81.057, elev: 666, rwy: ["02/20", "15/33"], artcc: "Charlotte Ctr", freq: { atis: "122.7", twr: "122.8", gnd: "122.8", app: "124.0", dep: "124.0", clnc: "122.8" } }
+            KUZA: { name: "Rock Hill/York County", city: "Rock Hill", state: "SC", lat: 34.987, lon: -81.057, elev: 666, rwy: ["02/20", "15/33"], artcc: "Charlotte Ctr", freq: { atis: "122.7", twr: "122.8", gnd: "122.8", app: "124.0", dep: "124.0", clnc: "122.8" }, tafRef: "KCLT" }
         };
 
         // FBO data per airport: name, phone, fuel types, hours, services.
@@ -633,49 +633,46 @@
         async function fetchLiveTaf(icao) {
             if (!icao) return null;
             icao = icao.trim().toUpperCase();
-            // Try the exact station first
-            try {
-                const res = await timeoutFetch(
-                    `https://aviationweather.gov/api/data/taf?ids=${icao}&format=json`,
-                    {}, 8000
-                );
-                if (res.ok) {
+            async function fetchTafById(id) {
+                try {
+                    const res = await timeoutFetch(
+                        `https://aviationweather.gov/api/data/taf?ids=${id}&format=json`,
+                        {}, 8000
+                    );
+                    if (!res.ok) return null;
                     const data = await res.json();
-                    if (Array.isArray(data) && data.length > 0) {
-                        var obj = data[0];
-                        if (obj && (obj.forecast || obj.rawTAF)) return obj;
-                    }
-                }
-            } catch(e) {}
-            // No TAF issued for this station (common for small GA airports).
-            // Search for the nearest TAF-issuing station within ~25 nm using a bbox query,
-            // the same approach ForeFlight uses when it shows e.g. "KCLT TAF 14 nm NE".
+                    if (!Array.isArray(data) || data.length === 0) return null;
+                    var obj = data[0];
+                    return (obj && (obj.forecast || obj.rawTAF)) ? obj : null;
+                } catch(e) { return null; }
+            }
+            // Try the exact station first
+            var taf = await fetchTafById(icao);
+            if (taf) return taf;
+            // No TAF for this station (common for small GA airports like KUZA).
+            // Use the explicit tafRef from the airport record when present — this is
+            // the same approach ForeFlight uses (e.g. it shows "KCLT TAF 14 nm NE"
+            // for KUZA because KCLT is the nearest TAF-issuing station).
             var apt = getAirport(icao);
-            if (!apt) return null;
-            var dlat = 0.42;
-            var dlon = 0.42 / Math.max(Math.cos(apt.lat * Math.PI / 180), 0.1);
-            var bbox = [apt.lat - dlat, apt.lon - dlon, apt.lat + dlat, apt.lon + dlon]
-                           .map(n => n.toFixed(3)).join(',');
-            try {
-                const res2 = await timeoutFetch(
-                    `https://aviationweather.gov/api/data/taf?bbox=${bbox}&format=json`,
-                    {}, 8000
-                );
-                if (!res2.ok) return null;
-                const data2 = await res2.json();
-                if (!Array.isArray(data2) || data2.length === 0) return null;
-                var candidates = data2.filter(t => t && (t.forecast || t.rawTAF) && t.stationId !== icao);
-                if (!candidates.length) return null;
-                // Pick the geographically closest station
-                var nearest = candidates.reduce((best, t) => {
-                    if (t.lat == null || t.lon == null) return best;
-                    var d = Math.hypot(t.lat - apt.lat, t.lon - apt.lon);
-                    return (!best || d < best.d) ? { t, d } : best;
-                }, null);
-                var result = nearest ? nearest.t : candidates[0];
-                // Tag with _nearbyStation so callers can label it correctly
-                return { ...result, _nearbyStation: result.stationId };
-            } catch(e) { return null; }
+            if (apt && apt.tafRef) {
+                var refTaf = await fetchTafById(apt.tafRef);
+                if (refTaf) return { ...refTaf, _nearbyStation: refTaf.stationId };
+            }
+            // Last resort: check the nearest airport in the static AIRPORTS dict
+            // that differs from the queried ICAO and lies within ~25 nm.
+            if (apt) {
+                var nearby = Object.entries(AIRPORTS)
+                    .filter(([id]) => id !== icao)
+                    .map(([id, a]) => ({ id, d: Math.hypot(a.lat - apt.lat, a.lon - apt.lon) }))
+                    .sort((a, b) => a.d - b.d)
+                    .slice(0, 3); // only try the 3 nearest to avoid excess API calls
+                for (var nb of nearby) {
+                    if (nb.d > 0.5) break; // > ~30 nm — not useful
+                    var nbTaf = await fetchTafById(nb.id);
+                    if (nbTaf) return { ...nbTaf, _nearbyStation: nbTaf.stationId };
+                }
+            }
+            return null;
         }
 
         // Fetch GFS MOS data from Aviation Weather Center (extended forecast, up to ~72h)
@@ -773,10 +770,18 @@
             breakdown.push({ label: 'Flight Category', score: catPts, max: 25, icon: 'cloud', color: catCol, detail: 'Worst case: ' + worstCat });
 
             // 2. Visibility (0-20 pts)
+            // vis strings can be "10SM", "P6SM" (>6SM), "1 1/2SM", etc.
+            function parseVisSM(s) {
+                if (!s) return NaN;
+                if (/^P/i.test(s)) return 10; // "P6SM" = "plus 6 SM" → treat as 10
+                var m = s.match(/([\d.]+)\s*(?:\/\s*([\d.]+))?\s*SM/i);
+                if (!m) return NaN;
+                return m[2] ? parseInt(m[1]) / parseInt(m[2]) : parseFloat(m[1]);
+            }
             var minVis = Infinity;
             effectiveWxData.forEach(function(e) {
                 if (!e.effectiveWx) return;
-                var v = parseFloat(e.effectiveWx.vis);
+                var v = parseVisSM(e.effectiveWx.vis);
                 if (!isNaN(v)) minVis = Math.min(minVis, v);
             });
             var visPts = minVis === Infinity ? 20 : minVis >= 10 ? 20 : minVis >= 5 ? 16 : minVis >= 3 ? 10 : minVis >= 1 ? 4 : 0;
