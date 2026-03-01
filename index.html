@@ -280,9 +280,9 @@
             if (_fetchingIcaos.has(icao)) return null;
             _fetchingIcaos.add(icao);
             try {
-                const res = await fetch(
+                const res = await timeoutFetch(
                     `https://aviationweather.gov/api/data/airport?ids=${icao}&format=json`,
-                    { signal: AbortSignal.timeout(6000) }
+                    {}, 6000
                 );
                 if (!res.ok) return null;
                 const data = await res.json();
@@ -418,14 +418,25 @@
 
         function getGoColor(s) { return s >= 75 ? "var(--md-sys-color-primary)" : s >= 50 ? "var(--md-sys-color-warning)" : "var(--md-sys-color-error)"; }
 
+        // Cross-browser fetch with timeout — AbortSignal.timeout is not supported on older iOS Safari
+        function timeoutFetch(url, opts, ms) {
+            var ctrl = new AbortController();
+            var id = setTimeout(function() { ctrl.abort(); }, ms || 8000);
+            var merged = Object.assign({}, opts || {}, { signal: ctrl.signal });
+            return fetch(url, merged).then(
+                function(r)  { clearTimeout(id); return r; },
+                function(e)  { clearTimeout(id); throw e; }
+            );
+        }
+
         // Fetch live METAR from Aviation Weather Center API
         async function fetchLiveMetar(icao) {
             if (!icao) return null;
             icao = icao.trim().toUpperCase();
             try {
-                const res = await fetch(
+                const res = await timeoutFetch(
                     `https://aviationweather.gov/api/data/metar?ids=${icao}&format=json&hours=2`,
-                    { signal: AbortSignal.timeout(8000) }
+                    {}, 8000
                 );
                 if (!res.ok) return null;
                 const data = await res.json();
@@ -464,9 +475,9 @@
             if (!icao) return null;
             icao = icao.trim().toUpperCase();
             try {
-                const res = await fetch(
+                const res = await timeoutFetch(
                     `https://aviationweather.gov/api/data/taf?ids=${icao}&format=json`,
-                    { signal: AbortSignal.timeout(8000) }
+                    {}, 8000
                 );
                 if (!res.ok) return null;
                 const data = await res.json();
@@ -482,9 +493,9 @@
             if (!icao) return null;
             icao = icao.trim().toUpperCase();
             try {
-                const res = await fetch(
+                const res = await timeoutFetch(
                     `https://aviationweather.gov/api/data/mos?ids=${icao}&format=json`,
-                    { signal: AbortSignal.timeout(10000) }
+                    {}, 10000
                 );
                 if (!res.ok) return null;
                 const data = await res.json();
@@ -497,15 +508,15 @@
         async function fetchNwsForecast(lat, lon) {
             if (lat == null || lon == null) return null;
             try {
-                const pointsRes = await fetch(
+                const pointsRes = await timeoutFetch(
                     `https://api.weather.gov/points/${lat.toFixed(4)},${lon.toFixed(4)}`,
-                    { signal: AbortSignal.timeout(8000), headers: { "Accept": "application/geo+json" } }
+                    { headers: { "Accept": "application/geo+json" } }, 8000
                 );
                 if (!pointsRes.ok) return null;
                 const pointsData = await pointsRes.json();
                 const forecastUrl = pointsData?.properties?.forecast;
                 if (!forecastUrl) return null;
-                const forecastRes = await fetch(forecastUrl, { signal: AbortSignal.timeout(8000), headers: { "Accept": "application/geo+json" } });
+                const forecastRes = await timeoutFetch(forecastUrl, { headers: { "Accept": "application/geo+json" } }, 8000);
                 if (!forecastRes.ok) return null;
                 const forecastData = await forecastRes.json();
                 const periods = forecastData?.properties?.periods;
@@ -1369,6 +1380,23 @@
                 return getTripTargetUtc(trip, depLon);
             }, [trip.dep, trip.date, trip.time]);
 
+            // Route distance and ETE (used in trip details card)
+            var routeDist = useMemo(() => {
+                var d = 0;
+                for (var i = 0; i < allRoutePts.length - 1; i++) {
+                    var p1 = getAirport(allRoutePts[i]);
+                    var p2 = getAirport(allRoutePts[i + 1]);
+                    if (p1 && p2) d += calcDist(p1.lat, p1.lon, p2.lat, p2.lon);
+                }
+                return Math.round(d);
+            }, [allRoutePts]);
+
+            var eteStr = useMemo(() => {
+                if (!routeDist || !ac || !ac.kts) return '--';
+                var h = routeDist / ac.kts;
+                return Math.floor(h) + 'h ' + Math.round((h % 1) * 60) + 'm';
+            }, [routeDist, ac]);
+
             // Hours from now until departure (negative = past/now)
             var hoursUntilTrip = useMemo(() => {
                 if (!tripTargetUtc) return null;
@@ -1753,6 +1781,47 @@
                     {/* ---- Auto briefing ---- */}
                     {effectiveWxData && analysis && (
                         <>
+                            {/* Trip Details card */}
+                            <div style={{ background: 'var(--md-sys-color-surface-container)', borderRadius: 16, padding: '16px 20px', marginBottom: 16 }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
+                                    <MdIcon name="flight" style={{ color: 'var(--md-sys-color-primary)', fontSize: 18, transform: 'rotate(45deg)' }} />
+                                    <span style={{ fontWeight: 700, fontSize: 13, textTransform: 'uppercase', letterSpacing: '0.5px', color: 'var(--md-sys-color-primary)' }}>Trip Details</span>
+                                </div>
+                                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px 20px' }}>
+                                    <div>
+                                        <div style={{ fontSize: 10, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.5px', color: 'var(--md-sys-color-on-surface-variant)', marginBottom: 2 }}>Route</div>
+                                        <div className="font-mono" style={{ fontSize: 15, fontWeight: 700, color: 'var(--md-sys-color-on-surface)' }}>{allRoutePts.join(' \u2794 ')}</div>
+                                        {allRoutePts.length <= 2 && (
+                                            <div style={{ fontSize: 11, color: 'var(--md-sys-color-on-surface-variant)' }}>
+                                                {(getAirport(allRoutePts[0]) || {}).city || allRoutePts[0]}
+                                                {' \u2192 '}
+                                                {(getAirport(allRoutePts[allRoutePts.length - 1]) || {}).city || allRoutePts[allRoutePts.length - 1]}
+                                            </div>
+                                        )}
+                                    </div>
+                                    <div>
+                                        <div style={{ fontSize: 10, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.5px', color: 'var(--md-sys-color-on-surface-variant)', marginBottom: 2 }}>Aircraft</div>
+                                        <div style={{ fontSize: 13, fontWeight: 500, color: 'var(--md-sys-color-on-surface)' }}>{ac.name}</div>
+                                        <div style={{ fontSize: 11, color: 'var(--md-sys-color-on-surface-variant)' }}>{ac.cat} · {ac.kts} kts cruise</div>
+                                    </div>
+                                    <div>
+                                        <div style={{ fontSize: 10, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.5px', color: 'var(--md-sys-color-on-surface-variant)', marginBottom: 2 }}>Departure</div>
+                                        <div style={{ fontSize: 13, fontWeight: 500, color: 'var(--md-sys-color-on-surface)' }}>{trip.date}</div>
+                                        <div style={{ fontSize: 11, color: 'var(--md-sys-color-on-surface-variant)' }}>
+                                            {trip.time} local
+                                            {tripTargetUtc && (
+                                                <span className="font-mono"> · {String(tripTargetUtc.getUTCHours()).padStart(2,'0')}{String(tripTargetUtc.getUTCMinutes()).padStart(2,'0')}Z</span>
+                                            )}
+                                        </div>
+                                    </div>
+                                    <div>
+                                        <div style={{ fontSize: 10, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.5px', color: 'var(--md-sys-color-on-surface-variant)', marginBottom: 2 }}>Distance / ETE</div>
+                                        <div className="font-mono" style={{ fontSize: 13, fontWeight: 600, color: 'var(--md-sys-color-on-surface)' }}>{routeDist} NM</div>
+                                        <div style={{ fontSize: 11, color: 'var(--md-sys-color-on-surface-variant)' }}>{eteStr} at cruise</div>
+                                    </div>
+                                </div>
+                            </div>
+
                             {/* Go/No-Go banner */}
                             <div style={{ background: analysis.verdictBg, borderRadius: 16, padding: '20px 24px', marginBottom: 16, display: 'flex', alignItems: 'center', gap: 16 }}>
                                 <MdIcon name={analysis.verdictIcon} style={{ fontSize: 44, color: analysis.verdictColor, flexShrink: 0 }} />
