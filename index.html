@@ -552,9 +552,11 @@
         // Rough UTC offset (hours) from airport longitude — US-focused
         function estimateUtcOffsetHours(lon) {
             if (!lon) return -5;
-            if (lon > -75)  return -5;   // Eastern
-            if (lon > -90)  return -6;   // Central
-            if (lon > -105) return -7;   // Mountain
+            // Approximate US timezone longitude boundaries
+            // Eastern/Central divide is ~87°W; Central/Mountain ~102°W; Mountain/Pacific ~115°W
+            if (lon > -87)  return -5;   // Eastern (SC, NC, FL, GA, NY, etc.)
+            if (lon > -102) return -6;   // Central
+            if (lon > -115) return -7;   // Mountain
             return -8;                    // Pacific
         }
 
@@ -1379,7 +1381,11 @@
                 setWxData(null);
                 Promise.all(allRoutePts.map(async icao => {
                     var [m, t] = await Promise.all([fetchLiveMetar(icao), fetchLiveTaf(icao)]).catch(() => [null, null]);
-                    return { icao, metar: m, taf: t };
+                    // If no live METAR (airport has no ASOS/AWOS), fall back to simulated weather
+                    // so the briefing panel has something to display and analyze
+                    var metarLive = !!m;
+                    var metar = m || makeMetar(icao);
+                    return { icao, metar, taf: t, metarLive };
                 })).then(data => { setWxData(data); setLoadingWx(false); })
                   .catch(() => setLoadingWx(false));
             }, [allRoutePts.join(',')]);
@@ -1409,6 +1415,8 @@
                 var hh = tripTargetUtc ? String(tripTargetUtc.getUTCHours()).padStart(2, '0') : '';
                 var mm = tripTargetUtc ? String(tripTargetUtc.getUTCMinutes()).padStart(2, '0') : '';
                 return wxData.map(w => {
+                    // Label suffix when METAR is simulated (no live ASOS/AWOS at this airport)
+                    var simSuffix = w.metarLive ? '' : ' (sim)';
                     if (hoursUntilTrip !== null && hoursUntilTrip > 2 && tripTargetUtc) {
                         if (hoursUntilTrip > 30) {
                             // Try GFS MOS first for extended range
@@ -1421,17 +1429,17 @@
                                 }
                             }
                             // MOS unavailable — fall back to current METAR with note
-                            return { ...w, effectiveWx: w.metar, source: 'metar', sourceLabel: 'METAR (no model)' };
+                            return { ...w, effectiveWx: w.metar, source: 'metar', sourceLabel: 'METAR (no model)' + simSuffix };
                         }
                         // 2–30 h: TAF is the best source
                         if (w.taf) {
                             var tafWx = parseTafForTime(w.taf, tripTargetUtc);
                             if (tafWx) return { ...w, effectiveWx: tafWx, source: 'taf', sourceLabel: `TAF ${hh}${mm}Z` };
                         }
-                        return { ...w, effectiveWx: w.metar, source: 'metar', sourceLabel: 'METAR (no TAF)' };
+                        return { ...w, effectiveWx: w.metar, source: 'metar', sourceLabel: 'METAR (no TAF)' + simSuffix };
                     }
                     // Trip is current/imminent — live METAR is the best data
-                    return { ...w, effectiveWx: w.metar, source: 'metar', sourceLabel: 'METAR' };
+                    return { ...w, effectiveWx: w.metar, source: 'metar', sourceLabel: 'METAR' + simSuffix };
                 });
             }, [wxData, mosData, tripTargetUtc, hoursUntilTrip]);
 
@@ -1467,6 +1475,7 @@
                 var anyTaf = effectiveWxData.some(e => e.source === 'taf');
                 var anyMos = effectiveWxData.some(e => e.source === 'mos');
                 var allMos  = effectiveWxData.every(e => e.source === 'mos');
+                var anySim  = effectiveWxData.some(e => !e.metarLive);
                 var depUtcLabel = tripTargetUtc
                     ? `${String(tripTargetUtc.getUTCHours()).padStart(2,'0')}${String(tripTargetUtc.getUTCMinutes()).padStart(2,'0')}Z ${trip.date}`
                     : trip.date;
@@ -1476,6 +1485,7 @@
                     : anyMos   ? `GFS/TAF mixed forecast · ${depUtcLabel}`
                     : anyTaf   ? `TAF forecast · ${depUtcLabel}`
                     : isFutureFlight ? `current METAR (no forecast available · ${depUtcLabel})`
+                    : anySim ? 'current METAR (⚠ some stations simulated — no live ASOS/AWOS)'
                     : 'current METAR';
 
                 var cats = effectiveWxData.filter(e => e.effectiveWx).map(e => e.effectiveWx.cat);
@@ -1515,11 +1525,20 @@
                     effectiveWxData.forEach(e => {
                         if (e.source === 'metar' && hoursUntilTrip > 30) {
                             concerns.push({ level: 'medium', icon: 'update', text: `${e.icao}: GFS MOS forecast unavailable — showing current METAR only (beyond TAF range)` });
-                        } else if (e.source === 'metar' && hoursUntilTrip > 2 && !e.taf) {
+                        } else if (e.source === 'metar' && hoursUntilTrip > 2 && !e.taf && e.metarLive) {
+                            // Only flag missing TAF when we have a real live METAR — simulated stations
+                            // already show the (sim) label; no need to double-warn
                             concerns.push({ level: 'medium', icon: 'cloud_off', text: `${e.icao}: No TAF available — showing current METAR; verify conditions closer to departure` });
                         }
                     });
                 }
+
+                // ── Simulated-data warning (no ASOS/AWOS at airport) ────────────────
+                effectiveWxData.forEach(e => {
+                    if (!e.metarLive) {
+                        concerns.push({ level: 'medium', icon: 'sensors_off', text: `${e.icao}: No live weather station — conditions are estimated. Call FSS or check 1800wxbrief.com before departure.` });
+                    }
+                });
 
                 // ── Per-station weather concerns ─────────────────────────────────────
                 effectiveWxData.forEach(e => {
@@ -1603,6 +1622,7 @@
                 if (concerns.some(c => c.icon === 'water_drop')) recs.push('GFS indicates precipitation — review AIRMETs for IFR/turbulence and check PIREPs.');
                 if (concerns.some(c => c.icon === 'ac_unit')) recs.push('Check PIREPs for airframe icing; confirm aircraft icing certification if applicable.');
                 if (concerns.some(c => c.level === 'high' && c.icon === 'air')) recs.push('Verify crosswind does not exceed aircraft published limits; identify an alternate airport.');
+                if (anySim) recs.push('⚠ One or more airports have no automated weather station. Contact FSS (1-800-WX-BRIEF) or check notam.faa.gov for current conditions at those fields.');
                 if (recs.filter(r => !r.startsWith('⚠')).length === 0) recs.push('Conditions appear favorable — complete standard preflight checks and file a flight plan.');
                 recs.push('Always obtain an official briefing at 1800wxbrief.com before departure.');
 
