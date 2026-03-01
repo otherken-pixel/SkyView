@@ -3031,12 +3031,25 @@
             var [copiedTripId, setCopiedTripId] = useState(null);
 
             useEffect(() => {
-                // Fetch live METARs for each trip to compute live Go/No-Go scores
+                // Fetch live METARs for every airport in every trip and score using
+                // the same calcDetailedScore algorithm as the briefing panel
                 trips.forEach(t => {
-                    Promise.all([fetchLiveMetar(t.dep), fetchLiveMetar(t.arr)]).then(([dm, am]) => {
-                        var score = dm && am ? calcGoScoreFromMetars(dm, am)
-                            : (getAirport(t.dep) && getAirport(t.arr) ? calcGoScore(t.dep, t.arr) : 50);
-                        setTrips(prev => prev.map(x => x.id === t.id ? { ...x, goScore: score } : x));
+                    var allPts = [t.dep].concat(t.wps || []).concat([t.arr]).filter(Boolean);
+                    var dist = 0;
+                    for (var i = 0; i < allPts.length - 1; i++) {
+                        var p1 = getAirport(allPts[i]), p2 = getAirport(allPts[i + 1]);
+                        if (p1 && p2) dist += calcDist(p1.lat, p1.lon, p2.lat, p2.lon);
+                    }
+                    var routeDist = Math.round(dist);
+                    Promise.all(allPts.map(fetchLiveMetar)).then(metarArr => {
+                        var wxData = allPts.map((icao, idx) => ({
+                            icao, effectiveWx: metarArr[idx] || null,
+                            metarLive: !!metarArr[idx], source: 'metar', sourceLabel: metarArr[idx] ? 'Live METAR' : 'No data'
+                        })).filter(e => e.effectiveWx);
+                        if (wxData.length > 0) {
+                            var score = calcDetailedScore(wxData, routeDist).total;
+                            setTrips(prev => prev.map(x => x.id === t.id ? { ...x, goScore: score } : x));
+                        }
                     }).catch(() => {});
                 });
             }, []);
@@ -3105,30 +3118,44 @@
 
                 if (editingTripId) {
                     // ── Update existing trip ──────────────────────────────────────────
+                    var editedWps = validRoute.slice(1, -1);
                     setTrips(prev => prev.map(t => t.id === editingTripId ? {
                         ...t,
-                        dep, arr, wps: validRoute.slice(1, -1),
+                        dep, arr, wps: editedWps,
                         aircraft: newTrip.aircraft,
                         date: newTrip.date,
                         time: newTrip.time,
-                        name: tripName,
-                        goScore: calcGoScore(dep, arr)
+                        name: tripName
                     } : t));
-                    Promise.all([fetchLiveMetar(dep), fetchLiveMetar(arr)]).then(([dm, am]) => {
-                        if (dm && am) setTrips(prev => prev.map(t => t.id === editingTripId ? { ...t, goScore: calcGoScoreFromMetars(dm, am) } : t));
-                    }).catch(() => {});
+                    // Recompute score with same algorithm as briefing panel
+                    (function(id, pts, dist) {
+                        Promise.all(pts.map(fetchLiveMetar)).then(metarArr => {
+                            var wxData = pts.map((icao, idx) => ({
+                                icao, effectiveWx: metarArr[idx] || null,
+                                metarLive: !!metarArr[idx], source: 'metar', sourceLabel: metarArr[idx] ? 'Live METAR' : 'No data'
+                            })).filter(e => e.effectiveWx);
+                            if (wxData.length > 0) setTrips(prev => prev.map(t => t.id === id ? { ...t, goScore: calcDetailedScore(wxData, dist).total } : t));
+                        }).catch(() => {});
+                    })(editingTripId, [dep].concat(editedWps).concat([arr]), Math.round((function() { var d=0; for(var i=0;i<validRoute.length-1;i++){var p1=getAirport(validRoute[i]),p2=getAirport(validRoute[i+1]);if(p1&&p2)d+=calcDist(p1.lat,p1.lon,p2.lat,p2.lon);}return d; })()));
                     setEditingTripId(null);
                 } else {
                     // ── Create new trip ───────────────────────────────────────────────
                     var t = {
                         id: Date.now(), dep, arr, wps: validRoute.slice(1, -1),
                         aircraft: newTrip.aircraft, date: newTrip.date, time: newTrip.time,
-                        name: tripName, goScore: calcGoScore(dep, arr)
+                        name: tripName, goScore: null
                     };
                     setTrips(prev => [t].concat(prev));
-                    Promise.all([fetchLiveMetar(t.dep), fetchLiveMetar(t.arr)]).then(([dm, am]) => {
-                        if (dm && am) setTrips(prev => prev.map(x => x.id === t.id ? { ...x, goScore: calcGoScoreFromMetars(dm, am) } : x));
-                    }).catch(() => {});
+                    // Score with the same algorithm as the briefing panel
+                    (function(id, pts, dist) {
+                        Promise.all(pts.map(fetchLiveMetar)).then(metarArr => {
+                            var wxData = pts.map((icao, idx) => ({
+                                icao, effectiveWx: metarArr[idx] || null,
+                                metarLive: !!metarArr[idx], source: 'metar', sourceLabel: metarArr[idx] ? 'Live METAR' : 'No data'
+                            })).filter(e => e.effectiveWx);
+                            if (wxData.length > 0) setTrips(prev => prev.map(x => x.id === id ? { ...x, goScore: calcDetailedScore(wxData, dist).total } : x));
+                        }).catch(() => {});
+                    })(t.id, validRoute, Math.round((function() { var d=0; for(var i=0;i<validRoute.length-1;i++){var p1=getAirport(validRoute[i]),p2=getAirport(validRoute[i+1]);if(p1&&p2)d+=calcDist(p1.lat,p1.lon,p2.lat,p2.lon);}return d; })()));
                 }
                 setNewTrip({ route: ["", ""], aircraft: "c172", date: "", time: defaultTimeStr, name: "" });
                 setView("trips");
@@ -3148,13 +3175,10 @@
             }
 
             function openTrip(trip) {
-                var updated = { ...trip, goScore: calcGoScore(trip.dep, trip.arr) };
-                setActiveTrip(updated); setTab("brief"); setForecastDay(0);
+                // Keep the existing goScore while the briefing panel loads;
+                // onScoreUpdate will replace it with calcDetailedScore once weather arrives
+                setActiveTrip(trip); setTab("brief"); setForecastDay(0);
                 setView("briefing");
-                // Async refresh go score with live METARs
-                Promise.all([fetchLiveMetar(trip.dep), fetchLiveMetar(trip.arr)]).then(([dm, am]) => {
-                    if (dm && am) setActiveTrip(prev => prev && prev.id === trip.id ? { ...prev, goScore: calcGoScoreFromMetars(dm, am) } : prev);
-                }).catch(() => {});
             }
 
             function deleteTrip(id) {
