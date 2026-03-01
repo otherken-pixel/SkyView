@@ -3025,6 +3025,7 @@
             var [tab, setTab] = useState("brief");
             var [forecastDay, setForecastDay] = useState(0);
             var [newTrip, setNewTrip] = useState({ route: ["", ""], aircraft: "c172", date: "", time: defaultTimeStr, name: "" });
+            var [editingTripId, setEditingTripId] = useState(null); // null = creating, non-null = editing existing
             // Bump this counter to force re-renders after async airport fetches resolve
             var [aptVersion, setAptVersion] = useState(0);
             var [copiedTripId, setCopiedTripId] = useState(null);
@@ -3099,25 +3100,51 @@
                     .map(r => r.trim().toUpperCase())
                     .filter(r => r.length === 4);
                 if (validRoute.length < 2) return;
+                var dep = validRoute[0], arr = validRoute[validRoute.length - 1];
+                var tripName = newTrip.name || (dep + " to " + arr);
 
-                var t = {
-                    id: Date.now(),
-                    dep: validRoute[0],
-                    arr: validRoute[validRoute.length - 1],
-                    wps: validRoute.slice(1, -1),
-                    aircraft: newTrip.aircraft,
-                    date: newTrip.date,
-                    time: newTrip.time,
-                    name: newTrip.name || (validRoute[0] + " to " + validRoute[validRoute.length - 1]),
-                    goScore: calcGoScore(validRoute[0], validRoute[validRoute.length - 1])
-                };
-                setTrips(prev => [t].concat(prev));
-                // Async update go score with live METARs
-                Promise.all([fetchLiveMetar(t.dep), fetchLiveMetar(t.arr)]).then(([dm, am]) => {
-                    if (dm && am) setTrips(prev => prev.map(x => x.id === t.id ? { ...x, goScore: calcGoScoreFromMetars(dm, am) } : x));
-                }).catch(() => {});
+                if (editingTripId) {
+                    // ── Update existing trip ──────────────────────────────────────────
+                    setTrips(prev => prev.map(t => t.id === editingTripId ? {
+                        ...t,
+                        dep, arr, wps: validRoute.slice(1, -1),
+                        aircraft: newTrip.aircraft,
+                        date: newTrip.date,
+                        time: newTrip.time,
+                        name: tripName,
+                        goScore: calcGoScore(dep, arr)
+                    } : t));
+                    Promise.all([fetchLiveMetar(dep), fetchLiveMetar(arr)]).then(([dm, am]) => {
+                        if (dm && am) setTrips(prev => prev.map(t => t.id === editingTripId ? { ...t, goScore: calcGoScoreFromMetars(dm, am) } : t));
+                    }).catch(() => {});
+                    setEditingTripId(null);
+                } else {
+                    // ── Create new trip ───────────────────────────────────────────────
+                    var t = {
+                        id: Date.now(), dep, arr, wps: validRoute.slice(1, -1),
+                        aircraft: newTrip.aircraft, date: newTrip.date, time: newTrip.time,
+                        name: tripName, goScore: calcGoScore(dep, arr)
+                    };
+                    setTrips(prev => [t].concat(prev));
+                    Promise.all([fetchLiveMetar(t.dep), fetchLiveMetar(t.arr)]).then(([dm, am]) => {
+                        if (dm && am) setTrips(prev => prev.map(x => x.id === t.id ? { ...x, goScore: calcGoScoreFromMetars(dm, am) } : x));
+                    }).catch(() => {});
+                }
                 setNewTrip({ route: ["", ""], aircraft: "c172", date: "", time: defaultTimeStr, name: "" });
                 setView("trips");
+            }
+
+            function editTrip(trip, e) {
+                e.stopPropagation();
+                setEditingTripId(trip.id);
+                setNewTrip({
+                    route: [trip.dep].concat(trip.wps || []).concat([trip.arr]),
+                    aircraft: trip.aircraft,
+                    date: trip.date,
+                    time: trip.time,
+                    name: trip.name || ''
+                });
+                setView("create");
             }
 
             function openTrip(trip) {
@@ -3240,6 +3267,7 @@
                                                             </div>
                                                             <div style={{ display:'flex', gap:0 }}>
                                                                 <MdButton variant="text" icon={copiedTripId === trip.id ? "check" : "share"} title="Copy shareable link" onClick={(e) => copyTripLink(trip, e)} style={{ padding: '8px', color: copiedTripId === trip.id ? 'var(--md-sys-color-primary)' : 'var(--md-sys-color-outline)' }} />
+                                                                <MdButton variant="text" icon="edit" title="Edit trip" onClick={(e) => editTrip(trip, e)} style={{ padding: '8px', color: 'var(--md-sys-color-outline)' }} />
                                                                 <MdButton variant="text" icon="delete" onClick={(e) => { e.stopPropagation(); deleteTrip(trip.id); }} style={{ padding: '8px', color: 'var(--md-sys-color-outline)' }} />
                                                             </div>
                                                         </div>
@@ -3285,8 +3313,8 @@
                         {/* CREATE TRIP */}
                         {view === "create" && (
                             <div style={{ maxWidth: 600, margin: "0 auto", padding: "32px 16px" }}>
-                                <MdButton variant="text" icon="arrow_back" onClick={() => setView("trips")} style={{ marginLeft: '-16px', marginBottom: '16px' }}>Back</MdButton>
-                                <h1 style={{ fontSize: 32, fontWeight: 400, margin: "0 0 24px", color: "var(--md-sys-color-on-background)" }}>Plan a Flight</h1>
+                                <MdButton variant="text" icon="arrow_back" onClick={() => { setEditingTripId(null); setView("trips"); }} style={{ marginLeft: '-16px', marginBottom: '16px' }}>Back</MdButton>
+                                <h1 style={{ fontSize: 32, fontWeight: 400, margin: "0 0 24px", color: "var(--md-sys-color-on-background)" }}>{editingTripId ? "Edit Flight" : "Plan a Flight"}</h1>
                                 
                                 <MdCard style={{ padding: 24 }}>
                                     <div style={{ display: "flex", flexDirection: "column", gap: 16, marginBottom: 24 }}>
@@ -3363,8 +3391,8 @@
                                     })()}
 
                                     <div style={{ display: "flex", gap: 12, justifyContent: "flex-end", marginTop: 16 }}>
-                                        <MdButton variant="text" onClick={() => setView("trips")}>Cancel</MdButton>
-                                        <MdButton variant="primary" onClick={createTrip} disabled={newTrip.route.filter(r => r.length === 4).length < 2}>Create Trip</MdButton>
+                                        <MdButton variant="text" onClick={() => { setEditingTripId(null); setView("trips"); }}>Cancel</MdButton>
+                                        <MdButton variant="primary" onClick={createTrip} disabled={newTrip.route.filter(r => r.length === 4).length < 2}>{editingTripId ? "Save Changes" : "Create Trip"}</MdButton>
                                     </div>
                                 </MdCard>
 
