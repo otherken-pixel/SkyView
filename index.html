@@ -12,6 +12,10 @@
     <!-- Leaflet Maps -->
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <!-- Firebase SDK (compat) -->
+    <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
     <!-- Google Fonts & Material Symbols (MD3) -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -217,7 +221,8 @@
             KRDU: { name: "Raleigh-Durham Intl", city: "Raleigh", state: "NC", lat: 35.878, lon: -78.788, elev: 435, rwy: ["05L/23R", "05R/23L"], artcc: "Washington Ctr", freq: { atis: "128.0", twr: "118.3", gnd: "121.9", app: "124.8", dep: "125.3", clnc: "121.15" } },
             KIAD: { name: "Washington Dulles Intl", city: "Washington", state: "DC", lat: 38.947, lon: -77.46, elev: 313, rwy: ["01L/19R", "01C/19C"], artcc: "Washington Ctr", freq: { atis: "134.85", twr: "120.1", gnd: "121.9", app: "120.45", dep: "125.05", clnc: "118.55" } },
             KMSY: { name: "New Orleans Intl", city: "New Orleans", state: "LA", lat: 29.993, lon: -90.258, elev: 4, rwy: ["02/20", "11/29"], artcc: "Houston Ctr", freq: { atis: "128.35", twr: "119.45", gnd: "121.9", app: "123.8", dep: "120.6", clnc: "119.05" } },
-            KCVG: { name: "Cincinnati/N Kentucky", city: "Cincinnati", state: "OH", lat: 39.049, lon: -84.662, elev: 896, rwy: ["09/27", "18C/36C"], artcc: "Indianapolis Ctr", freq: { atis: "127.375", twr: "118.3", gnd: "121.7", app: "119.7", dep: "125.8", clnc: "121.75" } }
+            KCVG: { name: "Cincinnati/N Kentucky", city: "Cincinnati", state: "OH", lat: 39.049, lon: -84.662, elev: 896, rwy: ["09/27", "18C/36C"], artcc: "Indianapolis Ctr", freq: { atis: "127.375", twr: "118.3", gnd: "121.7", app: "119.7", dep: "125.8", clnc: "121.75" } },
+            KUZA: { name: "Rock Hill/York County", city: "Rock Hill", state: "SC", lat: 34.987, lon: -81.057, elev: 666, rwy: ["02/20", "15/33"], artcc: "Charlotte Ctr", freq: { atis: "122.7", twr: "122.8", gnd: "122.8", app: "124.0", dep: "124.0", clnc: "122.8" } }
         };
 
         // FBO data per airport: name, phone, fuel types, hours, services.
@@ -245,6 +250,57 @@
             KCVG: [{ name: "Signature Flight Support", phone: "(859) 767-2360", fuel: [{ type: "100LL", service: "Full Serve" }, { type: "Jet-A", service: "Full Serve" }], hours: "24/7", services: ["GPU", "Crew Car", "Rental Car"] }],
             KUZA: [{ name: "Skytech, Inc.", phone: "(803) 366-5108", fuel: [{ type: "100LL", service: "Full Serve & Self-Serve (24/7)" }, { type: "Jet-A", service: "Full Serve" }], hours: "M–F 7am–8pm · Sa–Su 8am–7pm", services: ["FAA Repair Station", "Pilot Shop", "Crew Car", "Rental Car", "Tie-Down", "Volume Discounts"] }],
         };
+
+        /* =========================================
+           FIREBASE CONFIG & INITIALIZATION
+           Replace with your Firebase project config from:
+           https://console.firebase.google.com → Project Settings → Your apps
+        ========================================= */
+        const FIREBASE_CONFIG = {
+            apiKey: "",
+            authDomain: "",
+            projectId: "",
+            storageBucket: "",
+            messagingSenderId: "",
+            appId: ""
+        };
+
+        var _firebaseAuth = null;
+        var _firebaseDb = null;
+        (function initFirebase() {
+            try {
+                if (!FIREBASE_CONFIG.apiKey) return; // Not configured yet
+                var app = firebase.initializeApp(FIREBASE_CONFIG);
+                _firebaseAuth = firebase.auth(app);
+                _firebaseDb = firebase.firestore(app);
+            } catch(e) {
+                console.warn('Firebase init error:', e.message);
+            }
+        })();
+
+        // Firestore trip helpers
+        async function saveTripsToCloud(uid, trips) {
+            if (!_firebaseDb || !uid) return;
+            try {
+                var ref = _firebaseDb.collection('users').doc(uid).collection('trips');
+                var batch = _firebaseDb.batch();
+                // Delete existing trips
+                var existing = await ref.get();
+                existing.docs.forEach(d => batch.delete(d.ref));
+                // Add current trips
+                trips.forEach(t => batch.set(ref.doc(String(t.id)), t));
+                await batch.commit();
+            } catch(e) { console.warn('Cloud save error:', e.message); }
+        }
+
+        async function loadTripsFromCloud(uid) {
+            if (!_firebaseDb || !uid) return null;
+            try {
+                var snap = await _firebaseDb.collection('users').doc(uid).collection('trips').orderBy('id').get();
+                if (snap.empty) return null;
+                return snap.docs.map(d => d.data());
+            } catch(e) { console.warn('Cloud load error:', e.message); return null; }
+        }
 
         const AIRCRAFT = [
             { id: "c172", name: "Cessna 172 Skyhawk", cat: "SEL", kts: 120 },
@@ -1903,16 +1959,219 @@
         }
 
         /* =========================================
+           AUTH MODAL COMPONENT
+        ========================================= */
+        function AuthModal({ onClose }) {
+            var [mode, setMode] = useState('signin'); // 'signin' | 'signup' | 'forgotpw'
+            var [email, setEmail] = useState('');
+            var [password, setPassword] = useState('');
+            var [confirmPw, setConfirmPw] = useState('');
+            var [displayName, setDisplayName] = useState('');
+            var [loading, setLoading] = useState(false);
+            var [error, setError] = useState('');
+            var [info, setInfo] = useState('');
+
+            function pwStrength(pw) {
+                if (!pw) return 0;
+                var score = 0;
+                if (pw.length >= 8) score++;
+                if (/[A-Z]/.test(pw)) score++;
+                if (/[0-9]/.test(pw)) score++;
+                if (/[^A-Za-z0-9]/.test(pw)) score++;
+                return score; // 0-4
+            }
+
+            function firebaseErrMsg(code) {
+                var msgs = {
+                    'auth/user-not-found': 'No account found with this email.',
+                    'auth/wrong-password': 'Incorrect password.',
+                    'auth/invalid-credential': 'Incorrect email or password.',
+                    'auth/email-already-in-use': 'This email is already registered.',
+                    'auth/weak-password': 'Password must be at least 6 characters.',
+                    'auth/invalid-email': 'Please enter a valid email address.',
+                    'auth/too-many-requests': 'Too many attempts. Please try again later.',
+                    'auth/network-request-failed': 'Network error. Check your connection.',
+                    'auth/popup-closed-by-user': 'Sign-in popup was closed.',
+                    'auth/popup-blocked': 'Popup was blocked. Allow popups for this site.',
+                };
+                return msgs[code] || ('Error: ' + (code || 'Unknown'));
+            }
+
+            function noFirebase() {
+                setError('Account features require Firebase configuration. See the README for setup instructions.');
+            }
+
+            async function handleSignIn(e) {
+                e && e.preventDefault();
+                if (!_firebaseAuth) { noFirebase(); return; }
+                if (!email || !password) { setError('Please enter your email and password.'); return; }
+                setLoading(true); setError('');
+                try {
+                    await _firebaseAuth.signInWithEmailAndPassword(email, password);
+                    onClose();
+                } catch(ex) { setError(firebaseErrMsg(ex.code)); }
+                setLoading(false);
+            }
+
+            async function handleSignUp(e) {
+                e && e.preventDefault();
+                if (!_firebaseAuth) { noFirebase(); return; }
+                if (!displayName.trim()) { setError('Please enter your name.'); return; }
+                if (!email) { setError('Please enter an email address.'); return; }
+                if (pwStrength(password) < 2) { setError('Password is too weak. Use 8+ characters with uppercase letters and numbers.'); return; }
+                if (password !== confirmPw) { setError('Passwords do not match.'); return; }
+                setLoading(true); setError('');
+                try {
+                    var cred = await _firebaseAuth.createUserWithEmailAndPassword(email, password);
+                    await cred.user.updateProfile({ displayName: displayName.trim() });
+                    await cred.user.sendEmailVerification();
+                    setInfo('Account created! Check your email to verify your address, then sign in.');
+                    setMode('signin');
+                } catch(ex) { setError(firebaseErrMsg(ex.code)); }
+                setLoading(false);
+            }
+
+            async function handleGoogleSignIn() {
+                if (!_firebaseAuth) { noFirebase(); return; }
+                setLoading(true); setError('');
+                try {
+                    var provider = new firebase.auth.GoogleAuthProvider();
+                    await _firebaseAuth.signInWithPopup(provider);
+                    onClose();
+                } catch(ex) { setError(firebaseErrMsg(ex.code)); }
+                setLoading(false);
+            }
+
+            async function handleForgotPw(e) {
+                e && e.preventDefault();
+                if (!_firebaseAuth) { noFirebase(); return; }
+                if (!email) { setError('Enter your email address above first.'); return; }
+                setLoading(true); setError('');
+                try {
+                    await _firebaseAuth.sendPasswordResetEmail(email);
+                    setInfo('Password reset email sent! Check your inbox.');
+                    setMode('signin');
+                } catch(ex) { setError(firebaseErrMsg(ex.code)); }
+                setLoading(false);
+            }
+
+            var strength = pwStrength(password);
+            var strengthColors = ['#e53935','#fb8c00','#fdd835','#43a047','#00897b'];
+            var strengthLabels = ['','Weak','Fair','Good','Strong'];
+
+            var GoogleBtn = ({ label }) => (
+                <button type="button" onClick={handleGoogleSignIn} disabled={loading}
+                    style={{ display:'flex', alignItems:'center', justifyContent:'center', gap:10, border:'1px solid var(--md-sys-color-outline)', borderRadius:20, padding:'10px 24px', background:'var(--md-sys-color-surface)', color:'var(--md-sys-color-on-surface)', fontSize:14, cursor:'pointer', fontFamily:'Roboto, sans-serif', width:'100%' }}>
+                    <svg width="18" height="18" viewBox="0 0 18 18">
+                        <path fill="#4285F4" d="M17.64 9.2c0-.637-.057-1.251-.164-1.84H9v3.481h4.844a4.14 4.14 0 01-1.796 2.716v2.259h2.908c1.702-1.567 2.684-3.875 2.684-6.615z"/>
+                        <path fill="#34A853" d="M9 18c2.43 0 4.467-.806 5.956-2.184l-2.908-2.259c-.806.54-1.837.86-3.048.86-2.344 0-4.328-1.584-5.036-3.711H.957v2.332A8.997 8.997 0 009 18z"/>
+                        <path fill="#FBBC05" d="M3.964 10.706A5.41 5.41 0 013.682 9c0-.593.102-1.17.282-1.706V4.962H.957A8.996 8.996 0 000 9c0 1.452.348 2.827.957 4.038l3.007-2.332z"/>
+                        <path fill="#EA4335" d="M9 3.58c1.321 0 2.508.454 3.44 1.345l2.582-2.58C13.463.891 11.426 0 9 0A8.997 8.997 0 00.957 4.962L3.964 7.294C4.672 5.163 6.656 3.58 9 3.58z"/>
+                    </svg>
+                    {loading ? 'Please wait…' : label}
+                </button>
+            );
+
+            return (
+                <div onClick={e => { if (e.target === e.currentTarget) onClose(); }}
+                    style={{ position:'fixed', inset:0, background:'rgba(0,0,0,0.55)', zIndex:2000, display:'flex', alignItems:'center', justifyContent:'center', padding:16 }}>
+                    <div style={{ background:'var(--md-sys-color-surface)', borderRadius:28, padding:32, width:'min(440px,100%)', maxHeight:'90vh', overflowY:'auto', boxShadow:'0 8px 32px rgba(0,0,0,0.3)' }}>
+                        <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:24 }}>
+                            <div style={{ fontSize:22, fontWeight:500, color:'var(--md-sys-color-on-surface)' }}>
+                                {mode === 'signin' ? 'Sign In' : mode === 'signup' ? 'Create Account' : 'Reset Password'}
+                            </div>
+                            <MdButton variant="text" icon="close" onClick={onClose} style={{ padding:8 }} />
+                        </div>
+
+                        {info && (
+                            <div style={{ background:'var(--md-sys-color-primary-container)', color:'var(--md-sys-color-on-primary-container)', borderRadius:12, padding:'12px 16px', marginBottom:16, fontSize:14 }}>{info}</div>
+                        )}
+                        {error && (
+                            <div style={{ background:'#fde0dc', color:'#410001', borderRadius:12, padding:'12px 16px', marginBottom:16, fontSize:14 }}>{error}</div>
+                        )}
+
+                        {mode === 'signin' && (
+                            <form onSubmit={handleSignIn} style={{ display:'flex', flexDirection:'column', gap:16 }}>
+                                <MdInput label="Email" type="email" value={email} onChange={e => setEmail(e.target.value)} />
+                                <MdInput label="Password" type="password" value={password} onChange={e => setPassword(e.target.value)} />
+                                <MdButton variant="primary" onClick={handleSignIn} disabled={loading}>{loading ? 'Signing in…' : 'Sign In'}</MdButton>
+                                <div style={{ display:'flex', alignItems:'center', gap:8 }}>
+                                    <div style={{ flex:1, height:1, background:'var(--md-sys-color-outline-variant)' }} />
+                                    <span style={{ fontSize:12, color:'var(--md-sys-color-on-surface-variant)' }}>or</span>
+                                    <div style={{ flex:1, height:1, background:'var(--md-sys-color-outline-variant)' }} />
+                                </div>
+                                <GoogleBtn label="Continue with Google" />
+                                <div style={{ display:'flex', justifyContent:'space-between', marginTop:4 }}>
+                                    <button type="button" onClick={() => { setMode('signup'); setError(''); setInfo(''); }} style={{ background:'none', border:'none', color:'var(--md-sys-color-primary)', cursor:'pointer', fontSize:14, padding:0 }}>Create account</button>
+                                    <button type="button" onClick={() => { setMode('forgotpw'); setError(''); setInfo(''); }} style={{ background:'none', border:'none', color:'var(--md-sys-color-primary)', cursor:'pointer', fontSize:14, padding:0 }}>Forgot password?</button>
+                                </div>
+                            </form>
+                        )}
+
+                        {mode === 'signup' && (
+                            <form onSubmit={handleSignUp} style={{ display:'flex', flexDirection:'column', gap:16 }}>
+                                <MdInput label="Full Name" value={displayName} onChange={e => setDisplayName(e.target.value)} />
+                                <MdInput label="Email" type="email" value={email} onChange={e => setEmail(e.target.value)} />
+                                <div>
+                                    <MdInput label="Password" type="password" value={password} onChange={e => setPassword(e.target.value)} />
+                                    {password.length > 0 && (
+                                        <div style={{ marginTop:8 }}>
+                                            <div style={{ display:'flex', gap:4, marginBottom:4 }}>
+                                                {[1,2,3,4].map(i => (
+                                                    <div key={i} style={{ flex:1, height:4, borderRadius:2, background: i <= strength ? strengthColors[strength] : 'var(--md-sys-color-outline-variant)', transition:'background 0.2s' }} />
+                                                ))}
+                                            </div>
+                                            {strength > 0 && <div style={{ fontSize:12, color: strengthColors[strength] }}>{strengthLabels[strength]}</div>}
+                                        </div>
+                                    )}
+                                </div>
+                                <MdInput label="Confirm Password" type="password" value={confirmPw} onChange={e => setConfirmPw(e.target.value)} />
+                                <MdButton variant="primary" onClick={handleSignUp} disabled={loading}>{loading ? 'Creating account…' : 'Create Account'}</MdButton>
+                                <div style={{ display:'flex', alignItems:'center', gap:8 }}>
+                                    <div style={{ flex:1, height:1, background:'var(--md-sys-color-outline-variant)' }} />
+                                    <span style={{ fontSize:12, color:'var(--md-sys-color-on-surface-variant)' }}>or</span>
+                                    <div style={{ flex:1, height:1, background:'var(--md-sys-color-outline-variant)' }} />
+                                </div>
+                                <GoogleBtn label="Sign up with Google" />
+                                <button type="button" onClick={() => { setMode('signin'); setError(''); setInfo(''); }} style={{ background:'none', border:'none', color:'var(--md-sys-color-primary)', cursor:'pointer', fontSize:14, textAlign:'center' }}>Already have an account? Sign in</button>
+                            </form>
+                        )}
+
+                        {mode === 'forgotpw' && (
+                            <form onSubmit={handleForgotPw} style={{ display:'flex', flexDirection:'column', gap:16 }}>
+                                <div style={{ fontSize:14, color:'var(--md-sys-color-on-surface-variant)' }}>Enter your email address and we'll send you a password reset link.</div>
+                                <MdInput label="Email" type="email" value={email} onChange={e => setEmail(e.target.value)} />
+                                <MdButton variant="primary" onClick={handleForgotPw} disabled={loading}>{loading ? 'Sending…' : 'Send Reset Email'}</MdButton>
+                                <button type="button" onClick={() => { setMode('signin'); setError(''); setInfo(''); }} style={{ background:'none', border:'none', color:'var(--md-sys-color-primary)', cursor:'pointer', fontSize:14, textAlign:'center' }}>Back to sign in</button>
+                            </form>
+                        )}
+                    </div>
+                </div>
+            );
+        }
+
+        /* =========================================
            MAIN APPLICATION COMPONENT
         ========================================= */
         function App() {
             var [view, setView] = useState("trips");
             var defaultTimeStr = (new Date(Date.now() + 7200000)).toTimeString().slice(0, 5);
 
-            var [trips, setTrips] = useState([
-                { id: 1, dep: "KCLT", arr: "KATL", aircraft: "c172", date: "2026-02-28", time: "09:00", wps: [], name: "Charlotte to Atlanta", goScore: null },
-                { id: 2, dep: "KJFK", arr: "KBOS", aircraft: "sr22", date: "2026-03-01", time: "14:30", wps: ["KORH"], name: "New York to Boston", goScore: null },
-            ]);
+            // Auth state
+            var [currentUser, setCurrentUser] = useState(null);
+            var [showAuthModal, setShowAuthModal] = useState(false);
+
+            // Trips — initialized from localStorage, falling back to sample trips
+            var [trips, setTrips] = useState(() => {
+                try {
+                    var saved = localStorage.getItem('skyclear_trips');
+                    if (saved) return JSON.parse(saved);
+                } catch(e) {}
+                return [
+                    { id: 1, dep: "KCLT", arr: "KATL", aircraft: "c172", date: "2026-02-28", time: "09:00", wps: [], name: "Charlotte to Atlanta", goScore: null },
+                    { id: 2, dep: "KJFK", arr: "KBOS", aircraft: "sr22", date: "2026-03-01", time: "14:30", wps: ["KORH"], name: "New York to Boston", goScore: null },
+                ];
+            });
             var [activeTrip, setActiveTrip] = useState(null);
             var [tab, setTab] = useState("brief");
             var [forecastDay, setForecastDay] = useState(0);
@@ -1930,6 +2189,37 @@
                     }).catch(() => {});
                 });
             }, []);
+
+            // Firebase auth listener — loads cloud trips on sign-in, clears on sign-out
+            useEffect(() => {
+                if (!_firebaseAuth) return;
+                var unsub = _firebaseAuth.onAuthStateChanged(async user => {
+                    setCurrentUser(user || null);
+                    if (user) {
+                        var cloudTrips = await loadTripsFromCloud(user.uid);
+                        if (cloudTrips && cloudTrips.length > 0) {
+                            setTrips(cloudTrips);
+                            try { localStorage.setItem('skyclear_trips', JSON.stringify(cloudTrips)); } catch(e) {}
+                        } else {
+                            // First sign-in: upload local trips to cloud
+                            try {
+                                var localStr = localStorage.getItem('skyclear_trips');
+                                var localTrips = localStr ? JSON.parse(localStr) : null;
+                                if (localTrips && localTrips.length > 0) await saveTripsToCloud(user.uid, localTrips);
+                            } catch(e) {}
+                        }
+                    }
+                });
+                return unsub;
+            }, []);
+
+            // Persist trips to localStorage (and debounced cloud save when signed in)
+            useEffect(() => {
+                try { localStorage.setItem('skyclear_trips', JSON.stringify(trips)); } catch(e) {}
+                if (!currentUser) return;
+                var timer = setTimeout(() => saveTripsToCloud(currentUser.uid, trips), 1500);
+                return () => clearTimeout(timer);
+            }, [trips, currentUser]);
 
             // Auto-fetch real data for any unknown ICAOs typed in the create form
             useEffect(() => {
@@ -2012,9 +2302,19 @@
                         </div>
                         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                             <MdButton variant="tonal" icon="add" onClick={() => setView("create")}>New Trip</MdButton>
-                            <MdButton variant="text" icon="account_circle" style={{ padding: '8px' }} />
+                            {currentUser ? (
+                                <div style={{ display:'flex', alignItems:'center', gap:6 }}>
+                                    <div style={{ fontSize:13, color:'var(--md-sys-color-on-surface)', maxWidth:110, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap', padding:'0 4px' }}>
+                                        {currentUser.displayName || currentUser.email}
+                                    </div>
+                                    <MdButton variant="text" icon="logout" title="Sign out" onClick={() => _firebaseAuth && _firebaseAuth.signOut().then(() => setCurrentUser(null))} style={{ padding:'8px', color:'var(--md-sys-color-on-surface-variant)' }} />
+                                </div>
+                            ) : (
+                                <MdButton variant="text" icon="account_circle" title="Sign in / Create account" onClick={() => setShowAuthModal(true)} style={{ padding: '8px' }} />
+                            )}
                         </div>
                     </header>
+                    {showAuthModal && <AuthModal onClose={() => setShowAuthModal(false)} />}
 
                     <main style={{ flex: 1, overflowY: "auto", background: "var(--md-sys-color-background)" }}>
                         
@@ -2234,7 +2534,7 @@
                                                     ))}
                                                 </div>
                                                 <div style={{ fontSize: 13, color: "var(--md-sys-color-on-surface-variant)" }}>
-                                                    {ac.name} \u2022 {activeTrip.date}
+                                                    {ac.name} {'•'} {activeTrip.date}
                                                 </div>
                                             </div>
                                         </div>
