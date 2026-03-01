@@ -311,27 +311,27 @@
            DATA & UTILITIES
         ========================================= */
         const AIRPORTS = {
-            KCLT: { name: "Charlotte Douglas Intl", city: "Charlotte", state: "NC", lat: 35.214, lon: -80.943, elev: 748, rwy: ["18L/36R", "18C/36C", "18R/36L"], artcc: "Washington Ctr", freq: { atis: "127.235", twr: "119.9", gnd: "121.9", app: "124.0", dep: "120.05", clnc: "118.55" } },
-            KATL: { name: "Hartsfield-Jackson Atlanta", city: "Atlanta", state: "GA", lat: 33.641, lon: -84.428, elev: 1026, rwy: ["08L/26R", "08R/26L", "09L/27R"], artcc: "Atlanta Ctr", freq: { atis: "125.55", twr: "119.1", gnd: "121.9", app: "119.8", dep: "125.0", clnc: "121.65" } },
-            KJFK: { name: "John F Kennedy Intl", city: "New York", state: "NY", lat: 40.641, lon: -73.778, elev: 13, rwy: ["04L/22R", "04R/22L", "13L/31R"], artcc: "New York Ctr", freq: { atis: "128.725", twr: "119.1", gnd: "121.9", app: "120.8", dep: "123.7", clnc: "135.05" } },
-            KORD: { name: "O'Hare Intl", city: "Chicago", state: "IL", lat: 41.974, lon: -87.907, elev: 672, rwy: ["09L/27R", "09C/27C", "10L/28R"], artcc: "Chicago Ctr", freq: { atis: "135.4", twr: "120.75", gnd: "121.75", app: "124.35", dep: "125.0", clnc: "118.95" } },
-            KLAX: { name: "Los Angeles Intl", city: "Los Angeles", state: "CA", lat: 33.943, lon: -118.408, elev: 128, rwy: ["06L/24R", "07L/25R", "07R/25L"], artcc: "Los Angeles Ctr", freq: { atis: "133.8", twr: "120.95", gnd: "121.75", app: "124.5", dep: "125.2", clnc: "133.65" } },
-            KSFO: { name: "San Francisco Intl", city: "San Francisco", state: "CA", lat: 37.621, lon: -122.379, elev: 13, rwy: ["01L/19R", "10L/28R", "10R/28L"], artcc: "Oakland Ctr", freq: { atis: "118.85", twr: "120.5", gnd: "121.8", app: "120.35", dep: "120.9", clnc: "118.2" } },
-            KDFW: { name: "Dallas/Fort Worth Intl", city: "Dallas", state: "TX", lat: 32.9, lon: -97.04, elev: 607, rwy: ["13L/31R", "17C/35C", "18L/36R"], artcc: "Fort Worth Ctr", freq: { atis: "134.9", twr: "118.75", gnd: "121.65", app: "124.15", dep: "119.2", clnc: "128.25" } },
-            KDEN: { name: "Denver Intl", city: "Denver", state: "CO", lat: 39.856, lon: -104.674, elev: 5431, rwy: ["07/25", "08/26", "16L/34R", "17L/35R"], artcc: "Denver Ctr", freq: { atis: "132.35", twr: "118.3", gnd: "121.85", app: "120.8", dep: "128.25", clnc: "134.0" } },
-            KMIA: { name: "Miami Intl", city: "Miami", state: "FL", lat: 25.796, lon: -80.287, elev: 8, rwy: ["08L/26R", "08R/26L", "12/30"], artcc: "Miami Ctr", freq: { atis: "132.45", twr: "118.3", gnd: "121.8", app: "124.6", dep: "125.2", clnc: "130.45" } },
-            KSEA: { name: "Seattle-Tacoma Intl", city: "Seattle", state: "WA", lat: 47.45, lon: -122.309, elev: 433, rwy: ["16C/34C", "16L/34R"], artcc: "Seattle Ctr", freq: { atis: "118.0", twr: "119.9", gnd: "121.7", app: "120.4", dep: "120.1", clnc: "128.0" } },
-            KBOS: { name: "Boston Logan Intl", city: "Boston", state: "MA", lat: 42.366, lon: -71.01, elev: 20, rwy: ["04L/22R", "09/27", "15L/33R"], artcc: "Boston Ctr", freq: { atis: "128.8", twr: "119.1", gnd: "121.9", app: "120.6", dep: "133.0", clnc: "121.65" } },
-            KPHX: { name: "Phoenix Sky Harbor", city: "Phoenix", state: "AZ", lat: 33.437, lon: -112.008, elev: 1135, rwy: ["07L/25R", "07R/25L"], artcc: "Albuquerque Ctr", freq: { atis: "127.575", twr: "118.7", gnd: "119.75", app: "119.2", dep: "120.7", clnc: "120.65" } },
-            KMCO: { name: "Orlando Intl", city: "Orlando", state: "FL", lat: 28.431, lon: -81.308, elev: 96, rwy: ["17L/35R", "17R/35L"], artcc: "Jacksonville Ctr", freq: { atis: "124.8", twr: "118.45", gnd: "121.8", app: "124.8", dep: "125.85", clnc: "121.15" } },
-            KCHS: { name: "Charleston Intl", city: "Charleston", state: "SC", lat: 32.899, lon: -80.041, elev: 46, rwy: ["03/21", "15/33"], artcc: "Jacksonville Ctr", freq: { atis: "128.475", twr: "118.6", gnd: "121.8", app: "119.3", dep: "126.0", clnc: "121.75" } },
-            KGSP: { name: "Greenville-Spartanburg", city: "Greenville", state: "SC", lat: 34.896, lon: -82.219, elev: 964, rwy: ["04/22"], artcc: "Atlanta Ctr", freq: { atis: "121.1", twr: "120.5", gnd: "121.7", app: "119.0", dep: "124.4", clnc: "121.8" } },
-            KCAE: { name: "Columbia Metropolitan", city: "Columbia", state: "SC", lat: 33.939, lon: -81.12, elev: 236, rwy: ["05/23", "11/29"], artcc: "Atlanta Ctr", freq: { atis: "119.3", twr: "119.5", gnd: "121.9", app: "119.0", dep: "124.4", clnc: "124.0" } },
-            KRDU: { name: "Raleigh-Durham Intl", city: "Raleigh", state: "NC", lat: 35.878, lon: -78.788, elev: 435, rwy: ["05L/23R", "05R/23L"], artcc: "Washington Ctr", freq: { atis: "128.0", twr: "118.3", gnd: "121.9", app: "124.8", dep: "125.3", clnc: "121.15" } },
-            KIAD: { name: "Washington Dulles Intl", city: "Washington", state: "DC", lat: 38.947, lon: -77.46, elev: 313, rwy: ["01L/19R", "01C/19C"], artcc: "Washington Ctr", freq: { atis: "134.85", twr: "120.1", gnd: "121.9", app: "120.45", dep: "125.05", clnc: "118.55" } },
-            KMSY: { name: "New Orleans Intl", city: "New Orleans", state: "LA", lat: 29.993, lon: -90.258, elev: 4, rwy: ["02/20", "11/29"], artcc: "Houston Ctr", freq: { atis: "128.35", twr: "119.45", gnd: "121.9", app: "123.8", dep: "120.6", clnc: "119.05" } },
-            KCVG: { name: "Cincinnati/N Kentucky", city: "Cincinnati", state: "OH", lat: 39.049, lon: -84.662, elev: 896, rwy: ["09/27", "18C/36C"], artcc: "Indianapolis Ctr", freq: { atis: "127.375", twr: "118.3", gnd: "121.7", app: "119.7", dep: "125.8", clnc: "121.75" } },
-            KUZA: { name: "Rock Hill/York County", city: "Rock Hill", state: "SC", lat: 34.987, lon: -81.057, elev: 666, rwy: ["02/20", "15/33"], artcc: "Charlotte Ctr", freq: { atis: "122.7", twr: "122.8", gnd: "122.8", app: "124.0", dep: "124.0", clnc: "122.8" }, tafRef: "KCLT" }
+            KCLT: { name: "Charlotte Douglas Intl", city: "Charlotte", state: "NC", tz: "America/New_York", lat: 35.214, lon: -80.943, elev: 748, rwy: ["18L/36R", "18C/36C", "18R/36L"], artcc: "Washington Ctr", freq: { atis: "127.235", twr: "119.9", gnd: "121.9", app: "124.0", dep: "120.05", clnc: "118.55" } },
+            KATL: { name: "Hartsfield-Jackson Atlanta", city: "Atlanta", state: "GA", tz: "America/New_York", lat: 33.641, lon: -84.428, elev: 1026, rwy: ["08L/26R", "08R/26L", "09L/27R"], artcc: "Atlanta Ctr", freq: { atis: "125.55", twr: "119.1", gnd: "121.9", app: "119.8", dep: "125.0", clnc: "121.65" } },
+            KJFK: { name: "John F Kennedy Intl", city: "New York", state: "NY", tz: "America/New_York", lat: 40.641, lon: -73.778, elev: 13, rwy: ["04L/22R", "04R/22L", "13L/31R"], artcc: "New York Ctr", freq: { atis: "128.725", twr: "119.1", gnd: "121.9", app: "120.8", dep: "123.7", clnc: "135.05" } },
+            KORD: { name: "O'Hare Intl", city: "Chicago", state: "IL", tz: "America/Chicago", lat: 41.974, lon: -87.907, elev: 672, rwy: ["09L/27R", "09C/27C", "10L/28R"], artcc: "Chicago Ctr", freq: { atis: "135.4", twr: "120.75", gnd: "121.75", app: "124.35", dep: "125.0", clnc: "118.95" } },
+            KLAX: { name: "Los Angeles Intl", city: "Los Angeles", state: "CA", tz: "America/Los_Angeles", lat: 33.943, lon: -118.408, elev: 128, rwy: ["06L/24R", "07L/25R", "07R/25L"], artcc: "Los Angeles Ctr", freq: { atis: "133.8", twr: "120.95", gnd: "121.75", app: "124.5", dep: "125.2", clnc: "133.65" } },
+            KSFO: { name: "San Francisco Intl", city: "San Francisco", state: "CA", tz: "America/Los_Angeles", lat: 37.621, lon: -122.379, elev: 13, rwy: ["01L/19R", "10L/28R", "10R/28L"], artcc: "Oakland Ctr", freq: { atis: "118.85", twr: "120.5", gnd: "121.8", app: "120.35", dep: "120.9", clnc: "118.2" } },
+            KDFW: { name: "Dallas/Fort Worth Intl", city: "Dallas", state: "TX", tz: "America/Chicago", lat: 32.9, lon: -97.04, elev: 607, rwy: ["13L/31R", "17C/35C", "18L/36R"], artcc: "Fort Worth Ctr", freq: { atis: "134.9", twr: "118.75", gnd: "121.65", app: "124.15", dep: "119.2", clnc: "128.25" } },
+            KDEN: { name: "Denver Intl", city: "Denver", state: "CO", tz: "America/Denver", lat: 39.856, lon: -104.674, elev: 5431, rwy: ["07/25", "08/26", "16L/34R", "17L/35R"], artcc: "Denver Ctr", freq: { atis: "132.35", twr: "118.3", gnd: "121.85", app: "120.8", dep: "128.25", clnc: "134.0" } },
+            KMIA: { name: "Miami Intl", city: "Miami", state: "FL", tz: "America/New_York", lat: 25.796, lon: -80.287, elev: 8, rwy: ["08L/26R", "08R/26L", "12/30"], artcc: "Miami Ctr", freq: { atis: "132.45", twr: "118.3", gnd: "121.8", app: "124.6", dep: "125.2", clnc: "130.45" } },
+            KSEA: { name: "Seattle-Tacoma Intl", city: "Seattle", state: "WA", tz: "America/Los_Angeles", lat: 47.45, lon: -122.309, elev: 433, rwy: ["16C/34C", "16L/34R"], artcc: "Seattle Ctr", freq: { atis: "118.0", twr: "119.9", gnd: "121.7", app: "120.4", dep: "120.1", clnc: "128.0" } },
+            KBOS: { name: "Boston Logan Intl", city: "Boston", state: "MA", tz: "America/New_York", lat: 42.366, lon: -71.01, elev: 20, rwy: ["04L/22R", "09/27", "15L/33R"], artcc: "Boston Ctr", freq: { atis: "128.8", twr: "119.1", gnd: "121.9", app: "120.6", dep: "133.0", clnc: "121.65" } },
+            KPHX: { name: "Phoenix Sky Harbor", city: "Phoenix", state: "AZ", tz: "America/Phoenix", lat: 33.437, lon: -112.008, elev: 1135, rwy: ["07L/25R", "07R/25L"], artcc: "Albuquerque Ctr", freq: { atis: "127.575", twr: "118.7", gnd: "119.75", app: "119.2", dep: "120.7", clnc: "120.65" } },
+            KMCO: { name: "Orlando Intl", city: "Orlando", state: "FL", tz: "America/New_York", lat: 28.431, lon: -81.308, elev: 96, rwy: ["17L/35R", "17R/35L"], artcc: "Jacksonville Ctr", freq: { atis: "124.8", twr: "118.45", gnd: "121.8", app: "124.8", dep: "125.85", clnc: "121.15" } },
+            KCHS: { name: "Charleston Intl", city: "Charleston", state: "SC", tz: "America/New_York", lat: 32.899, lon: -80.041, elev: 46, rwy: ["03/21", "15/33"], artcc: "Jacksonville Ctr", freq: { atis: "128.475", twr: "118.6", gnd: "121.8", app: "119.3", dep: "126.0", clnc: "121.75" } },
+            KGSP: { name: "Greenville-Spartanburg", city: "Greenville", state: "SC", tz: "America/New_York", lat: 34.896, lon: -82.219, elev: 964, rwy: ["04/22"], artcc: "Atlanta Ctr", freq: { atis: "121.1", twr: "120.5", gnd: "121.7", app: "119.0", dep: "124.4", clnc: "121.8" } },
+            KCAE: { name: "Columbia Metropolitan", city: "Columbia", state: "SC", tz: "America/New_York", lat: 33.939, lon: -81.12, elev: 236, rwy: ["05/23", "11/29"], artcc: "Atlanta Ctr", freq: { atis: "119.3", twr: "119.5", gnd: "121.9", app: "119.0", dep: "124.4", clnc: "124.0" } },
+            KRDU: { name: "Raleigh-Durham Intl", city: "Raleigh", state: "NC", tz: "America/New_York", lat: 35.878, lon: -78.788, elev: 435, rwy: ["05L/23R", "05R/23L"], artcc: "Washington Ctr", freq: { atis: "128.0", twr: "118.3", gnd: "121.9", app: "124.8", dep: "125.3", clnc: "121.15" } },
+            KIAD: { name: "Washington Dulles Intl", city: "Washington", state: "DC", tz: "America/New_York", lat: 38.947, lon: -77.46, elev: 313, rwy: ["01L/19R", "01C/19C"], artcc: "Washington Ctr", freq: { atis: "134.85", twr: "120.1", gnd: "121.9", app: "120.45", dep: "125.05", clnc: "118.55" } },
+            KMSY: { name: "New Orleans Intl", city: "New Orleans", state: "LA", tz: "America/Chicago", lat: 29.993, lon: -90.258, elev: 4, rwy: ["02/20", "11/29"], artcc: "Houston Ctr", freq: { atis: "128.35", twr: "119.45", gnd: "121.9", app: "123.8", dep: "120.6", clnc: "119.05" } },
+            KCVG: { name: "Cincinnati/N Kentucky", city: "Cincinnati", state: "OH", tz: "America/New_York", lat: 39.049, lon: -84.662, elev: 896, rwy: ["09/27", "18C/36C"], artcc: "Indianapolis Ctr", freq: { atis: "127.375", twr: "118.3", gnd: "121.7", app: "119.7", dep: "125.8", clnc: "121.75" } },
+            KUZA: { name: "Rock Hill/York County", city: "Rock Hill", state: "SC", tz: "America/New_York", lat: 34.987, lon: -81.057, elev: 666, rwy: ["02/20", "15/33"], artcc: "Charlotte Ctr", freq: { atis: "122.7", twr: "122.8", gnd: "122.8", app: "124.0", dep: "124.0", clnc: "122.8" }, tafRef: "KCLT" }
         };
 
         // FBO data per airport: name, phone, fuel types, hours, services.
@@ -949,30 +949,62 @@
             return 'sfo';                    // Pacific Coast
         }
 
-        function estimateUtcOffsetHours(lon) {
-            if (!lon) return -5;
-            // Approximate US timezone longitude boundaries
-            // Eastern/Central divide is ~87°W; Central/Mountain ~102°W; Mountain/Pacific ~115°W
-            if (lon > -87)  return -5;   // Eastern (SC, NC, FL, GA, NY, etc.)
-            if (lon > -102) return -6;   // Central
-            if (lon > -115) return -7;   // Mountain
-            return -8;                    // Pacific
+        // Longitude-based IANA timezone fallback for dynamically-fetched airports
+        // that are not in the static AIRPORTS dict (which carry an exact .tz field).
+        function lonToIanaTz(lon) {
+            if (!lon || lon > -87)  return 'America/New_York';
+            if (lon > -102) return 'America/Chicago';
+            if (lon > -115) return 'America/Denver';
+            return 'America/Los_Angeles';
         }
 
-        // Convert trip local date+time to a UTC Date object.
-        // The stored time is LOCAL time at the departure airport.
-        // Date.UTC() avoids browser-timezone double-counting:
-        //   new Date(y,m,d,h,min) shifts by the *browser* TZ; subtracting the
-        //   airport offset on top would then double-count the offset.
-        function getTripTargetUtc(trip, depLon) {
+        // Convert a trip's local departure date+time to a precise UTC Date.
+        //
+        // ianaTimezone — IANA tz string from airport.tz, e.g. "America/New_York".
+        //                Use lonToIanaTz(airport.lon) as a fallback for airports
+        //                not in the static dict.
+        //
+        // Algorithm (Intl-based, DST-aware):
+        //   1. Treat the local departure time naively as UTC to get a starting anchor.
+        //   2. Format that anchor in the target timezone to read back the UTC offset.
+        //   3. Subtract the offset → approximate UTC.
+        //   4. Re-read the offset at the adjusted time and apply a second correction
+        //      pass; one pass is always sufficient because DST shifts are ±1 hour.
+        function getTripTargetUtc(trip, ianaTimezone) {
             if (!trip || !trip.date || !trip.time) return null;
-            var offset = estimateUtcOffsetHours(depLon);
-            var parts  = trip.date.split('-').map(Number);
-            var tparts = trip.time.split(':').map(Number);
-            // Treat the stored time as airport-local by first anchoring it to UTC
-            // via Date.UTC, then shifting by the airport's UTC offset.
-            var localAsUtcMs = Date.UTC(parts[0], parts[1] - 1, parts[2], tparts[0], tparts[1], 0);
-            return new Date(localAsUtcMs - offset * 3600000);
+            var dp = trip.date.split('-').map(Number);   // [y, m, d]
+            var tp = trip.time.split(':').map(Number);   // [h, min]
+
+            // Returns the UTC offset of ianaTimezone at a given UTC instant, in minutes.
+            // Negative west of UTC (e.g. EST = -300, EDT = -240).
+            function offsetMin(utcDate) {
+                var p = {};
+                new Intl.DateTimeFormat('en-US', {
+                    timeZone: ianaTimezone,
+                    year: 'numeric', month: 'numeric', day: 'numeric',
+                    hour: 'numeric', minute: 'numeric', second: 'numeric',
+                    hour12: false
+                }).formatToParts(utcDate).forEach(function(x) { p[x.type] = x.value; });
+                var hh = parseInt(p.hour);
+                var localUtcMs = Date.UTC(
+                    parseInt(p.year), parseInt(p.month) - 1, parseInt(p.day),
+                    hh === 24 ? 0 : hh, parseInt(p.minute), parseInt(p.second)
+                );
+                return (localUtcMs - utcDate.getTime()) / 60000;
+            }
+
+            // Step 1: naive UTC anchor (local time treated as UTC, no offset applied).
+            var naive = new Date(Date.UTC(dp[0], dp[1] - 1, dp[2], tp[0], tp[1], 0));
+
+            // Step 2–3: shift by the offset at the anchor.
+            var off1   = offsetMin(naive);
+            var result = new Date(naive.getTime() - off1 * 60000);
+
+            // Step 4: one correction pass for DST boundary edge cases.
+            var off2 = offsetMin(result);
+            if (off1 !== off2) result = new Date(naive.getTime() - off2 * 60000);
+
+            return result;
         }
 
         // Build a METAR-like weather object from a structured TAF forecast period
@@ -1105,8 +1137,7 @@
         //   METAR — used for current/past departures or as fallback
         async function fetchEffectiveWxForTrip(trip, allPts) {
             var depApt = getAirport(trip.dep);
-            var depLon = depApt ? depApt.lon : -80;
-            var targetUtc = getTripTargetUtc(trip, depLon);
+            var targetUtc = getTripTargetUtc(trip, depApt ? (depApt.tz || lonToIanaTz(depApt.lon)) : 'America/New_York');
             var hoursUntil = targetUtc ? (targetUtc.getTime() - Date.now()) / 3600000 : null;
 
             if (hoursUntil !== null && hoursUntil > 30) {
@@ -2203,11 +2234,10 @@
                 [trip.dep, trip.arr, JSON.stringify(trip.wps)]
             );
 
-            // Trip departure time in UTC (estimated from local + lon-based timezone)
+            // Trip departure time in UTC, DST-aware via IANA timezone
             var tripTargetUtc = useMemo(() => {
                 var apt = getAirport(trip.dep);
-                var depLon = apt ? apt.lon : -80;
-                return getTripTargetUtc(trip, depLon);
+                return getTripTargetUtc(trip, apt ? (apt.tz || lonToIanaTz(apt.lon)) : 'America/New_York');
             }, [trip.dep, trip.date, trip.time]);
 
             // Route distance and ETE (used in trip details card)
@@ -3386,7 +3416,7 @@
                                         var ete = ac ? d / ac.kts : 0;
 
                                         var depApt = getAirport(trip.dep);
-                                        var tripTarget = (trip.date && trip.time && depApt) ? getTripTargetUtc(trip, depApt.lon) : null;
+                                        var tripTarget = (trip.date && trip.time && depApt) ? getTripTargetUtc(trip, depApt.tz || lonToIanaTz(depApt.lon)) : null;
                                         var tripCountdown = null;
                                         if (tripTarget) {
                                             var msUntil = tripTarget.getTime() - Date.now();
