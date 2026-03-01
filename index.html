@@ -267,15 +267,32 @@
 
         var _firebaseAuth = null;
         var _firebaseDb = null;
-        (function initFirebase() {
+
+        // Supports runtime initialization from a config saved in localStorage
+        function tryInitFirebase(config) {
             try {
-                if (!FIREBASE_CONFIG.apiKey) return; // Not configured yet
-                var app = firebase.initializeApp(FIREBASE_CONFIG);
+                if (!config || !config.apiKey) return false;
+                // Delete any previous apps to avoid duplicate-app errors
+                if (firebase.apps && firebase.apps.length) {
+                    firebase.apps.slice().forEach(a => { try { a.delete(); } catch(e){} });
+                }
+                var app = firebase.initializeApp(config);
                 _firebaseAuth = firebase.auth(app);
                 _firebaseDb = firebase.firestore(app);
+                return true;
             } catch(e) {
                 console.warn('Firebase init error:', e.message);
+                return false;
             }
+        }
+
+        // On load: prefer a config saved by the user in localStorage over the hardcoded one
+        (function() {
+            try {
+                var saved = localStorage.getItem('skyclear_firebase_config');
+                var cfg = saved ? JSON.parse(saved) : FIREBASE_CONFIG;
+                tryInitFirebase(cfg);
+            } catch(e) {}
         })();
 
         // Firestore trip helpers
@@ -1962,7 +1979,8 @@
            AUTH MODAL COMPONENT
         ========================================= */
         function AuthModal({ onClose }) {
-            var [mode, setMode] = useState('signin'); // 'signin' | 'signup' | 'forgotpw'
+            // mode: 'signin' | 'signup' | 'forgotpw' | 'setup'
+            var [mode, setMode] = useState(_firebaseAuth ? 'signin' : 'setup');
             var [email, setEmail] = useState('');
             var [password, setPassword] = useState('');
             var [confirmPw, setConfirmPw] = useState('');
@@ -1970,6 +1988,7 @@
             var [loading, setLoading] = useState(false);
             var [error, setError] = useState('');
             var [info, setInfo] = useState('');
+            var [firebaseConfigInput, setFirebaseConfigInput] = useState('');
 
             function pwStrength(pw) {
                 if (!pw) return 0;
@@ -1998,7 +2017,33 @@
             }
 
             function noFirebase() {
-                setError('Account features require Firebase configuration. See the README for setup instructions.');
+                setMode('setup');
+                setError('');
+                setInfo('');
+            }
+
+            async function handleSaveConfig(e) {
+                e && e.preventDefault();
+                setError('');
+                var raw = firebaseConfigInput.trim();
+                // Accept either a bare JSON object or the full assignment statement
+                var jsonStr = raw.replace(/^.*?(\{[\s\S]*\}).*$/, '$1');
+                var cfg;
+                try { cfg = JSON.parse(jsonStr); } catch(ex) {
+                    setError('Could not parse JSON. Copy the exact config object from Firebase Console.');
+                    return;
+                }
+                if (!cfg.apiKey) { setError('Missing apiKey — make sure you copied the full config.'); return; }
+                setLoading(true);
+                var ok = tryInitFirebase(cfg);
+                if (ok) {
+                    try { localStorage.setItem('skyclear_firebase_config', JSON.stringify(cfg)); } catch(ex) {}
+                    setInfo('Firebase connected! You can now sign in.');
+                    setMode('signin');
+                } else {
+                    setError('Firebase failed to initialize. Check the config values and try again.');
+                }
+                setLoading(false);
             }
 
             async function handleSignIn(e) {
@@ -2078,7 +2123,7 @@
                     <div style={{ background:'var(--md-sys-color-surface)', borderRadius:28, padding:32, width:'min(440px,100%)', maxHeight:'90vh', overflowY:'auto', boxShadow:'0 8px 32px rgba(0,0,0,0.3)' }}>
                         <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:24 }}>
                             <div style={{ fontSize:22, fontWeight:500, color:'var(--md-sys-color-on-surface)' }}>
-                                {mode === 'signin' ? 'Sign In' : mode === 'signup' ? 'Create Account' : 'Reset Password'}
+                                {mode === 'signin' ? 'Sign In' : mode === 'signup' ? 'Create Account' : mode === 'forgotpw' ? 'Reset Password' : 'Connect Firebase'}
                             </div>
                             <MdButton variant="text" icon="close" onClick={onClose} style={{ padding:8 }} />
                         </div>
@@ -2105,6 +2150,11 @@
                                     <button type="button" onClick={() => { setMode('signup'); setError(''); setInfo(''); }} style={{ background:'none', border:'none', color:'var(--md-sys-color-primary)', cursor:'pointer', fontSize:14, padding:0 }}>Create account</button>
                                     <button type="button" onClick={() => { setMode('forgotpw'); setError(''); setInfo(''); }} style={{ background:'none', border:'none', color:'var(--md-sys-color-primary)', cursor:'pointer', fontSize:14, padding:0 }}>Forgot password?</button>
                                 </div>
+                                {!_firebaseAuth && (
+                                    <button type="button" onClick={() => { setMode('setup'); setError(''); setInfo(''); }} style={{ background:'none', border:'1px dashed var(--md-sys-color-outline)', borderRadius:8, color:'var(--md-sys-color-on-surface-variant)', cursor:'pointer', fontSize:12, padding:'8px 12px', textAlign:'center', width:'100%' }}>
+                                        ⚙ Set up Firebase to enable accounts
+                                    </button>
+                                )}
                             </form>
                         )}
 
@@ -2143,6 +2193,33 @@
                                 <MdInput label="Email" type="email" value={email} onChange={e => setEmail(e.target.value)} />
                                 <MdButton variant="primary" onClick={handleForgotPw} disabled={loading}>{loading ? 'Sending…' : 'Send Reset Email'}</MdButton>
                                 <button type="button" onClick={() => { setMode('signin'); setError(''); setInfo(''); }} style={{ background:'none', border:'none', color:'var(--md-sys-color-primary)', cursor:'pointer', fontSize:14, textAlign:'center' }}>Back to sign in</button>
+                            </form>
+                        )}
+
+                        {mode === 'setup' && (
+                            <form onSubmit={handleSaveConfig} style={{ display:'flex', flexDirection:'column', gap:16 }}>
+                                <div style={{ background:'var(--md-sys-color-surface-container-highest)', borderRadius:12, padding:16 }}>
+                                    <div style={{ fontWeight:500, marginBottom:10, fontSize:14 }}>One-time setup — 3 minutes</div>
+                                    <ol style={{ margin:0, paddingLeft:20, fontSize:13, color:'var(--md-sys-color-on-surface-variant)', lineHeight:2 }}>
+                                        <li>Open <a href="https://console.firebase.google.com" target="_blank" rel="noopener" style={{ color:'var(--md-sys-color-primary)' }}>console.firebase.google.com</a> and create a project</li>
+                                        <li>Go to <b>Authentication → Sign-in method</b> and enable <b>Email/Password</b> and <b>Google</b></li>
+                                        <li>Go to <b>Firestore Database → Create database</b> (start in test mode)</li>
+                                        <li>Go to <b>Project Settings → Your apps → Add app (Web)</b></li>
+                                        <li>Copy the <code style={{ background:'var(--md-sys-color-surface-container)', padding:'1px 4px', borderRadius:4 }}>firebaseConfig</code> object and paste it below</li>
+                                        <li>Add your site URL to <b>Authentication → Settings → Authorized domains</b></li>
+                                    </ol>
+                                </div>
+                                <div style={{ fontSize:13, color:'var(--md-sys-color-on-surface-variant)' }}>Paste your Firebase config JSON:</div>
+                                <textarea
+                                    placeholder={'{\n  "apiKey": "AIza...",\n  "authDomain": "your-project.firebaseapp.com",\n  "projectId": "your-project",\n  "storageBucket": "your-project.appspot.com",\n  "messagingSenderId": "123456",\n  "appId": "1:123:web:abc"\n}'}
+                                    value={firebaseConfigInput}
+                                    onChange={e => setFirebaseConfigInput(e.target.value)}
+                                    style={{ width:'100%', height:170, fontFamily:'Roboto Mono, monospace', fontSize:12, padding:12, border:'1px solid var(--md-sys-color-outline)', borderRadius:12, background:'var(--md-sys-color-surface-container)', color:'var(--md-sys-color-on-surface)', resize:'vertical', boxSizing:'border-box' }}
+                                />
+                                <MdButton variant="primary" onClick={handleSaveConfig} disabled={loading || !firebaseConfigInput.trim()}>{loading ? 'Connecting…' : 'Save & Connect'}</MdButton>
+                                {_firebaseAuth && (
+                                    <button type="button" onClick={() => { setMode('signin'); setError(''); setInfo(''); }} style={{ background:'none', border:'none', color:'var(--md-sys-color-primary)', cursor:'pointer', fontSize:14, textAlign:'center' }}>← Back to sign in</button>
+                                )}
                             </form>
                         )}
                     </div>
