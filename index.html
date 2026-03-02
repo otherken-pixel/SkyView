@@ -4963,12 +4963,12 @@
                                         })}
                                     </div>
 
-                                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginBottom: 24 }}>
-                                        <MdSelect label="Aircraft" value={newTrip.aircraft} onChange={e => setNewTrip({...newTrip, aircraft: e.target.value})} options={AIRCRAFT.map(a => ({value: a.id, label: `${a.name} (${a.cat})`}))} />
-                                        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+                                    <div style={{ display: "flex", flexDirection: "column", gap: 16, marginBottom: 24 }}>
+                                        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
                                             <MdInput type="date" label="Date" value={newTrip.date} onChange={e => setNewTrip({...newTrip, date: e.target.value})} />
                                             <MdInput type="time" label="Time" value={newTrip.time} onChange={e => setNewTrip({...newTrip, time: e.target.value})} />
                                         </div>
+                                        <MdSelect label="Aircraft" value={newTrip.aircraft} onChange={e => setNewTrip({...newTrip, aircraft: e.target.value})} options={AIRCRAFT.map(a => ({value: a.id, label: `${a.name} (${a.cat})`}))} />
                                     </div>
                                     
                                     {(() => {
