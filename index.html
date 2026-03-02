@@ -2924,7 +2924,7 @@
             else { URL.revokeObjectURL(url); }
         }
 
-        function BriefingPanel({ trip, onScoreUpdate, tab }) {
+        function BriefingPanel({ trip, onScoreUpdate, onFratUpdate, tab }) {
             // --- Auto-briefing state ---
             var [wxData, setWxData] = useState(null);
             var [loadingWx, setLoadingWx] = useState(true);
@@ -2937,9 +2937,9 @@
             var [nwsData, setNwsData] = useState({});   // { ICAO: nwsDays[] }
 
             // --- FRAT state ---
-            var [fratAnswers, setFratAnswers]     = useState({});     // { P1: riskPts, V1: riskPts, … }
-            var [fratAutoFilled, setFratAutoFilled] = useState({});   // { V1: pts, V2: pts, V3: pts }
-            var [fratSkipped, setFratSkipped]     = useState(false);  // user dismissed with penalty
+            var [fratAnswers, setFratAnswers]     = useState(trip.fratAnswers || {});  // { P1: riskPts, … }
+            var [fratAutoFilled, setFratAutoFilled] = useState({});                  // { V1: pts, V2: pts, V3: pts }
+            var [fratSkipped, setFratSkipped]     = useState(trip.fratSkipped || false); // dismissed with penalty
             var [fratExpanded, setFratExpanded]   = useState(false);  // panel open/closed
 
             // --- AI Enhanced section state ---
@@ -3355,6 +3355,11 @@
             useEffect(function() {
                 if (combinedScore !== null && onScoreUpdate) onScoreUpdate(combinedScore);
             }, [combinedScore]);
+
+            // Persist FRAT answers & skipped flag back to the trip object
+            useEffect(function() {
+                if (onFratUpdate) onFratUpdate(fratAnswers, fratSkipped);
+            }, [fratAnswers, fratSkipped]);
 
             // finalVerdict: convective SIGMET or CWA thunderstorm overrides weather-based verdict
             var finalVerdict = useMemo(function() {
@@ -4926,7 +4931,7 @@
 
             useEffect(() => {
                 // Score each trip using departure-time weather (TAF/MOS/METAR),
-                // matching the same logic as the BriefingPanel's effectiveWxData.
+                // then blend in the saved FRAT score exactly as BriefingPanel does.
                 trips.forEach(t => {
                     var allPts = [t.dep].concat(t.wps || []).concat([t.arr]).filter(Boolean);
                     var dist = 0;
@@ -4937,7 +4942,18 @@
                     var routeDist = Math.round(dist);
                     fetchEffectiveWxForTrip(t, allPts).then(wxData => {
                         if (wxData.length > 0) {
-                            var score = calcDetailedScore(wxData, routeDist).total;
+                            var weatherScore = calcDetailedScore(wxData, routeDist).total;
+                            // Mirror BriefingPanel combinedScore logic:
+                            // — FRAT complete → 70/30 blend; otherwise → weather − 20 penalty
+                            var savedAnswers  = t.fratAnswers || {};
+                            var fratDone = FRAT_QUESTIONS.filter(function(q){ return savedAnswers[q.id] !== undefined; }).length === FRAT_TOTAL;
+                            var score;
+                            if (fratDone) {
+                                var fratScore = calcFratGoScore(savedAnswers);
+                                score = Math.max(0, Math.min(100, Math.round(weatherScore * 0.70 + fratScore * 0.30)));
+                            } else {
+                                score = Math.max(0, weatherScore - 20);
+                            }
                             setTrips(prev => prev.map(x => x.id === t.id ? { ...x, goScore: score } : x));
                         }
                     }).catch(() => {});
@@ -5475,9 +5491,14 @@
                                         <div className="briefing-content" style={{ flex: 1, overflowY: "auto", padding: "24px", maxWidth: "900px", margin: "0 auto", width: "100%" }}>
                                             {(tab === "brief" || tab === "export") && (
                                                 <WxErrorBoundary label="Flight Briefing">
-                                                    <BriefingPanel trip={activeTrip} tab={tab} onScoreUpdate={score => {
+                                                    <BriefingPanel trip={activeTrip} tab={tab}
+                                                    onScoreUpdate={score => {
                                                         setActiveTrip(prev => prev ? { ...prev, goScore: score } : prev);
                                                         setTrips(prev => prev.map(t => t.id === activeTrip.id ? { ...t, goScore: score } : t));
+                                                    }}
+                                                    onFratUpdate={(answers, skipped) => {
+                                                        setActiveTrip(prev => prev ? { ...prev, fratAnswers: answers, fratSkipped: skipped } : prev);
+                                                        setTrips(prev => prev.map(t => t.id === activeTrip.id ? { ...t, fratAnswers: answers, fratSkipped: skipped } : t));
                                                     }} />
                                                 </WxErrorBoundary>
                                             )}
