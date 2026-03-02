@@ -46,17 +46,29 @@
             --accent-dim:     rgba(10,132,255,0.15);
             --accent-glow:    0 0 20px rgba(10,132,255,0.35);
 
-            /* ── Flight category — neon status colors ── */
-            --vfr:            #30D158;            /* iOS green */
-            --vfr-bg:         rgba(48,209,88,0.12);
-            --vfr-glow:       0 0 12px rgba(48,209,88,0.4);
-            --mvfr:           #0A84FF;            /* iOS blue */
-            --mvfr-bg:        rgba(10,132,255,0.12);
-            --ifr:            #FF9F0A;            /* iOS orange — caution, not red */
-            --ifr-bg:         rgba(255,159,10,0.12);
-            --lifr:           #FF453A;            /* iOS red */
-            --lifr-bg:        rgba(255,69,58,0.12);
-            --lifr-glow:      0 0 16px rgba(255,69,58,0.45);
+            /* ── Flight category — standard aviation colors (fixed across themes) ── */
+            --vfr:            #34C759;            /* standard VFR green */
+            --vfr-bg:         rgba(52,199,89,0.15);
+            --vfr-glow:       0 0 12px rgba(52,199,89,0.4);
+            --mvfr:           #0A84FF;            /* standard MVFR blue */
+            --mvfr-bg:        rgba(10,132,255,0.15);
+            --ifr:            #FF3B30;            /* standard IFR red */
+            --ifr-bg:         rgba(255,59,48,0.15);
+            --lifr:           #BF5AF2;            /* standard LIFR magenta/purple */
+            --lifr-bg:        rgba(191,90,242,0.15);
+            --lifr-glow:      0 0 16px rgba(191,90,242,0.4);
+
+            /* ── Go/No-Go verdict — fixed colors, never change with theme ── */
+            --go:             #34C759;            /* always green */
+            --go-bg:          rgba(52,199,89,0.15);
+            --caution:        #FF9500;            /* always amber */
+            --caution-bg:     rgba(255,149,0,0.15);
+            --nogo:           #FF3B30;            /* always red */
+            --nogo-bg:        rgba(255,59,48,0.15);
+
+            /* ── Header — frosted glass, adapts to theme ── */
+            --header-bg:      rgba(10,10,15,0.85);
+            --header-border:  rgba(255,255,255,0.08);
 
             /* ── Legacy MD3 aliases (keeps existing components working) ── */
             --md-sys-color-primary:                   var(--accent);
@@ -71,13 +83,13 @@
             --md-sys-color-on-tertiary:               #000;
             --md-sys-color-tertiary-container:        rgba(255,255,255,0.08);
             --md-sys-color-on-tertiary-container:     var(--text-secondary);
-            --md-sys-color-error:                     var(--lifr);
+            --md-sys-color-error:                     var(--nogo);
             --md-sys-color-on-error:                  #fff;
-            --md-sys-color-error-container:           var(--lifr-bg);
-            --md-sys-color-on-error-container:        var(--lifr);
-            --md-sys-color-warning:                   var(--ifr);
-            --md-sys-color-warning-container:         var(--ifr-bg);
-            --md-sys-color-on-warning-container:      var(--ifr);
+            --md-sys-color-error-container:           var(--nogo-bg);
+            --md-sys-color-on-error-container:        var(--nogo);
+            --md-sys-color-warning:                   var(--caution);
+            --md-sys-color-warning-container:         var(--caution-bg);
+            --md-sys-color-on-warning-container:      var(--caution);
             --md-sys-color-background:                var(--bg-elevated);
             --md-sys-color-on-background:             var(--text-primary);
             --md-sys-color-surface:                   var(--card);
@@ -117,10 +129,13 @@
             --accent:         #007AFF;
             --accent-dim:     rgba(0,122,255,0.10);
             --accent-glow:    none;
-            --vfr:  #34C759; --vfr-bg:  rgba(52,199,89,0.10);   --vfr-glow: none;
-            --mvfr: #007AFF; --mvfr-bg: rgba(0,122,255,0.10);
-            --ifr:  #FF9500; --ifr-bg:  rgba(255,149,0,0.10);
-            --lifr: #FF3B30; --lifr-bg: rgba(255,59,48,0.10);   --lifr-glow: none;
+            --vfr-glow:       none;
+            --lifr-glow:      none;
+            /* Flight category, verdict, and go/nogo colors are NOT overridden —
+               they stay the same fixed aviation-standard values as in :root */
+            /* Header — light frosted glass */
+            --header-bg:     rgba(248,248,252,0.90);
+            --header-border: rgba(0,0,0,0.08);
             /* MD3 aliases for light mode */
             --md-sys-color-background:  var(--bg-elevated);
             --md-sys-color-on-background: var(--text-primary);
@@ -141,13 +156,6 @@
             --md-sys-color-on-primary-container:     var(--accent);
             --md-sys-color-secondary-container:      var(--card-high);
             --md-sys-color-on-secondary-container:   var(--text-primary);
-            --md-sys-color-error:                    var(--lifr);
-            --md-sys-color-error-container:          var(--lifr-bg);
-            --md-sys-color-on-error-container:       var(--lifr);
-            --cat-vfr-color: var(--vfr); --cat-vfr-bg: var(--vfr-bg);
-            --cat-mvfr-color: var(--mvfr); --cat-mvfr-bg: var(--mvfr-bg);
-            --cat-ifr-color: var(--ifr); --cat-ifr-bg: var(--ifr-bg);
-            --cat-lifr-color: var(--lifr); --cat-lifr-bg: var(--lifr-bg);
         }
         /* dark-theme class = same as :root (always dark by default) */
         body.dark-theme { /* inherits :root — nothing to override */ }
@@ -3041,19 +3049,19 @@
 
                 var verdict, verdictColor, verdictBg, verdictIcon, verdictDesc;
                 if (hasLIFR) {
-                    verdict = 'NO-GO'; verdictColor = 'var(--cat-lifr-color)'; verdictBg = 'var(--cat-lifr-bg)';
+                    verdict = 'NO-GO'; verdictColor = 'var(--nogo)'; verdictBg = 'var(--nogo-bg)';
                     verdictIcon = 'cancel';
                     verdictDesc = `${srcQual} LIFR at one or more stations (${dataContext}) — flight not recommended.`;
                 } else if (hasIFR) {
-                    verdict = 'NO-GO'; verdictColor = 'var(--cat-ifr-color)'; verdictBg = 'var(--cat-ifr-bg)';
+                    verdict = 'NO-GO'; verdictColor = 'var(--nogo)'; verdictBg = 'var(--nogo-bg)';
                     verdictIcon = 'cancel';
                     verdictDesc = `${srcQual} IFR conditions en route (${dataContext}) — instrument currency required.`;
                 } else if (hasMVFR) {
-                    verdict = 'CAUTION'; verdictColor = 'var(--cat-mvfr-color)'; verdictBg = 'var(--cat-mvfr-bg)';
+                    verdict = 'CAUTION'; verdictColor = 'var(--caution)'; verdictBg = 'var(--caution-bg)';
                     verdictIcon = 'warning';
                     verdictDesc = `${srcQual} Marginal VFR along the route (${dataContext}) — monitor closely before departure.`;
                 } else {
-                    verdict = 'GO'; verdictColor = 'var(--cat-vfr-color)'; verdictBg = 'var(--cat-vfr-bg)';
+                    verdict = 'GO'; verdictColor = 'var(--go)'; verdictBg = 'var(--go-bg)';
                     verdictIcon = 'check_circle';
                     verdictDesc = `${srcQual} VFR at all stations (${dataContext}) — conditions appear favorable.`;
                 }
@@ -3190,8 +3198,8 @@
                 if (hasConvSigmet || hasCwaTstorm) {
                     return {
                         verdict: 'NO-GO',
-                        verdictColor: 'var(--cat-lifr-color)',
-                        verdictBg: 'var(--cat-lifr-bg)',
+                        verdictColor: 'var(--nogo)',
+                        verdictBg: 'var(--nogo-bg)',
                         verdictIcon: 'thunderstorm',
                         verdictDesc: hasConvSigmet
                             ? 'Active Convective SIGMET along route — VFR flight strongly discouraged. Obtain official briefing.'
@@ -4721,9 +4729,10 @@
                     <header style={{
                         height: "56px", display: "flex", alignItems: "center", justifyContent: "space-between",
                         padding: "0 16px 0 20px",
-                        background: "rgba(10,10,15,0.85)",
+                        background: "var(--header-bg)",
                         backdropFilter: "blur(20px)",
-                        borderBottom: "1px solid var(--card-border)",
+                        WebkitBackdropFilter: "blur(20px)",
+                        borderBottom: "1px solid var(--header-border)",
                         zIndex: 100, flexShrink: 0
                     }}>
                         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
@@ -5064,8 +5073,9 @@
                                             padding: "14px 24px",
                                             display: "flex", alignItems: "center", gap: 18,
                                             borderBottom: "1px solid var(--card-border)",
-                                            background: "rgba(10,10,15,0.90)",
-                                            backdropFilter: "blur(16px)"
+                                            background: "var(--header-bg)",
+                                            backdropFilter: "blur(16px)",
+                                            WebkitBackdropFilter: "blur(16px)"
                                         }}>
                                             <GoScoreRing score={activeTrip.goScore || 50} size={52} />
                                             <div style={{ flex: 1, minWidth: 0 }}>
