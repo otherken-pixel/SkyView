@@ -2271,9 +2271,10 @@
 
                 var latLngs = allPts.map(function(p){ return [p.lat, p.lon]; });
 
-                // Glow halo + solid route line in app accent blue
-                var glow = L.polyline(latLngs, { color: '#0A84FF', weight: 14, opacity: isDark ? 0.18 : 0.40 });
-                var line = L.polyline(latLngs, { color: '#0A84FF', weight: 3,  opacity: 0.95 });
+                // Glow halo + solid route line — darker blue on light tiles for contrast
+                var lineColor = isDark ? '#0A84FF' : '#0055CC';
+                var glow = L.polyline(latLngs, { color: lineColor, weight: 16, opacity: isDark ? 0.18 : 0.35 });
+                var line = L.polyline(latLngs, { color: lineColor, weight: 4,  opacity: 0.95 });
                 glow.addTo(map); overlaysRef.current.push(glow);
                 line.addTo(map); overlaysRef.current.push(line);
 
@@ -2297,10 +2298,13 @@
                 map.fitBounds(latLngs, { padding: [50, 50] });
             }, [dep, arr, JSON.stringify(wps), allPts.length]);
 
-            // Update marker stroke when theme changes (without full redraw)
+            // Update marker ring stroke when theme changes — polylines are skipped
+            // (setStyle on all layers was previously turning polylines white in light mode)
             useEffect(function() {
                 overlaysRef.current.forEach(function(l) {
-                    if (l.setStyle) l.setStyle({ color: isDark ? '#000' : '#fff' });
+                    if (typeof l.getRadius === 'function') {
+                        l.setStyle({ color: isDark ? '#000' : '#fff' });
+                    }
                 });
             }, [isDark]);
 
