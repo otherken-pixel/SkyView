@@ -1042,6 +1042,73 @@
 
         // Calculate Go/No-Go score from live METAR objects
         function calcGoScoreFromMetars(depMetar, arrMetar) {
+
+        // ── MMOPA FRAT — Flight Risk Assessment Tool ──────────────────────────
+        var FRAT_QUESTIONS = [
+            // ── P: Pilot (35%) ───────────────────────────────────────────────
+            { id:'P1', cat:'P', label:'Flight Currency (most recent flight)',
+              opts:[{l:'Within last 7 days',p:0},{l:'8–14 days ago',p:1},{l:'15–30 days ago',p:3},{l:'31–90 days ago',p:5},{l:'More than 90 days ago',p:8}] },
+            { id:'P2', cat:'P', label:'Currency in Aircraft Type (SR22)',
+              opts:[{l:'Flown this type in last 30 days',p:0},{l:'Flown this type in last 60 days',p:2},{l:'Flown this type in last 90 days',p:4},{l:'Not flown this type in 90+ days',p:7}] },
+            { id:'P3', cat:'P', label:'Night Currency (skip if day VFR)',
+              opts:[{l:'Current night (3 T/Os & landings in last 90 days)',p:0},{l:'Not current night — flight is daytime',p:0},{l:'Not current night — flight includes night portion',p:6}] },
+            { id:'P4', cat:'P', label:'IFR Currency (skip if VFR flight)',
+              opts:[{l:'Current IFR (6 approaches in last 6 months)',p:0},{l:'Not required — VFR flight',p:0},{l:'IFR required, not current — filed with safety pilot',p:3},{l:'IFR required, not current — flying solo',p:8}] },
+            { id:'P5', cat:'P', label:'Pilot Physical / Physiological State (IMSAFE)',
+              hint:'Illness · Medication · Stress · Alcohol · Fatigue · Emotion',
+              opts:[{l:'All IMSAFE items checked — feeling good',p:0},{l:'Minor concern (mild fatigue, slight congestion)',p:2},{l:'Moderate concern (poor sleep, stress, medications)',p:5},{l:'Significant concern (fatigue, illness, emotional distress)',p:9}] },
+            { id:'P6', cat:'P', label:'Total Pilot Experience',
+              opts:[{l:'500+ hours',p:0},{l:'200–499 hours',p:1},{l:'100–199 hours',p:3},{l:'50–99 hours',p:5},{l:'Under 50 hours',p:7}] },
+            { id:'P7', cat:'P', label:'Familiarity with Route / Destination',
+              opts:[{l:'Flown this route before, familiar with destination',p:0},{l:'New route but familiar with similar terrain/airspace',p:1},{l:'Unfamiliar route and/or new airport',p:3},{l:'Unfamiliar route, complex airspace, or high-elevation destination',p:5}] },
+            // ── A: Aircraft (25%) ────────────────────────────────────────────
+            { id:'A1', cat:'A', label:'Aircraft Airworthiness Status',
+              opts:[{l:'All systems normal, no open squawks',p:0},{l:'Minor deferred item (MEL/MMEL; legal to fly)',p:2},{l:'Recent maintenance performed (within 10 hours)',p:2},{l:'Open question about airworthiness',p:8}] },
+            { id:'A2', cat:'A', label:'Aircraft Currency for Intended Flight',
+              opts:[{l:'IFR certified and current (pitot-static, transponder current)',p:0},{l:'VFR only / VFR flight only intended',p:0},{l:'IFR flight intended but IFR currency check overdue',p:7}] },
+            { id:'A3', cat:'A', label:'Fuel State / Fuel Planning',
+              opts:[{l:'Full tanks + reserve exceeds FAA minimum by 45+ min',p:0},{l:'Meets FAA reserve requirements + 30 min margin',p:1},{l:'Meets FAA minimum reserve only',p:4},{l:'Fuel planning not confirmed',p:8}] },
+            { id:'A4', cat:'A', label:'Weight & Balance / Performance',
+              opts:[{l:'W&B calculated, within limits with margin',p:0},{l:'W&B estimated, likely within limits',p:2},{l:'Not calculated',p:5},{l:'Near limits or exceeding in any category',p:9}] },
+            // ── V: enVironment (25%) ─────────────────────────────────────────
+            { id:'V1', cat:'V', label:'Weather Complexity at Departure', auto:true,
+              opts:[{l:'VFR — clear of clouds, good visibility',p:0},{l:'MVFR — marginal but comfortable',p:2},{l:'IFR — in actual IMC on departure',p:5},{l:'LIFR or rapidly changing conditions',p:9}] },
+            { id:'V2', cat:'V', label:'En Route Weather', auto:true,
+              opts:[{l:'Clear or scattered, no significant weather',p:0},{l:'Some clouds or reduced visibility en route',p:2},{l:'Embedded convection, icing, or heavy IMC en route',p:7},{l:'SIGMETs or AIRMETs for severe icing/turbulence/convection',p:10}] },
+            { id:'V3', cat:'V', label:'Destination Weather at ETA', auto:true,
+              opts:[{l:'VFR forecast at ETA',p:0},{l:'MVFR forecast at ETA',p:2},{l:'IFR forecast at ETA',p:4},{l:'LIFR or below minimums forecast at ETA',p:8}] },
+            { id:'V4', cat:'V', label:'Alternate Airport Availability',
+              opts:[{l:'Alternate available and VFR/better',p:0},{l:'Alternate available and IFR',p:2},{l:'No practical alternate within range',p:6}] },
+            { id:'V5', cat:'V', label:'Terrain / Special Use Airspace',
+              opts:[{l:'Flat terrain, no special airspace concerns',p:0},{l:'Some terrain or TFRs in the area',p:1},{l:'Mountain terrain, complex airspace, or overwater',p:3},{l:'High terrain + IMC, or ADIZ crossing',p:6}] },
+            // ── E: External Pressures (15%) ──────────────────────────────────
+            { id:'E1', cat:'E', label:'Schedule / Time Pressure',
+              opts:[{l:'No time pressure — can delay or cancel freely',p:0},{l:'Mild preference to arrive on time',p:2},{l:'Moderate pressure (meeting, commitment)',p:4},{l:'Strong pressure (must arrive — wedding, medical, etc.)',p:7}] },
+            { id:'E2', cat:'E', label:'Passenger Expectations',
+              opts:[{l:'No passengers, or passengers understand weather delays',p:0},{l:'Passengers present but flexible',p:1},{l:'Passengers present with expectations; reluctant to cancel',p:4},{l:'Significant pressure from passengers to fly',p:7}] },
+            { id:'E3', cat:'E', label:'Continuation Bias Check',
+              opts:[{l:'I would comfortably cancel this flight if conditions changed',p:0},{l:"I'd probably push through minor issues",p:3},{l:'I feel committed to this flight regardless of new information',p:7}] },
+        ];
+        var FRAT_CAT_MAX = { P:45, A:29, V:30, E:21 };
+        var FRAT_CAT_WEIGHT = { P:0.35, A:0.25, V:0.25, E:0.15 };
+        var FRAT_CAT_LABEL = { P:'Pilot', A:'Aircraft', V:'Environment', E:'External Pressures' };
+        var FRAT_CAT_ICON  = { P:'person', A:'flight', V:'cloud', E:'schedule' };
+        var FRAT_TOTAL = FRAT_QUESTIONS.length; // 19
+
+        function calcFratGoScore(answers) {
+            var raw = { P:0, A:0, V:0, E:0 };
+            FRAT_QUESTIONS.forEach(function(q) {
+                if (answers[q.id] !== undefined) raw[q.cat] += answers[q.id];
+            });
+            var risk = 0;
+            ['P','A','V','E'].forEach(function(c) {
+                risk += (raw[c] / FRAT_CAT_MAX[c]) * 100 * FRAT_CAT_WEIGHT[c];
+            });
+            return Math.max(0, Math.min(100, Math.round(100 - risk)));
+        }
+        // ─────────────────────────────────────────────────────────────────────
+
+
             if (!depMetar || !arrMetar) return 50;
             var catScores = { VFR: 95, MVFR: 65, IFR: 30, LIFR: 10 };
             var windPen = Math.max(0, (depMetar.wspd - 15) * 3) + Math.max(0, (arrMetar.wspd - 15) * 3);
@@ -2804,6 +2871,12 @@
             // but the current TAF was issued ~4h ago and expires in 20h).
             var [nwsData, setNwsData] = useState({});   // { ICAO: nwsDays[] }
 
+            // --- FRAT state ---
+            var [fratAnswers, setFratAnswers]     = useState({});     // { P1: riskPts, V1: riskPts, … }
+            var [fratAutoFilled, setFratAutoFilled] = useState({});   // { V1: pts, V2: pts, V3: pts }
+            var [fratSkipped, setFratSkipped]     = useState(false);  // user dismissed with penalty
+            var [fratExpanded, setFratExpanded]   = useState(false);  // panel open/closed
+
             // --- AI Enhanced section state ---
             var [aiResult, setAiResult] = useState(null);
             var [aiLoading, setAiLoading] = useState(false);
@@ -3213,10 +3286,55 @@
                 return calcDetailedScore(effectiveWxData, routeDist);
             }, [effectiveWxData, routeDist]);
 
+            // --- FRAT auto-populate V1/V2/V3 from live weather data ---
+            useEffect(function() {
+                if (!effectiveWxData || effectiveWxData.length === 0) return;
+                var dep = effectiveWxData[0];
+                var arr = effectiveWxData[effectiveWxData.length - 1];
+                var depCat = (dep.effectiveWx && dep.effectiveWx.cat) || 'VFR';
+                var arrCat = (arr.effectiveWx && arr.effectiveWx.cat) || 'VFR';
+                // V1: departure weather → directly from dep cat
+                var v1Pts = { VFR:0, MVFR:2, IFR:5, LIFR:9 }[depCat] || 0;
+                // V2: en route — worst of SIGMETs/AIRMETs or en-route flight cats
+                var hasConvSigmet = sigmets.some(function(s) { return ((s.properties||{}).hazard||'').toUpperCase()==='CONVECTIVE'; });
+                var hasHazAirmet  = gairmets.some(function(a) { var h=(a.hazard||'').toUpperCase(); return h.includes('ICE')||h.includes('TURB'); });
+                var enRouteCats   = effectiveWxData.map(function(e){ return (e.effectiveWx&&e.effectiveWx.cat)||'VFR'; });
+                var hasRouteIFR   = enRouteCats.some(function(c){ return c==='IFR'||c==='LIFR'; });
+                var hasRouteMVFR  = enRouteCats.some(function(c){ return c==='MVFR'; });
+                var v2Pts = hasConvSigmet ? 10 : hasHazAirmet ? 7 : hasRouteIFR ? 7 : hasRouteMVFR ? 2 : 0;
+                // V3: destination weather → directly from arr cat
+                var v3Pts = { VFR:0, MVFR:2, IFR:4, LIFR:8 }[arrCat] || 0;
+                var autoFills = { V1:v1Pts, V2:v2Pts, V3:v3Pts };
+                setFratAutoFilled(autoFills);
+                setFratAnswers(function(prev) {
+                    var next = Object.assign({}, prev);
+                    ['V1','V2','V3'].forEach(function(k) {
+                        // Only overwrite if the question is still showing its auto value
+                        // (user hasn't manually picked a different option)
+                        if (prev[k] === undefined || prev[k] === fratAutoFilled[k]) next[k] = autoFills[k];
+                    });
+                    return next;
+                });
+            // eslint-disable-next-line react-hooks/exhaustive-deps
+            }, [effectiveWxData, sigmets.length, gairmets.length]);
+
+            // --- Combined GO score: base weather score blended with FRAT ---
+            var fratAnsweredCount = FRAT_QUESTIONS.filter(function(q){ return fratAnswers[q.id] !== undefined; }).length;
+            var fratComplete      = fratAnsweredCount === FRAT_TOTAL;
+            var combinedScore = useMemo(function() {
+                if (!detailedScore) return null;
+                var base = detailedScore.total;
+                if (fratComplete) {
+                    var fratScore = calcFratGoScore(fratAnswers);
+                    return Math.max(0, Math.min(100, Math.round(base * 0.70 + fratScore * 0.30)));
+                }
+                return Math.max(0, base - 20); // penalty when FRAT skipped/incomplete
+            }, [detailedScore, fratComplete, fratAnswers, fratSkipped]);
+
             // Propagate the authoritative score up to the trip header ring
             useEffect(function() {
-                if (detailedScore && onScoreUpdate) onScoreUpdate(detailedScore.total);
-            }, [detailedScore && detailedScore.total]);
+                if (combinedScore !== null && onScoreUpdate) onScoreUpdate(combinedScore);
+            }, [combinedScore]);
 
             // finalVerdict: convective SIGMET or CWA thunderstorm overrides weather-based verdict
             var finalVerdict = useMemo(function() {
@@ -4102,6 +4220,205 @@
                                 <LivePireps dep={trip.dep} arr={trip.arr} />
                             </div>
 
+                            {/* ── FRAT — Flight Risk Assessment Tool (MMOPA / PAVE) ── */}
+                            {(function() {
+                                var fratScore = fratComplete ? calcFratGoScore(fratAnswers) : null;
+                                var baseScore = detailedScore ? detailedScore.total : null;
+                                var fratBand  = fratScore === null ? null
+                                    : fratScore >= 80 ? { color:'var(--go)',      label:'Low Risk — Proceed' }
+                                    : fratScore >= 60 ? { color:'var(--caution)', label:'Caution — Review' }
+                                    :                   { color:'var(--nogo)',    label:'High Risk — No-Go' };
+                                var cats = ['P','A','V','E'];
+                                return (
+                                    <div style={{ background:'var(--md-sys-color-surface-container)', borderRadius:16, marginBottom:16, overflow:'hidden' }}>
+                                        {/* Collapsible header */}
+                                        <button onClick={() => setFratExpanded(function(x){ return !x; })} style={{ display:'flex', alignItems:'center', gap:10, width:'100%', background:'none', border:'none', cursor:'pointer', padding:'14px 16px', color:'var(--md-sys-color-on-surface)', textAlign:'left' }}>
+                                            <MdIcon name="checklist_rtl" style={{ color:'var(--accent)', fontSize:20, flexShrink:0 }} />
+                                            <span style={{ fontWeight:700, fontSize:13, textTransform:'uppercase', letterSpacing:'0.5px', flex:1 }}>FRAT — Flight Risk Assessment</span>
+                                            {fratComplete
+                                                ? <span style={{ fontSize:10, fontWeight:700, background:'var(--go)', color:'#fff', borderRadius:4, padding:'2px 7px', flexShrink:0 }}>COMPLETE ✓</span>
+                                                : fratSkipped
+                                                ? <span style={{ fontSize:10, fontWeight:700, background:'var(--nogo)', color:'#fff', borderRadius:4, padding:'2px 7px', flexShrink:0 }}>−20 PTS</span>
+                                                : fratAnsweredCount > 0
+                                                ? <span style={{ fontSize:10, fontWeight:600, background:'var(--caution-bg)', color:'var(--caution)', borderRadius:4, padding:'2px 7px', flexShrink:0 }}>{fratAnsweredCount}/{FRAT_TOTAL}</span>
+                                                : <span style={{ fontSize:10, color:'var(--md-sys-color-on-surface-variant)', background:'var(--md-sys-color-surface-container-high)', borderRadius:4, padding:'2px 7px', flexShrink:0 }}>OPTIONAL</span>
+                                            }
+                                            <MdIcon name={fratExpanded ? 'expand_less' : 'expand_more'} style={{ fontSize:20, color:'var(--md-sys-color-on-surface-variant)', flexShrink:0 }} />
+                                        </button>
+
+                                        {/* Collapsed state: penalty / progress banner */}
+                                        {!fratExpanded && !fratComplete && (
+                                            <div style={{ padding:'0 16px 14px' }}>
+                                                {fratSkipped
+                                                    ? <div style={{ background:'var(--nogo-bg)', borderRadius:10, padding:'10px 14px', display:'flex', alignItems:'center', gap:10 }}>
+                                                          <MdIcon name="warning" style={{ color:'var(--nogo)', fontSize:18, flexShrink:0 }} />
+                                                          <div style={{ flex:1 }}>
+                                                              <div style={{ fontWeight:600, fontSize:12, color:'var(--nogo)' }}>FRAT Incomplete — −20 points applied to GO Score</div>
+                                                              <div style={{ fontSize:11, color:'var(--md-sys-color-on-surface-variant)', marginTop:2 }}>The Flight Risk Assessment helps identify pilot, aircraft, and situational risks beyond weather.</div>
+                                                          </div>
+                                                          <button onClick={function(e){ e.stopPropagation(); setFratSkipped(false); setFratExpanded(true); }} style={{ background:'var(--nogo)', color:'#fff', border:'none', borderRadius:8, padding:'6px 10px', fontSize:11, fontWeight:600, cursor:'pointer', flexShrink:0 }}>Restart</button>
+                                                      </div>
+                                                    : <div style={{ background:'var(--md-sys-color-surface-container-high)', borderRadius:10, padding:'10px 14px', display:'flex', alignItems:'center', gap:10 }}>
+                                                          <MdIcon name="info" style={{ color:'var(--accent)', fontSize:18, flexShrink:0 }} />
+                                                          <div style={{ flex:1 }}>
+                                                              <div style={{ fontWeight:600, fontSize:12, color:'var(--md-sys-color-on-surface)' }}>FRAT not completed — −20 points applied to GO Score</div>
+                                                              <div style={{ fontSize:11, color:'var(--md-sys-color-on-surface-variant)', marginTop:2 }}>Completing the FRAT unlocks a more accurate combined GO Score based on MMOPA PAVE methodology.</div>
+                                                          </div>
+                                                          <button onClick={function(e){ e.stopPropagation(); setFratExpanded(true); }} style={{ background:'var(--accent)', color:'#fff', border:'none', borderRadius:8, padding:'6px 10px', fontSize:11, fontWeight:600, cursor:'pointer', flexShrink:0 }}>Start FRAT</button>
+                                                      </div>
+                                                }
+                                            </div>
+                                        )}
+
+                                        {/* Collapsed state: score summary when complete */}
+                                        {!fratExpanded && fratComplete && fratBand && (
+                                            <div style={{ padding:'0 16px 14px', display:'flex', gap:10 }}>
+                                                {[
+                                                    { label:'Base Weather', value:baseScore },
+                                                    { label:'FRAT Score', value:fratScore, sub:fratBand.label, color:fratBand.color },
+                                                    { label:'Combined GO Score', value:combinedScore, sub:'70/30 blend' },
+                                                ].map(function(item,i) {
+                                                    return (
+                                                        <div key={i} style={{ flex:1, background:'var(--md-sys-color-surface-container-high)', borderRadius:10, padding:'10px 8px', textAlign:'center' }}>
+                                                            <div style={{ fontSize:22, fontWeight:800, lineHeight:1, color:item.color||'var(--md-sys-color-on-surface)' }}>{item.value}</div>
+                                                            <div style={{ fontSize:9, textTransform:'uppercase', letterSpacing:'0.4px', color:'var(--md-sys-color-on-surface-variant)', marginTop:3, lineHeight:1.3 }}>{item.label}</div>
+                                                            {item.sub && <div style={{ fontSize:10, color:item.color||'var(--md-sys-color-on-surface-variant)', marginTop:2 }}>{item.sub}</div>}
+                                                        </div>
+                                                    );
+                                                })}
+                                            </div>
+                                        )}
+
+                                        {/* Expanded panel */}
+                                        {fratExpanded && (
+                                            <div style={{ padding:'0 16px 16px' }}>
+                                                {/* Safety disclaimer */}
+                                                <div style={{ background:'var(--accent-dim)', borderRadius:10, padding:'10px 14px', marginBottom:16, fontSize:12, color:'var(--md-sys-color-on-surface)', lineHeight:1.5 }}>
+                                                    <strong>Safety Notice:</strong> The FRAT is a structured thinking tool, not a substitute for pilot judgment. A green FRAT score does not mean the flight is safe — it means the risk factors you identified are within acceptable ranges. Based on MMOPA FRAT methodology and FAA PAVE framework. <em>When in doubt, don't go.</em>
+                                                </div>
+
+                                                {/* PAVE categories */}
+                                                {cats.map(function(cat) {
+                                                    var qs = FRAT_QUESTIONS.filter(function(q){ return q.cat === cat; });
+                                                    var catWeight = { P:'35%', A:'25%', V:'25%', E:'15%' }[cat];
+                                                    return (
+                                                        <div key={cat} style={{ marginBottom:18 }}>
+                                                            <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:10, paddingBottom:6, borderBottom:'1px solid var(--card-border)' }}>
+                                                                <MdIcon name={FRAT_CAT_ICON[cat]} style={{ color:'var(--md-sys-color-primary)', fontSize:18 }} />
+                                                                <span style={{ fontWeight:700, fontSize:12, textTransform:'uppercase', letterSpacing:'0.5px', color:'var(--md-sys-color-primary)' }}>{FRAT_CAT_LABEL[cat]}</span>
+                                                                <span style={{ fontSize:10, color:'var(--md-sys-color-on-surface-variant)', marginLeft:'auto' }}>{catWeight} weight</span>
+                                                            </div>
+                                                            <div style={{ display:'flex', flexDirection:'column', gap:14 }}>
+                                                                {qs.map(function(q) {
+                                                                    var isAuto = q.auto && fratAutoFilled[q.id] !== undefined && fratAnswers[q.id] === fratAutoFilled[q.id];
+                                                                    return (
+                                                                        <div key={q.id}>
+                                                                            <div style={{ display:'flex', alignItems:'center', gap:6, marginBottom:6, flexWrap:'wrap' }}>
+                                                                                <span style={{ fontSize:12, fontWeight:600, color:'var(--md-sys-color-on-surface)' }}>{q.id}. {q.label}</span>
+                                                                                {isAuto && <span style={{ fontSize:9, background:'var(--accent-dim)', color:'var(--accent)', borderRadius:4, padding:'1px 5px', fontWeight:700, flexShrink:0 }}>AUTO-FILLED · tap to override</span>}
+                                                                                {q.hint && <span style={{ fontSize:10, color:'var(--md-sys-color-on-surface-variant)', fontStyle:'italic', width:'100%' }}>{q.hint}</span>}
+                                                                            </div>
+                                                                            <div style={{ display:'flex', flexDirection:'column', gap:5 }}>
+                                                                                {q.opts.map(function(opt) {
+                                                                                    var isSelected = fratAnswers[q.id] === opt.p;
+                                                                                    var riskColor = opt.p === 0 ? 'var(--go)' : opt.p <= 3 ? 'var(--caution)' : 'var(--nogo)';
+                                                                                    var riskBg    = opt.p === 0 ? 'var(--go-bg)' : opt.p <= 3 ? 'var(--caution-bg)' : 'var(--nogo-bg)';
+                                                                                    return (
+                                                                                        <button key={opt.l} onClick={function() {
+                                                                                            setFratAnswers(function(prev){ return Object.assign({}, prev, { [q.id]: opt.p }); });
+                                                                                            if (q.auto) setFratAutoFilled(function(prev){ var n=Object.assign({},prev); delete n[q.id]; return n; });
+                                                                                        }} style={{
+                                                                                            display:'flex', alignItems:'center', gap:10, padding:'8px 12px',
+                                                                                            background: isSelected ? riskBg : 'var(--md-sys-color-surface-container-high)',
+                                                                                            border:'1px solid '+(isSelected ? riskColor : 'transparent'),
+                                                                                            borderRadius:8, cursor:'pointer', textAlign:'left', width:'100%', transition:'all 0.15s'
+                                                                                        }}>
+                                                                                            <div style={{ width:16, height:16, borderRadius:'50%', flexShrink:0,
+                                                                                                border:'2px solid '+(isSelected ? riskColor : 'var(--md-sys-color-outline)'),
+                                                                                                background: isSelected ? riskColor : 'transparent',
+                                                                                                display:'flex', alignItems:'center', justifyContent:'center' }}>
+                                                                                                {isSelected && <div style={{ width:5, height:5, borderRadius:'50%', background:'#fff' }} />}
+                                                                                            </div>
+                                                                                            <span style={{ fontSize:12, color:'var(--md-sys-color-on-surface)', flex:1, lineHeight:1.4 }}>{opt.l}</span>
+                                                                                            <span style={{ fontSize:10, fontWeight:700, color:riskColor, opacity:0.75, flexShrink:0 }}>
+                                                                                                {opt.p === 0 ? '✓' : `+${opt.p} risk`}
+                                                                                            </span>
+                                                                                        </button>
+                                                                                    );
+                                                                                })}
+                                                                            </div>
+                                                                        </div>
+                                                                    );
+                                                                })}
+                                                            </div>
+                                                        </div>
+                                                    );
+                                                })}
+
+                                                {/* Progress bar */}
+                                                <div style={{ marginBottom:16 }}>
+                                                    <div style={{ display:'flex', justifyContent:'space-between', marginBottom:4 }}>
+                                                        <span style={{ fontSize:11, color:'var(--md-sys-color-on-surface-variant)' }}>Progress</span>
+                                                        <span style={{ fontSize:11, fontWeight:600, color:'var(--md-sys-color-on-surface)' }}>{fratAnsweredCount} / {FRAT_TOTAL} answered</span>
+                                                    </div>
+                                                    <div style={{ height:6, background:'var(--md-sys-color-surface-container-high)', borderRadius:3, overflow:'hidden' }}>
+                                                        <div style={{ height:'100%', width:`${(fratAnsweredCount/FRAT_TOTAL)*100}%`, background: fratComplete ? 'var(--go)' : 'var(--accent)', borderRadius:3, transition:'width 0.3s' }} />
+                                                    </div>
+                                                </div>
+
+                                                {/* Score summary when complete */}
+                                                {fratComplete && fratBand && (
+                                                    <div style={{ background:'var(--md-sys-color-surface-container-high)', borderRadius:12, padding:'14px 16px', marginBottom:14 }}>
+                                                        <div style={{ fontWeight:700, fontSize:11, textTransform:'uppercase', letterSpacing:'0.5px', color:'var(--md-sys-color-on-surface-variant)', marginBottom:10 }}>Score Breakdown — 70 / 30 Blend</div>
+                                                        <div style={{ display:'flex', gap:10 }}>
+                                                            {[
+                                                                { label:'Base Weather Score', value:baseScore, sub:'weather + route' },
+                                                                { label:'FRAT Score', value:fratScore, sub:fratBand.label, color:fratBand.color },
+                                                                { label:'Combined GO Score', value:combinedScore, sub:'final score' },
+                                                            ].map(function(item,i) {
+                                                                return (
+                                                                    <div key={i} style={{ flex:1, background:'var(--md-sys-color-surface-container)', borderRadius:10, padding:'10px 8px', textAlign:'center' }}>
+                                                                        <div style={{ fontSize:26, fontWeight:800, lineHeight:1, color:item.color||'var(--md-sys-color-on-surface)' }}>{item.value}</div>
+                                                                        <div style={{ fontSize:9, textTransform:'uppercase', letterSpacing:'0.4px', color:'var(--md-sys-color-on-surface-variant)', marginTop:4, lineHeight:1.3 }}>{item.label}</div>
+                                                                        {item.sub && <div style={{ fontSize:10, color:item.color||'var(--md-sys-color-on-surface-variant)', marginTop:2 }}>{item.sub}</div>}
+                                                                    </div>
+                                                                );
+                                                            })}
+                                                        </div>
+                                                    </div>
+                                                )}
+
+                                                {/* Action buttons */}
+                                                <div style={{ display:'flex', gap:8, flexWrap:'wrap' }}>
+                                                    <button onClick={function(){ setFratExpanded(false); }} style={{ flex:1, padding:'10px', background:'var(--accent)', color:'#fff', border:'none', borderRadius:10, fontSize:13, fontWeight:600, cursor:'pointer', minWidth:120 }}>
+                                                        {fratComplete ? 'Done ✓' : 'Save & Close'}
+                                                    </button>
+                                                    {fratAnsweredCount > 0 && (
+                                                        <button onClick={function(){ setFratAnswers({}); setFratAutoFilled({}); setFratSkipped(false); }} style={{ padding:'10px 14px', background:'var(--md-sys-color-surface-container-high)', color:'var(--md-sys-color-on-surface-variant)', border:'none', borderRadius:10, fontSize:12, cursor:'pointer' }}>
+                                                            Clear FRAT
+                                                        </button>
+                                                    )}
+                                                    {!fratComplete && (
+                                                        <button onClick={function(){ setFratSkipped(true); setFratExpanded(false); }} style={{ padding:'10px 14px', background:'none', color:'var(--md-sys-color-on-surface-variant)', border:'1px solid var(--card-border)', borderRadius:10, fontSize:12, cursor:'pointer' }}>
+                                                            Dismiss (keep −20)
+                                                        </button>
+                                                    )}
+                                                </div>
+                                            </div>
+                                        )}
+                                    </div>
+                                );
+                            })()}
+
+                            {/* Route Map — at the bottom of the briefing */}
+                            <div style={{ background:'var(--md-sys-color-surface-container)', borderRadius:16, marginBottom:16, overflow:'hidden' }}>
+                                <div style={{ display:'flex', alignItems:'center', gap:8, padding:'14px 16px', borderBottom:'1px solid var(--card-border)' }}>
+                                    <MdIcon name="map" style={{ color:'var(--md-sys-color-tertiary)', fontSize:18 }} />
+                                    <span style={{ fontWeight:700, fontSize:13, textTransform:'uppercase', letterSpacing:'0.5px', color:'var(--md-sys-color-tertiary)' }}>Route Map</span>
+                                </div>
+                                <RouteMap dep={trip.dep} arr={trip.arr} wps={trip.wps||[]} />
+                            </div>
+
                             <div style={{ fontSize: 11, color: 'var(--md-sys-color-on-surface-variant)', textAlign: 'center', padding: '4px 16px 20px', lineHeight: 1.5 }}>
                                 {finalVerdict.anyMos
                                     ? <>GFS model forecast from <strong>AviationWeather.gov</strong> · visual from <strong>Windy.com</strong>. Long-range accuracy is limited — <strong>re-check with TAF 24h before departure</strong>.</>
@@ -4736,7 +5053,6 @@
                 { id: "wx", label: "Weather", icon: "partly_cloudy_day" },
                 { id: "notam", label: "NOTAMs", icon: "warning" },
                 { id: "freq", label: "Freqs", icon: "cell_tower" },
-                { id: "map", label: "Map", icon: "map" },
                 { id: "fbo", label: "FBO", icon: "local_gas_station" },
                 { id: "export", label: "Export", icon: "print" }
             ];
@@ -5184,10 +5500,6 @@
                                                         <FreqPanel key={idx} icao={rt} />
                                                     ))}
                                                 </div>
-                                            )}
-
-                                            {tab === "map" && (
-                                                <RouteMap dep={activeTrip.dep} arr={activeTrip.arr} wps={activeTrip.wps || []} />
                                             )}
 
                                             {tab === "fbo" && (
