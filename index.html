@@ -2966,6 +2966,7 @@
                 var isFutureFlight = hoursUntilTrip !== null && hoursUntilTrip > 2;
                 var anyTaf = effectiveWxData.some(e => e.source === 'taf');
                 var anyMos = effectiveWxData.some(e => e.source === 'mos');
+                var anyNws = effectiveWxData.some(e => e.source === 'nws');
                 var allMos  = effectiveWxData.every(e => e.source === 'mos');
                 var anySim  = effectiveWxData.some(e => !e.metarLive);
                 var depUtcLabel = tripTargetUtc
@@ -2976,6 +2977,7 @@
                 var dataContext = allMos   ? `GFS model forecast · ${depUtcLabel}`
                     : anyMos   ? `GFS/TAF mixed forecast · ${depUtcLabel}`
                     : anyTaf   ? `TAF forecast · ${depUtcLabel}`
+                    : anyNws   ? `NWS 7-day forecast · ${depUtcLabel}`
                     : isFutureFlight ? `current METAR (no forecast available · ${depUtcLabel})`
                     : anySim ? 'current METAR (⚠ some stations simulated — no live ASOS/AWOS)'
                     : 'current METAR';
@@ -2988,6 +2990,7 @@
                 // Source qualifier for verdict text
                 var srcQual = anyMos ? 'GFS model forecasts'
                     : anyTaf ? 'TAF forecasts'
+                    : anyNws ? 'NWS forecast shows'
                     : isFutureFlight ? 'METAR shows'
                     : 'METAR reports';
 
@@ -3115,7 +3118,7 @@
                 if (recs.filter(r => !r.startsWith('⚠')).length === 0) recs.push('Conditions appear favorable — complete standard preflight checks and file a flight plan.');
                 recs.push('Always obtain an official briefing at 1800wxbrief.com before departure.');
 
-                return { verdict, verdictColor, verdictBg, verdictIcon, verdictDesc, concerns, recs, dataContext, isFutureFlight, anyTaf, anyMos, allMos };
+                return { verdict, verdictColor, verdictBg, verdictIcon, verdictDesc, concerns, recs, dataContext, isFutureFlight, anyTaf, anyMos, anyNws, allMos };
             }, [effectiveWxData, hoursUntilTrip, tripTargetUtc]);
 
             // --- Composite Safety Score breakdown ---
@@ -3868,21 +3871,24 @@
                                 var isLive = !finalVerdict.isFutureFlight;
                                 var isMos = finalVerdict.anyMos;
                                 var isTaf = finalVerdict.anyTaf && !isMos;
+                                var isNws = finalVerdict.anyNws && !isMos && !isTaf;
                                 var depStr = tripTargetUtc
                                     ? `${String(tripTargetUtc.getUTCHours()).padStart(2,'0')}${String(tripTargetUtc.getUTCMinutes()).padStart(2,'0')}Z · ${trip.date}`
                                     : trip.date || '';
-                                var icon = isLive ? 'sensors' : isMos ? 'model_training' : isTaf ? 'event_available' : 'warning_amber';
-                                var color = isLive ? 'var(--md-sys-color-primary)' : isMos ? 'var(--md-sys-color-tertiary)' : isTaf ? 'var(--md-sys-color-secondary)' : 'var(--md-sys-color-error)';
-                                var bgColor = isLive ? 'var(--md-sys-color-primary-container)' : isMos ? 'var(--md-sys-color-tertiary-container)' : isTaf ? 'var(--md-sys-color-secondary-container)' : 'var(--md-sys-color-error-container)';
-                                var onBgColor = isLive ? 'var(--md-sys-color-on-primary-container)' : isMos ? 'var(--md-sys-color-on-tertiary-container)' : isTaf ? 'var(--md-sys-color-on-secondary-container)' : 'var(--md-sys-color-on-error-container)';
-                                var label = isLive ? 'Live Data — Current Conditions' : isMos ? 'GFS Model Forecast — Trip Date' : isTaf ? 'TAF Forecast — Trip Departure Time' : 'No Forecast Available';
+                                var icon = isLive ? 'sensors' : isMos ? 'model_training' : isTaf ? 'event_available' : isNws ? 'calendar_month' : 'warning_amber';
+                                var color = isLive ? 'var(--md-sys-color-primary)' : isMos ? 'var(--md-sys-color-tertiary)' : isTaf ? 'var(--md-sys-color-secondary)' : isNws ? 'var(--md-sys-color-secondary)' : 'var(--md-sys-color-error)';
+                                var bgColor = isLive ? 'var(--md-sys-color-primary-container)' : isMos ? 'var(--md-sys-color-tertiary-container)' : isTaf ? 'var(--md-sys-color-secondary-container)' : isNws ? 'var(--md-sys-color-secondary-container)' : 'var(--md-sys-color-error-container)';
+                                var onBgColor = isLive ? 'var(--md-sys-color-on-primary-container)' : isMos ? 'var(--md-sys-color-on-tertiary-container)' : isTaf ? 'var(--md-sys-color-on-secondary-container)' : isNws ? 'var(--md-sys-color-on-secondary-container)' : 'var(--md-sys-color-on-error-container)';
+                                var label = isLive ? 'Live Data — Current Conditions' : isMos ? 'GFS Model Forecast — Trip Date' : isTaf ? 'TAF Forecast — Trip Departure Time' : isNws ? 'NWS 7-Day Forecast — Trip Date' : 'No Forecast Available';
                                 var desc = isLive
                                     ? 'Weather below reflects live METAR observations right now. Your trip departs soon — these are your actual departure conditions.'
                                     : isMos
                                         ? `GFS numerical model data projected to your ${depStr} departure. Good for planning; confidence decreases beyond 48 h.`
                                         : isTaf
                                             ? `TAF forecast periods extracted for your ${depStr} departure — each airport shows the period valid at your scheduled time.`
-                                            : `No TAF or model forecast is available for this date — the route weather below shows current METAR as a reference only.`;
+                                            : isNws
+                                                ? `NWS 7-day forecast data for your ${depStr} departure — used when TAF coverage does not reach this far out.`
+                                                : `No TAF or model forecast is available for this date — the route weather below shows current METAR as a reference only.`;
                                 return (
                                     <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12, padding: '12px 16px', borderRadius: 12, background: bgColor, marginBottom: 12 }}>
                                         <MdIcon name={icon} style={{ fontSize: 20, color: color, flexShrink: 0, marginTop: 2 }} />
@@ -3903,10 +3909,10 @@
                                     </div>
                                     {finalVerdict && finalVerdict.isFutureFlight && (
                                         <span style={{ fontSize: 10, fontWeight: 700,
-                                            color: finalVerdict.anyMos ? 'var(--md-sys-color-on-tertiary-container)' : 'var(--md-sys-color-primary)',
-                                            background: finalVerdict.anyMos ? 'var(--md-sys-color-tertiary-container)' : 'var(--md-sys-color-primary-container)',
+                                            color: finalVerdict.anyMos ? 'var(--md-sys-color-on-tertiary-container)' : 'var(--md-sys-color-on-secondary-container)',
+                                            background: finalVerdict.anyMos ? 'var(--md-sys-color-tertiary-container)' : 'var(--md-sys-color-secondary-container)',
                                             borderRadius: 4, padding: '2px 6px', letterSpacing: '0.5px', textTransform: 'uppercase' }}>
-                                            {finalVerdict.anyMos ? 'GFS MODEL' : finalVerdict.anyTaf ? 'TAF FORECAST' : 'FUTURE TRIP'}
+                                            {finalVerdict.anyMos ? 'GFS MODEL' : finalVerdict.anyTaf ? 'TAF FORECAST' : finalVerdict.anyNws ? 'NWS FORECAST' : 'FUTURE TRIP'}
                                         </span>
                                     )}
                                 </div>
