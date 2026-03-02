@@ -11,8 +11,9 @@
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
     <!-- PapaParse — CSV parser used to load OurAirports airport database -->
     <script src="https://unpkg.com/papaparse@5/papaparse.min.js"></script>
-    <!-- Google Maps — replace YOUR_GOOGLE_MAPS_API_KEY with your key -->
-    <script src="https://maps.googleapis.com/maps/api/js?key=YOUR_GOOGLE_MAPS_API_KEY&libraries=geometry" async defer></script>
+    <!-- Leaflet Maps (no API key required) -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <!-- Fonts: Inter (body) + Roboto Mono (METAR/data) + Material Symbols -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -280,10 +281,27 @@
             padding: 10px 14px; font-size: 13px; line-height: 1.5; white-space: pre-wrap;
         }
 
-        /* ── Google Maps chrome overrides ── */
-        .gm-style { font-family: var(--font-sans) !important; }
-        .gm-style-cc, .gm-style a[href*="maps.google"] { opacity: 0.4; font-size: 9px !important; }
-        .gm-bundled-control { filter: var(--map-ctrl-filter, none); }
+        /* ── Leaflet map ── */
+        .leaflet-container { z-index: 0; font-family: var(--font-sans); }
+        .leaflet-control-attribution { font-size: 9px !important; opacity: 0.45; }
+        .leaflet-control-zoom a {
+            background: var(--card) !important;
+            color: var(--text-primary) !important;
+            border-color: var(--card-border) !important;
+        }
+        /* ICAO tooltip labels — white on dark tiles, dark on light tiles */
+        .route-icao-label {
+            background: transparent !important; border: none !important;
+            box-shadow: none !important;
+            font-family: var(--font-mono); font-weight: 700; font-size: 11px;
+            color: #fff;
+            text-shadow: 0 0 6px rgba(0,0,0,0.9), 0 0 12px rgba(0,0,0,0.7), 0 1px 0 rgba(0,0,0,0.8);
+            white-space: nowrap; letter-spacing: 0.5px;
+        }
+        body.light-theme .route-icao-label {
+            color: #111;
+            text-shadow: 0 0 4px rgba(255,255,255,0.9), 0 0 8px rgba(255,255,255,0.7);
+        }
 
         /* ── Nav rail (desktop side tab bar) ── */
         .nav-rail-item {
@@ -2194,54 +2212,19 @@
             );
         }
 
-        // ── Google Maps theme styles ───────────────────────────────────────────
-        var GMAPS_DARK_STYLE = [
-            { elementType: 'geometry',            stylers: [{ color: '#0d0d15' }] },
-            { elementType: 'labels.text.fill',    stylers: [{ color: '#7a7a8a' }] },
-            { elementType: 'labels.text.stroke',  stylers: [{ color: '#0a0a0f' }] },
-            { featureType: 'administrative',        elementType: 'geometry',           stylers: [{ color: '#1e1e2e' }] },
-            { featureType: 'administrative.locality', elementType: 'labels.text.fill', stylers: [{ color: '#aaaabc' }] },
-            { featureType: 'administrative.land_parcel', stylers: [{ visibility: 'off' }] },
-            { featureType: 'landscape.natural',   elementType: 'geometry',           stylers: [{ color: '#101018' }] },
-            { featureType: 'poi',                  stylers: [{ visibility: 'off' }] },
-            { featureType: 'poi.park',             elementType: 'geometry',           stylers: [{ color: '#0d1a0d' }] },
-            { featureType: 'poi.park',             stylers: [{ visibility: 'on' }] },
-            { featureType: 'road',                 elementType: 'geometry',           stylers: [{ color: '#1c1c2c' }] },
-            { featureType: 'road',                 elementType: 'geometry.stroke',    stylers: [{ color: '#252535' }] },
-            { featureType: 'road',                 elementType: 'labels.text.fill',   stylers: [{ color: '#5a5a6a' }] },
-            { featureType: 'road.highway',         elementType: 'geometry',           stylers: [{ color: '#2a2a3e' }] },
-            { featureType: 'road.highway',         elementType: 'geometry.stroke',    stylers: [{ color: '#1a1a2c' }] },
-            { featureType: 'road.highway',         elementType: 'labels.text.fill',   stylers: [{ color: '#8a8a9a' }] },
-            { featureType: 'transit',              stylers: [{ visibility: 'off' }] },
-            { featureType: 'water',                elementType: 'geometry',           stylers: [{ color: '#091525' }] },
-            { featureType: 'water',                elementType: 'labels.text.fill',   stylers: [{ color: '#1e3a5a' }] },
-        ];
-        var GMAPS_LIGHT_STYLE = [
-            { featureType: 'poi',     stylers: [{ visibility: 'off' }] },
-            { featureType: 'poi.park', stylers: [{ visibility: 'on' }] },
-            { featureType: 'transit', stylers: [{ visibility: 'off' }] },
-            { featureType: 'road',    elementType: 'labels.icon', stylers: [{ visibility: 'off' }] },
-        ];
-
-        // Lazy-load Google Maps JS (idempotent — safe to call multiple times)
-        function loadGoogleMapsScript() {
-            if (window.google && window.google.maps) return Promise.resolve();
-            return new Promise(function(resolve) {
-                // Script tag injected in <head> with async defer — just wait for it
-                var check = setInterval(function() {
-                    if (window.google && window.google.maps) { clearInterval(check); resolve(); }
-                }, 100);
-            });
-        }
+        // CartoDB tile URLs — dark and light variants match app themes
+        var TILE_DARK  = 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png';
+        var TILE_LIGHT = 'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png';
+        var TILE_ATTR  = '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/">CARTO</a>';
 
         function RouteMap({ dep, arr, wps }) {
             const { useRef, useEffect, useState } = React;
             const mapContainerRef = useRef(null);
-            const googleMapRef    = useRef(null);
+            const leafletMapRef   = useRef(null);
+            const tileLayerRef    = useRef(null);
             const overlaysRef     = useRef([]);
 
-            const [mapsReady, setMapsReady] = useState(!!(window.google && window.google.maps));
-            const [isDark, setIsDark]       = useState(!document.body.classList.contains('light-theme'));
+            const [isDark, setIsDark] = useState(!document.body.classList.contains('light-theme'));
 
             var allCodes = [dep].concat(wps || []).concat([arr]).filter(function(c){ return c && c.trim().length === 4; });
             var allPts   = allCodes.map(function(c){ return getAirport(c); }).filter(Boolean);
@@ -2253,12 +2236,7 @@
                 heading = calcBearing(allPts[0].lat, allPts[0].lon, allPts[allPts.length-1].lat, allPts[allPts.length-1].lon);
             }
 
-            // Wait for the API to load
-            useEffect(function() {
-                loadGoogleMapsScript().then(function(){ setMapsReady(true); });
-            }, []);
-
-            // Watch body class for light/dark switches
+            // Track light/dark theme changes
             useEffect(function() {
                 var obs = new MutationObserver(function(){
                     setIsDark(!document.body.classList.contains('light-theme'));
@@ -2267,81 +2245,76 @@
                 return function(){ obs.disconnect(); };
             }, []);
 
-            // Build / update the map whenever route, theme, or API readiness changes
+            // Swap tile layer when theme changes
             useEffect(function() {
-                if (!mapsReady || !mapContainerRef.current) return;
-                var G = window.google.maps;
-                var style = isDark ? GMAPS_DARK_STYLE : GMAPS_LIGHT_STYLE;
+                var L = window.L;
+                if (!L || !leafletMapRef.current) return;
+                if (tileLayerRef.current) leafletMapRef.current.removeLayer(tileLayerRef.current);
+                tileLayerRef.current = L.tileLayer(isDark ? TILE_DARK : TILE_LIGHT,
+                    { attribution: TILE_ATTR, subdomains: 'abcd', maxZoom: 19 }
+                ).addTo(leafletMapRef.current);
+            }, [isDark]);
 
-                if (!googleMapRef.current) {
-                    googleMapRef.current = new G.Map(mapContainerRef.current, {
-                        zoom: 7,
-                        center: allPts.length > 0 ? { lat: allPts[0].lat, lng: allPts[0].lon } : { lat: 37, lng: -95 },
-                        styles: style,
-                        mapTypeControl: false,
-                        streetViewControl: false,
-                        fullscreenControl: false,
-                        gestureHandling: 'greedy',
-                        zoomControlOptions: { position: G.ControlPosition.RIGHT_BOTTOM },
-                    });
-                } else {
-                    googleMapRef.current.setOptions({ styles: style });
+            // Build map and route overlay
+            useEffect(function() {
+                var L = window.L;
+                if (!L || !mapContainerRef.current) return;
+
+                if (!leafletMapRef.current) {
+                    leafletMapRef.current = L.map(mapContainerRef.current, { zoomControl: true });
+                    tileLayerRef.current  = L.tileLayer(isDark ? TILE_DARK : TILE_LIGHT,
+                        { attribution: TILE_ATTR, subdomains: 'abcd', maxZoom: 19 }
+                    ).addTo(leafletMapRef.current);
                 }
 
-                // Clear previous overlays
-                overlaysRef.current.forEach(function(o){ if (o.setMap) o.setMap(null); });
+                var map = leafletMapRef.current;
+                overlaysRef.current.forEach(function(l){ map.removeLayer(l); });
                 overlaysRef.current = [];
 
                 if (allPts.length < 2) return;
 
-                var bounds = new G.LatLngBounds();
-                var path   = allPts.map(function(p){
-                    var ll = new G.LatLng(p.lat, p.lon);
-                    bounds.extend(ll);
-                    return ll;
-                });
+                var latLngs = allPts.map(function(p){ return [p.lat, p.lon]; });
 
-                // Subtle glow pass + solid route line (app accent blue)
-                var glow = new G.Polyline({ path: path, strokeColor: '#0A84FF', strokeOpacity: 0.18, strokeWeight: 14, map: googleMapRef.current });
-                var line = new G.Polyline({ path: path, strokeColor: '#0A84FF', strokeOpacity: 0.95, strokeWeight: 3,  map: googleMapRef.current });
-                overlaysRef.current.push(glow, line);
+                // Glow halo + solid route line in app accent blue
+                var glow = L.polyline(latLngs, { color: '#0A84FF', weight: 14, opacity: 0.18 });
+                var line = L.polyline(latLngs, { color: '#0A84FF', weight: 3,  opacity: 0.95 });
+                glow.addTo(map); overlaysRef.current.push(glow);
+                line.addTo(map); overlaysRef.current.push(line);
 
-                // Airport markers — green dep, red arr, blue waypoints (aviation standard)
+                // Markers — aviation-standard colours matching app theme vars
                 allPts.forEach(function(p, i) {
                     var isDep = i === 0, isArr = i === allPts.length - 1;
                     var color = isDep ? '#34C759' : isArr ? '#FF3B30' : '#0A84FF';
-                    var marker = new G.Marker({
-                        position: { lat: p.lat, lng: p.lon },
-                        map: googleMapRef.current,
-                        title: allCodes[i],
-                        icon: {
-                            path: G.SymbolPath.CIRCLE,
-                            scale:       isDep || isArr ? 9 : 7,
-                            fillColor:   color,
-                            fillOpacity: 1,
-                            strokeColor: isDark ? '#000000' : '#ffffff',
-                            strokeWeight: 2,
-                        },
-                        label: {
-                            text:       allCodes[i],
-                            color:      isDark ? '#ffffff' : '#111111',
-                            fontWeight: '700',
-                            fontSize:   '11px',
-                            fontFamily: 'Inter, system-ui, sans-serif',
-                        },
-                        zIndex: isDep || isArr ? 10 : 5,
+                    var marker = L.circleMarker([p.lat, p.lon], {
+                        radius: isDep || isArr ? 9 : 7,
+                        fillColor: color, color: isDark ? '#000' : '#fff',
+                        weight: 2, fillOpacity: 1,
+                    });
+                    marker.addTo(map);
+                    marker.bindTooltip(allCodes[i], {
+                        permanent: true, direction: 'top', offset: [0, -10],
+                        className: 'route-icao-label',
                     });
                     overlaysRef.current.push(marker);
                 });
 
-                googleMapRef.current.fitBounds(bounds, 60);
-            }, [mapsReady, isDark, dep, arr, JSON.stringify(wps), allPts.length]);
+                map.fitBounds(latLngs, { padding: [50, 50] });
+            }, [dep, arr, JSON.stringify(wps), allPts.length]);
+
+            // Update marker stroke when theme changes (without full redraw)
+            useEffect(function() {
+                overlaysRef.current.forEach(function(l) {
+                    if (l.setStyle) l.setStyle({ color: isDark ? '#000' : '#fff' });
+                });
+            }, [isDark]);
 
             // Cleanup on unmount
             useEffect(function() {
                 return function() {
-                    overlaysRef.current.forEach(function(o){ if (o.setMap) o.setMap(null); });
-                    googleMapRef.current = null;
+                    if (leafletMapRef.current) {
+                        leafletMapRef.current.remove();
+                        leafletMapRef.current = null;
+                    }
                 };
             }, []);
 
@@ -2359,17 +2332,10 @@
                     </div>
                 );
             }
-            if (!mapsReady) {
-                return (
-                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: 360, color: 'var(--text-tertiary)', fontSize: 14 }}>
-                        Loading map…
-                    </div>
-                );
-            }
             return (
                 <div style={{ position: 'relative' }}>
                     <div ref={mapContainerRef} style={{ width: '100%', height: 400 }} />
-                    <div className="font-mono" style={{ position: 'absolute', bottom: 44, left: 12, zIndex: 5, display: 'flex', gap: 8, fontSize: 12, pointerEvents: 'none' }}>
+                    <div className="font-mono" style={{ position: 'absolute', bottom: 40, left: 12, zIndex: 1000, display: 'flex', gap: 8, fontSize: 12, pointerEvents: 'none' }}>
                         <div style={overlayStyle}><span style={{ color: 'var(--text-tertiary)' }}>DIST </span><strong>{Math.round(totalDist)} NM</strong></div>
                         <div style={overlayStyle}><span style={{ color: 'var(--text-tertiary)' }}>HDG </span><strong>{String(Math.round(heading)).padStart(3, '0')}&deg;</strong></div>
                     </div>
