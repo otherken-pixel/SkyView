@@ -652,11 +652,11 @@
 
             var enriched = {
                 name:     a.name || icao + ' Airport',
-                city:     a.country && a.country.code ? a.country.code : icao,
+                city:     a.city || a.municipality || '',
                 state:    a.country && a.country.code ? a.country.code : 'US',
                 lat, lon,
                 elev:     (a.elevation && a.elevation.value) ? Math.round(a.elevation.value * 3.281) : 0,
-                rwy:      (a.runways || []).map(function(r) { return r.designator || '18/36'; }),
+                rwy:      (a.runways || []).map(function(r) { return r.designator; }).filter(Boolean),
                 artcc:    'Center',
                 facility: null,
                 freq
@@ -715,9 +715,9 @@
                     lat: parseFloat(a.lat),
                     lon: parseFloat(a.lon),
                     elev: parseInt(a.elev) || 0,
-                    rwy: ["18/36", "09/27"],
+                    rwy: [],
                     artcc: "Center",
-                    freq: { atis: "120.0", twr: "118.0", gnd: "121.9", app: "124.0", dep: "125.0", clnc: "121.5" }
+                    freq: { atis: '', twr: '', gnd: '', app: '', dep: '', clnc: '' }
                 };
                 AIRPORTS[icao] = apt;
                 return apt;
@@ -788,41 +788,28 @@
             return "TAF " + icao + " " + dd + hh + "00Z 24012KT P6SM FEW040 SCT250 TEMPO 28015G22KT BKN030 FM" + h12 + "00 18008KT P6SM SCT060 BECMG " + h18 + "00 VRB05KT FEW250";
         }
 
-        function makeNotams(icao) {
-            var all = [
-                { type: "RWY", severity: "warning", text: "!" + icao + " RWY 18L/36R CLSD MAINT 0600-1400Z" },
-                { type: "OBST", severity: "tertiary", text: "!" + icao + " CRANE 450FT AGL 1.2NM NW LGTD" },
-                { type: "TFR", severity: "error", text: "!" + icao + " TFR 3NM SFC-3000FT VIP" }
-            ];
-            return all.slice(0, 1 + randInt(0, 2));
-        }
-
-        function makePireps(dep, arr) {
-            return [
-                { type: "UA", text: "/OV " + dep + "-" + arr + "/FL085/TP C172/SK SCT045/TB LGT/RM SMOOTH ABV 060" },
-                { type: "UA", text: "/OV " + dep + "090020/FL120/TP B738/TB MDT 080-120/IC LGT RIME" }
-            ].slice(0, 1 + randInt(0, 1));
-        }
-
-        function makeForecast(icao) {
-            var forecasts = [];
-            var now = new Date();
-            for (var i = 0; i < 7; i++) {
-                var dt = new Date(now);
-                dt.setDate(dt.getDate() + i);
-                var seed = (icao.charCodeAt(1) + i * 7) % 10;
-                var cat, hi, lo, ws, pr;
-                if (seed <= 4) { cat = "VFR"; hi = randInt(65, 85); lo = hi - randInt(12, 20); ws = randInt(4, 12); pr = 0; }
-                else if (seed <= 6) { cat = "MVFR"; hi = randInt(55, 75); lo = hi - randInt(10, 18); ws = randInt(8, 18); pr = randInt(10, 40); }
-                else if (seed <= 8) { cat = "IFR"; hi = randInt(45, 65); lo = hi - randInt(8, 15); ws = randInt(12, 25); pr = randInt(50, 80); }
-                else { cat = "LIFR"; hi = randInt(40, 60); lo = hi - randInt(5, 12); ws = randInt(5, 15); pr = randInt(60, 95); }
-                forecasts.push({
-                    dayName: dt.toLocaleDateString("en-US", { weekday: "short" }),
-                    dateStr: dt.toLocaleDateString("en-US", { month: "short", day: "numeric" }),
-                    cat: cat, hi: hi, lo: lo, ws: ws, pr: pr
-                });
-            }
-            return forecasts;
+        // Fetch live NOTAMs from AviationWeather.gov.
+        // Returns an array of { type, severity, text } objects (empty array on failure).
+        async function fetchLiveNotams(icao) {
+            if (!icao) return [];
+            icao = icao.trim().toUpperCase();
+            try {
+                var res = await timeoutFetch(
+                    `https://aviationweather.gov/api/data/notam?ids=${icao}&format=json`,
+                    {}, 10000
+                );
+                if (!res.ok) return [];
+                var data = await res.json();
+                if (!Array.isArray(data) || data.length === 0) return [];
+                return data.slice(0, 12).map(function(n) {
+                    var kw = (n.keyword || n.facilityType || 'NOTAM').toUpperCase();
+                    var text = n.message || n.notamText || n.text || '';
+                    var sev = (kw === 'TFR' || kw === 'SECURITY') ? 'error'
+                            : (kw === 'RWY' || kw === 'TWY')      ? 'warning'
+                            : 'tertiary';
+                    return { type: kw, severity: sev, text };
+                }).filter(function(n) { return n.text; });
+            } catch(e) { return []; }
         }
 
         function calcGoScore(dep, arr) {
@@ -998,18 +985,38 @@
             } catch(e) { return null; }
         }
 
-        // Fetch 7-day forecast from NWS API for a lat/lon
+        // Cache TTL for NWS /points/ grid URL — 24 h (grid assignments don't change)
+        var _NWS_PTS_TTL = 24 * 60 * 60 * 1000;
+
+        // Fetch 7-day forecast from NWS API for a lat/lon.
+        // Caches the intermediate /points/ → forecast URL for 24 h to avoid
+        // the double round-trip on every refresh.
         async function fetchNwsForecast(lat, lon) {
             if (lat == null || lon == null) return null;
+            var ptsKey = 'skyview_nws_pts_' + lat.toFixed(3) + '_' + lon.toFixed(3);
             try {
-                const pointsRes = await timeoutFetch(
-                    `https://api.weather.gov/points/${lat.toFixed(4)},${lon.toFixed(4)}`,
-                    { headers: { "Accept": "application/geo+json" } }, 8000
-                );
-                if (!pointsRes.ok) return null;
-                const pointsData = await pointsRes.json();
-                const forecastUrl = pointsData?.properties?.forecast;
-                if (!forecastUrl) return null;
+                // Step 1: resolve forecast grid URL (cached for 24 h)
+                var forecastUrl;
+                try {
+                    var cached = JSON.parse(localStorage.getItem(ptsKey) || 'null');
+                    if (cached && cached.ts && (Date.now() - cached.ts < _NWS_PTS_TTL)) {
+                        forecastUrl = cached.url;
+                    }
+                } catch(e) {}
+
+                if (!forecastUrl) {
+                    const pointsRes = await timeoutFetch(
+                        `https://api.weather.gov/points/${lat.toFixed(4)},${lon.toFixed(4)}`,
+                        { headers: { "Accept": "application/geo+json" } }, 8000
+                    );
+                    if (!pointsRes.ok) return null;
+                    const pointsData = await pointsRes.json();
+                    forecastUrl = pointsData?.properties?.forecast;
+                    if (!forecastUrl) return null;
+                    try { localStorage.setItem(ptsKey, JSON.stringify({ ts: Date.now(), url: forecastUrl })); } catch(e) {}
+                }
+
+                // Step 2: fetch the actual forecast
                 const forecastRes = await timeoutFetch(forecastUrl, { headers: { "Accept": "application/geo+json" } }, 8000);
                 if (!forecastRes.ok) return null;
                 const forecastData = await forecastRes.json();
@@ -1025,12 +1032,14 @@
                         if (name.includes("fog") || name.includes("freezing")) cat = "LIFR";
                         else if (name.includes("rain") || name.includes("snow") || name.includes("storm") || name.includes("shower")) cat = "IFR";
                         else if (name.includes("cloud") || name.includes("overcast") || name.includes("drizzle")) cat = "MVFR";
+                        var pr = (p.probabilityOfPrecipitation && p.probabilityOfPrecipitation.value != null)
+                            ? Math.round(p.probabilityOfPrecipitation.value) : 0;
                         days.push({
                             dayName: dt.toLocaleDateString("en-US", { weekday: "short" }),
                             dateStr: dt.toLocaleDateString("en-US", { month: "short", day: "numeric" }),
                             cat, hi: p.temperature,
                             lo: periods[i + 1]?.temperature || (p.temperature - 15),
-                            ws: parseInt(p.windSpeed) || 0, pr: 0,
+                            ws: parseInt(p.windSpeed) || 0, pr,
                             shortForecast: p.shortForecast || ''
                         });
                     }
@@ -1896,7 +1905,7 @@
                         name: row.name, city: row.city || icao,
                         state: row.state || row.country || 'US',
                         lat: row.lat || 0, lon: row.lon || 0, elev: row.elev || 0,
-                        rwy: ['18/36'], artcc: 'Center', facility: null,
+                        rwy: [], artcc: 'Center', facility: null,
                         freq: { atis: '', twr: '', gnd: '', app: '', dep: '', clnc: '' }
                     };
                     // Background-enrich with OpenAIP (frequencies etc) — fire & forget
@@ -2034,20 +2043,13 @@
                     <div style={{ marginTop:8, fontSize:13 }}>Fetching live PIREPs…</div>
                 </div>
             );
-            var sim = makePireps(dep, arr);
             if (!pireps || pireps.length === 0) {
                 return (
-                    <MdCard style={{ padding:12 }}>
-                        <div style={{ fontSize:11, color:'var(--md-sys-color-on-surface-variant)', marginBottom:8, display:'flex', alignItems:'center', gap:6 }}>
-                            <MdIcon name="info" style={{ fontSize:14 }} />No live PIREPs within 200 NM — representative samples shown
+                    <MdCard style={{ padding:16 }}>
+                        <div style={{ textAlign:'center', color:'var(--md-sys-color-on-surface-variant)', fontSize:13 }}>
+                            <MdIcon name="check_circle" style={{ fontSize:20, color:'var(--cat-vfr-color)', display:'block', margin:'0 auto 6px' }} />
+                            No PIREPs within 200 NM — AviationWeather.gov
                         </div>
-                        {sim.map(function(p, i) {
-                            return (
-                                <div key={i} className="font-mono" style={{ background:'var(--md-sys-color-surface-container-highest)', borderRadius:8, padding:12, marginBottom:i<sim.length-1?8:0, borderLeft:'4px solid var(--md-sys-color-outline)', fontSize:12, color:'var(--md-sys-color-on-surface)', lineHeight:1.6 }}>
-                                    <span style={{ color:'var(--md-sys-color-outline)', fontWeight:700, marginRight:8 }}>{p.type}</span>{p.text}
-                                </div>
-                            );
-                        })}
                     </MdCard>
                 );
             }
@@ -2460,36 +2462,46 @@
                 var apt = getAirport(icao);
                 if (apt) {
                     fetchNwsForecast(apt.lat, apt.lon).then(data => {
-                        if (data) { setForecasts(data); setIsLive(true); }
-                        else setForecasts(makeForecast(icao));
-                    }).catch(() => setForecasts(makeForecast(icao)));
+                        setForecasts(data || []);
+                        if (data) setIsLive(true);
+                    }).catch(() => setForecasts([]));
                 } else {
                     fetchAirportInfo(icao).then(a => {
                         if (a) {
                             fetchNwsForecast(a.lat, a.lon).then(data => {
-                                if (data) { setForecasts(data); setIsLive(true); }
-                                else setForecasts(makeForecast(icao));
-                            }).catch(() => setForecasts(makeForecast(icao)));
+                                setForecasts(data || []);
+                                if (data) setIsLive(true);
+                            }).catch(() => setForecasts([]));
                         } else {
-                            setForecasts(makeForecast(icao));
+                            setForecasts([]);
                         }
-                    }).catch(() => setForecasts(makeForecast(icao)));
+                    }).catch(() => setForecasts([]));
                 }
             }, [icao]);
 
-            var items = forecasts || makeForecast(icao);
+            if (forecasts === null) return (
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 0', color: 'var(--md-sys-color-on-surface-variant)', fontSize: 12 }}>
+                    <MdIcon name="sync" style={{ animation: 'spin 1s linear infinite', fontSize: 14 }} />
+                    Loading 7-day forecast…
+                </div>
+            );
+
+            if (forecasts.length === 0) return (
+                <div style={{ fontSize: 12, color: 'var(--md-sys-color-on-surface-variant)', padding: '8px 0' }}>
+                    7-day forecast unavailable for {icao}
+                </div>
+            );
 
             return (
                 <div>
                     <div style={{ fontSize: 11, color: "var(--md-sys-color-on-surface-variant)", marginBottom: 6, display: "flex", alignItems: "center", gap: 4, flexWrap: 'wrap' }}>
                         <MdIcon name="calendar_month" style={{ fontSize: 13 }} />
                         7-Day Forecast
-                        {isLive && <span style={{ color: "var(--md-sys-color-primary)", fontWeight: 700, fontSize: 10, background: "var(--md-sys-color-primary-container)", borderRadius: 4, padding: "1px 5px", marginLeft: 4 }}>NWS LIVE</span>}
-                        {!isLive && <span style={{ color: "var(--md-sys-color-on-surface-variant)", fontSize: 10, background: "var(--md-sys-color-surface-container-high)", borderRadius: 4, padding: "1px 5px", marginLeft: 4 }}>SIMULATED</span>}
+                        <span style={{ color: "var(--md-sys-color-primary)", fontWeight: 700, fontSize: 10, background: "var(--md-sys-color-primary-container)", borderRadius: 4, padding: "1px 5px", marginLeft: 4 }}>NWS LIVE</span>
                         <span style={{ fontSize: 10, color: "var(--md-sys-color-on-surface-variant)", marginLeft: 2 }}>· General area outlook · Trip-specific analysis in Brief tab</span>
                     </div>
                     <div style={{ display: "flex", gap: 8, overflowX: "auto", padding: "4px 0", WebkitOverflowScrolling: "touch" }}>
-                        {items.map((f, i) => {
+                        {forecasts.map((f, i) => {
                             var selected = selectedDay === i;
                             var lc = f.cat.toLowerCase();
                             return (
@@ -2667,24 +2679,52 @@
         }
 
         function NotamsPanel({ icao }) {
-            var notams = useMemo(() => makeNotams(icao), [icao]);
-            var sevColors = { 
-                warning: "var(--md-sys-color-error)", 
-                tertiary: "var(--md-sys-color-tertiary)", 
-                error: "var(--md-sys-color-error)" 
+            var [notams, setNotams] = useState(null);
+            var [loading, setLoading] = useState(true);
+
+            useEffect(() => {
+                setLoading(true);
+                setNotams(null);
+                fetchLiveNotams(icao)
+                    .then(function(data) { setNotams(data); setLoading(false); })
+                    .catch(function() { setNotams([]); setLoading(false); });
+            }, [icao]);
+
+            var sevColors = {
+                warning: "var(--md-sys-color-warning)",
+                tertiary: "var(--md-sys-color-tertiary)",
+                error: "var(--md-sys-color-error)"
             };
-            
+
+            if (loading) return (
+                <div style={{ padding: '24px', textAlign: 'center', color: 'var(--md-sys-color-on-surface-variant)' }}>
+                    <MdIcon name="sync" style={{ animation: 'spin 1s linear infinite', fontSize: 24 }} />
+                    <div style={{ marginTop: 8, fontSize: 13 }}>Fetching live NOTAMs…</div>
+                </div>
+            );
+
+            if (!notams || notams.length === 0) return (
+                <div style={{ padding: '16px', textAlign: 'center', color: 'var(--md-sys-color-on-surface-variant)', fontSize: 13 }}>
+                    <MdIcon name="check_circle" style={{ fontSize: 20, color: 'var(--cat-vfr-color)', display: 'block', margin: '0 auto 6px' }} />
+                    No active NOTAMs — AviationWeather.gov
+                </div>
+            );
+
             return (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                    <div style={{ fontSize: 11, color: 'var(--cat-vfr-color)', marginBottom: 4, display: 'flex', alignItems: 'center', gap: 6 }}>
+                        <MdIcon name="verified" style={{ fontSize: 14 }} />
+                        Live NOTAMs — AviationWeather.gov ({notams.length} active)
+                    </div>
                     {notams.map((n, i) => (
-                        <div key={i} style={{ 
-                            background: "var(--md-sys-color-surface-container)", 
-                            borderRadius: "12px", padding: "12px", 
-                            borderLeft: `4px solid ${sevColors[n.severity] || "var(--md-sys-color-outline)"}` 
+                        <div key={i} style={{
+                            background: "var(--md-sys-color-surface-container)",
+                            borderRadius: "12px", padding: "12px",
+                            borderLeft: `4px solid ${sevColors[n.severity] || "var(--md-sys-color-outline)"}`
                         }}>
                             <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
-                                <MdIcon name={n.type === 'RWY' ? 'edit_road' : n.type === 'TFR' ? 'block' : 'warning'} style={{ fontSize: 16, color: sevColors[n.severity] }} />
-                                <span className="font-mono" style={{ fontSize: 12, fontWeight: 700, color: sevColors[n.severity] }}>{n.type}</span>
+                                <MdIcon name={n.type === 'RWY' || n.type === 'TWY' ? 'edit_road' : n.type === 'TFR' || n.type === 'SECURITY' ? 'block' : 'warning'} style={{ fontSize: 16, color: sevColors[n.severity] || "var(--md-sys-color-outline)" }} />
+                                <span className="font-mono" style={{ fontSize: 12, fontWeight: 700, color: sevColors[n.severity] || "var(--md-sys-color-outline)" }}>{n.type}</span>
                             </div>
                             <div className="font-mono" style={{ fontSize: 12, color: "var(--md-sys-color-on-surface)", lineHeight: 1.5 }}>{n.text}</div>
                         </div>
@@ -2982,9 +3022,13 @@
                   .catch(() => setLoadingWx(false));
             }, [allRoutePts.join(',')]);
 
-            // Fetch GFS MOS extended forecast for all route points
-            // Used for trips >30h out where TAF coverage ends
+            // Fetch GFS MOS extended forecast for all route points.
+            // Skipped when the flight is ≤16 h away — TAF/METAR is more accurate then.
             useEffect(() => {
+                var depApt = getAirport(trip.dep);
+                var tgtUtc = getTripTargetUtc(trip, depApt ? (depApt.tz || lonToIanaTz(depApt.lon)) : 'America/New_York');
+                var hrs = tgtUtc ? (tgtUtc.getTime() - Date.now()) / 3600000 : null;
+                if (hrs !== null && hrs <= 16) { setMosData({}); setLoadingMos(false); return; }
                 setMosData({});
                 setLoadingMos(true);
                 Promise.all(allRoutePts.map(async icao => {
@@ -2996,7 +3040,7 @@
                     setMosData(result);
                     setLoadingMos(false);
                 }).catch(() => { setMosData({}); setLoadingMos(false); });
-            }, [allRoutePts.join(',')]);
+            }, [allRoutePts.join(','), trip.date, trip.time]);
 
             // Fetch NWS 7-day forecast — used as fallback when the TAF doesn't
             // cover the departure time, mirroring fetchEffectiveWxForTrip's logic.
@@ -4471,6 +4515,10 @@
 
                         {showAI && (
                             <>
+                                <div style={{ marginBottom: 8, fontSize: 11, color: 'var(--md-sys-color-on-surface-variant)', lineHeight: 1.5, display: 'flex', alignItems: 'flex-start', gap: 6 }}>
+                                    <MdIcon name="lock" style={{ fontSize: 13, marginTop: 1, flexShrink: 0 }} />
+                                    Key is sent directly from your browser to Anthropic. Use a key with a spending limit set — never your primary production key.
+                                </div>
                                 <div style={{ marginBottom: 12 }}>
                                     <MdInput label="Anthropic API Key" value={apiKey} onChange={e => setApiKey(e.target.value)} placeholder="sk-ant-..." type="password" />
                                 </div>
@@ -4665,7 +4713,7 @@
                             <div style={fieldWrap}>
                                 <div style={{ fontSize:12, color:'var(--md-sys-color-on-surface-variant)', lineHeight:1.5 }}>
                                     Used for airport frequencies and airspace enrichment.
-                                    Get a free key at <strong>openaip.net</strong>. Stored only in your browser — never sent to any server except OpenAIP.
+                                    Get a free key at <strong>openaip.net</strong>. Stored in your browser and sent directly to OpenAIP — use a free-tier key, not one with billing attached.
                                 </div>
                                 <input
                                     type="password"
