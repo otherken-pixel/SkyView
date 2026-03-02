@@ -4466,18 +4466,31 @@
             var [showDataModal,     setShowDataModal]     = useState(false);
     var [showSettingsModal, setShowSettingsModal] = useState(false);
 
-            // Dark mode: JS toggle overrides system @media preference
+            // Dark mode: follows system preference by default; manual toggle saves an explicit override.
+            // Uses a separate 'flightscore_theme_manual' key so an explicit choice is
+            // distinguished from the auto-detected initial value — preventing old saves
+            // from permanently overriding the current system preference.
             var [darkMode, setDarkMode] = useState(function() {
-                var saved = localStorage.getItem('flightscore_theme');
-                if (saved === 'dark') return true;
-                if (saved === 'light') return false;
+                var manual = localStorage.getItem('flightscore_theme_manual');
+                if (manual === 'dark')  return true;
+                if (manual === 'light') return false;
+                // No explicit preference — follow system
                 return !!(window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches);
             });
             useEffect(function() {
                 document.body.classList.toggle('dark-theme', darkMode);
                 document.body.classList.toggle('light-theme', !darkMode);
-                localStorage.setItem('flightscore_theme', darkMode ? 'dark' : 'light');
             }, [darkMode]);
+            // Auto-follow system preference changes (only when no manual override is saved)
+            useEffect(function() {
+                if (!window.matchMedia) return;
+                var mq = window.matchMedia('(prefers-color-scheme: dark)');
+                function onSystemChange(e) {
+                    if (!localStorage.getItem('flightscore_theme_manual')) setDarkMode(e.matches);
+                }
+                mq.addEventListener('change', onSystemChange);
+                return function() { mq.removeEventListener('change', onSystemChange); };
+            }, []);
 
             // Sync navigation state to sessionStorage so pull-to-refresh restores
             // the user's position.  We only persist the briefing view — trips list
@@ -4740,7 +4753,11 @@
                                     <MdIcon name="add" style={{ fontSize: 18 }} /> New
                                 </button>
                             )}
-                            <IconBtn icon={darkMode ? 'light_mode' : 'dark_mode'} title={darkMode ? 'Light Mode' : 'Dark Mode'} onClick={() => setDarkMode(d => !d)} />
+                            <IconBtn icon={darkMode ? 'light_mode' : 'dark_mode'} title={darkMode ? 'Light Mode' : 'Dark Mode'} onClick={() => {
+                                var next = !darkMode;
+                                setDarkMode(next);
+                                localStorage.setItem('flightscore_theme_manual', next ? 'dark' : 'light');
+                            }} />
                             <IconBtn icon="import_export" title="Export / Import trips" onClick={() => setShowDataModal(true)} />
                             <IconBtn icon="tune" title="Settings" onClick={() => setShowSettingsModal(true)} />
                         </div>
