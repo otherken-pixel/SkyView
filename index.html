@@ -173,6 +173,12 @@
         }
         * { box-sizing: border-box; }
 
+        /* date/time inputs: prevent browser-enforced min-width from overflowing grid columns */
+        input[type="date"], input[type="time"] {
+            min-width: 0 !important;
+            font-size: 14px !important;
+        }
+
         /* ── Material Symbols — use Rounded variant for softer feel ── */
         .material-symbols-outlined,
         .material-symbols-rounded {
@@ -4964,7 +4970,7 @@
                                     </div>
 
                                     <div style={{ display: "flex", flexDirection: "column", gap: 16, marginBottom: 24 }}>
-                                        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
+                                        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
                                             <MdInput type="date" label="Date" value={newTrip.date} onChange={e => setNewTrip({...newTrip, date: e.target.value})} />
                                             <MdInput type="time" label="Time" value={newTrip.time} onChange={e => setNewTrip({...newTrip, time: e.target.value})} />
                                         </div>
