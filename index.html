@@ -4102,7 +4102,22 @@
                             </div>
 
                             {/* Composite Safety Score Breakdown */}
-                            {detailedScore && <ScoreBreakdown breakdown={detailedScore.breakdown} total={combinedScore ?? detailedScore.total} />}
+                            {detailedScore && (function() {
+                                var augBreakdown = detailedScore.breakdown.slice();
+                                if (fratComplete) {
+                                    var fs = calcFratGoScore(fratAnswers);
+                                    var fsColor = fs >= 80 ? 'var(--go)' : fs >= 60 ? 'var(--caution)' : 'var(--nogo)';
+                                    augBreakdown = augBreakdown.concat([{
+                                        label: 'FRAT Assessment',
+                                        score: fs,
+                                        max: 100,
+                                        color: fsColor,
+                                        icon: 'checklist_rtl',
+                                        detail: 'FRAT score ' + fs + '/100 — 30% weight blended with weather (70%) for combined GO Score'
+                                    }]);
+                                }
+                                return <ScoreBreakdown breakdown={augBreakdown} total={combinedScore ?? detailedScore.total} />;
+                            })()}
 
                             {/* Active Hazard Advisories (SIGMETs / AIRMETs / CWAs) */}
                             <HazardAdvisories sigmets={sigmets} gairmets={gairmets} cwas={cwas} loading={loadingAdvisory} />
@@ -4269,7 +4284,7 @@
 
                             {/* ── FRAT — Flight Risk Assessment Tool (MMOPA / PAVE) ── */}
                             {(function() {
-                                var fratScore = fratComplete ? calcFratGoScore(fratAnswers) : null;
+                                var fratScore = fratAnsweredCount > 0 ? calcFratGoScore(fratAnswers) : null;
                                 var baseScore = detailedScore ? detailedScore.total : null;
                                 var fratBand  = fratScore === null ? null
                                     : fratScore >= 80 ? { color:'var(--go)',      label:'Low Risk — Proceed' }
@@ -4413,25 +4428,46 @@
                                                     </div>
                                                 </div>
 
-                                                {/* Score summary when complete */}
-                                                {fratComplete && fratBand && (
+                                                {/* Score summary — live FRAT score (partial or complete) */}
+                                                {fratAnsweredCount > 0 && fratScore !== null && (
                                                     <div style={{ background:'var(--md-sys-color-surface-container-high)', borderRadius:12, padding:'14px 16px', marginBottom:14 }}>
-                                                        <div style={{ fontWeight:700, fontSize:12, textTransform:'uppercase', letterSpacing:'0.5px', color:'var(--md-sys-color-on-surface-variant)', marginBottom:10 }}>Score Breakdown — 70 / 30 Blend</div>
-                                                        <div style={{ display:'flex', gap:10 }}>
-                                                            {[
-                                                                { label:'Base Weather Score', value:baseScore, sub:'weather + route' },
-                                                                { label:'FRAT Score', value:fratScore, sub:fratBand.label, color:fratBand.color },
-                                                                { label:'Combined GO Score', value:combinedScore, sub:'final score' },
-                                                            ].map(function(item,i) {
-                                                                return (
-                                                                    <div key={i} style={{ flex:1, background:'var(--md-sys-color-surface-container)', borderRadius:10, padding:'10px 8px', textAlign:'center' }}>
-                                                                        <div style={{ fontSize:26, fontWeight:800, lineHeight:1, color:item.color||'var(--md-sys-color-on-surface)' }}>{item.value}</div>
-                                                                        <div style={{ fontSize:12, fontWeight:700, textTransform:'uppercase', letterSpacing:'0.4px', color:'var(--md-sys-color-on-surface-variant)', marginTop:4, lineHeight:1.3 }}>{item.label}</div>
-                                                                        {item.sub && <div style={{ fontSize:12, color:item.color||'var(--md-sys-color-on-surface-variant)', marginTop:2 }}>{item.sub}</div>}
+                                                        {fratComplete && fratBand ? (
+                                                            <>
+                                                                <div style={{ fontWeight:700, fontSize:12, textTransform:'uppercase', letterSpacing:'0.5px', color:'var(--md-sys-color-on-surface-variant)', marginBottom:10 }}>Score Breakdown — 70 / 30 Blend</div>
+                                                                <div style={{ display:'flex', gap:10 }}>
+                                                                    {[
+                                                                        { label:'Base Weather Score', value:baseScore, sub:'weather + route' },
+                                                                        { label:'FRAT Score', value:fratScore, sub:fratBand.label, color:fratBand.color },
+                                                                        { label:'Combined GO Score', value:combinedScore, sub:'final score' },
+                                                                    ].map(function(item,i) {
+                                                                        return (
+                                                                            <div key={i} style={{ flex:1, background:'var(--md-sys-color-surface-container)', borderRadius:10, padding:'10px 8px', textAlign:'center' }}>
+                                                                                <div style={{ fontSize:26, fontWeight:800, lineHeight:1, color:item.color||'var(--md-sys-color-on-surface)' }}>{item.value}</div>
+                                                                                <div style={{ fontSize:12, fontWeight:700, textTransform:'uppercase', letterSpacing:'0.4px', color:'var(--md-sys-color-on-surface-variant)', marginTop:4, lineHeight:1.3 }}>{item.label}</div>
+                                                                                {item.sub && <div style={{ fontSize:12, color:item.color||'var(--md-sys-color-on-surface-variant)', marginTop:2 }}>{item.sub}</div>}
+                                                                            </div>
+                                                                        );
+                                                                    })}
+                                                                </div>
+                                                            </>
+                                                        ) : (
+                                                            <div style={{ display:'flex', gap:12, alignItems:'center' }}>
+                                                                <div style={{ flex:'0 0 auto', background:'var(--md-sys-color-surface-container)', borderRadius:10, padding:'10px 16px', textAlign:'center', minWidth:80 }}>
+                                                                    <div style={{ fontSize:26, fontWeight:800, lineHeight:1, color:fratBand ? fratBand.color : 'var(--md-sys-color-on-surface)' }}>{fratScore}</div>
+                                                                    <div style={{ fontSize:11, fontWeight:700, textTransform:'uppercase', letterSpacing:'0.4px', color:'var(--md-sys-color-on-surface-variant)', marginTop:4 }}>FRAT Score</div>
+                                                                    {fratBand && <div style={{ fontSize:11, color:fratBand.color, marginTop:2 }}>{fratBand.label}</div>}
+                                                                </div>
+                                                                <div style={{ flex:1, fontSize:12, color:'var(--md-sys-color-on-surface-variant)', lineHeight:1.5 }}>
+                                                                    <strong style={{ color:'var(--md-sys-color-on-surface)' }}>Live FRAT score</strong> — updates as you answer questions. Answer all {FRAT_TOTAL} to unlock the combined GO Score (70% weather + 30% FRAT).
+                                                                    <div style={{ marginTop:5 }}>
+                                                                        <div style={{ height:4, background:'var(--md-sys-color-surface-container)', borderRadius:2, overflow:'hidden' }}>
+                                                                            <div style={{ height:'100%', width:`${(fratAnsweredCount/FRAT_TOTAL)*100}%`, background:'var(--accent)', borderRadius:2, transition:'width 0.3s' }} />
+                                                                        </div>
+                                                                        <div style={{ fontSize:11, marginTop:3, opacity:0.7 }}>{fratAnsweredCount} / {FRAT_TOTAL} answered</div>
                                                                     </div>
-                                                                );
-                                                            })}
-                                                        </div>
+                                                                </div>
+                                                            </div>
+                                                        )}
                                                     </div>
                                                 )}
 
