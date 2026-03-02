@@ -3760,7 +3760,7 @@
                                     {detailedScore && verd && (
                                         <div style={{ display:'flex', alignItems:'center', gap:10, flexShrink:0 }}>
                                             <div style={{ textAlign:'right' }}>
-                                                <div style={{ fontSize:38, fontWeight:900, lineHeight:1, ...mono }}>{detailedScore.total}</div>
+                                                <div style={{ fontSize:38, fontWeight:900, lineHeight:1, ...mono }}>{combinedScore ?? detailedScore.total}</div>
                                                 <div style={{ fontSize:12, fontWeight:700, opacity:0.65, letterSpacing:'1.5px', textTransform:'uppercase' }}>/ 100</div>
                                             </div>
                                             <div style={{ background:vBg, color:vClr, borderRadius:8, padding:'6px 14px', textAlign:'center', minWidth:72 }}>
@@ -3863,7 +3863,7 @@
                                 {/* ── 4. SCORE BREAKDOWN ──────────────────────── */}
                                 {detailedScore && (
                                     <div className="bs">
-                                        <div style={sh}>Composite Safety Score — {detailedScore.total} / 100</div>
+                                        <div style={sh}>Composite Safety Score — {combinedScore ?? detailedScore.total} / 100</div>
                                         <div style={{ display:'flex', flexDirection:'column', gap:7 }}>
                                             {detailedScore.breakdown.map((b, i) => (
                                                 <div key={i} style={{ display:'grid', gridTemplateColumns:'130px 1fr 52px 120px', alignItems:'center', gap:8 }}>
@@ -4102,7 +4102,7 @@
                             </div>
 
                             {/* Composite Safety Score Breakdown */}
-                            {detailedScore && <ScoreBreakdown breakdown={detailedScore.breakdown} total={detailedScore.total} />}
+                            {detailedScore && <ScoreBreakdown breakdown={detailedScore.breakdown} total={combinedScore ?? detailedScore.total} />}
 
                             {/* Active Hazard Advisories (SIGMETs / AIRMETs / CWAs) */}
                             <HazardAdvisories sigmets={sigmets} gairmets={gairmets} cwas={cwas} loading={loadingAdvisory} />
@@ -4311,7 +4311,7 @@
                                                               <div style={{ fontWeight:600, fontSize:12, color:'var(--md-sys-color-on-surface)' }}>FRAT not completed — −20 points applied to GO Score</div>
                                                               <div style={{ fontSize:12, color:'var(--md-sys-color-on-surface-variant)', marginTop:2 }}>Completing the FRAT unlocks a more accurate combined GO Score based on MMOPA PAVE methodology.</div>
                                                           </div>
-                                                          <button onClick={function(e){ e.stopPropagation(); setFratExpanded(true); }} style={{ background:'var(--accent)', color:'#fff', border:'none', borderRadius:8, padding:'6px 10px', fontSize:12, fontWeight:600, cursor:'pointer', flexShrink:0 }}>Start FRAT</button>
+                                                          <button onClick={function(e){ e.stopPropagation(); setFratExpanded(true); }} style={{ background:'var(--accent)', color:'#fff', border:'none', borderRadius:8, padding:'6px 10px', fontSize:12, fontWeight:600, cursor:'pointer', flexShrink:0 }}>Edit FRAT</button>
                                                       </div>
                                                 }
                                             </div>
