@@ -2941,9 +2941,24 @@
             var [nwsData, setNwsData] = useState({});   // { ICAO: nwsDays[] }
 
             // --- FRAT state ---
-            var [fratAnswers, setFratAnswers]     = useState(trip.fratAnswers || {});  // { P1: riskPts, … }
-            var [fratAutoFilled, setFratAutoFilled] = useState({});                  // { V1: pts, V2: pts, V3: pts }
-            var [fratSkipped, setFratSkipped]     = useState(trip.fratSkipped || false); // dismissed with penalty
+            // Each trip's FRAT is saved directly to its own localStorage key so it
+            // survives refreshes without depending on the callback/setTrips chain.
+            var fratKey = 'flightscore_frat_' + trip.id;
+            var [fratAnswers, setFratAnswers] = useState(function() {
+                try {
+                    var s = JSON.parse(localStorage.getItem(fratKey) || 'null');
+                    if (s && s.answers) return s.answers;
+                } catch(e) {}
+                return trip.fratAnswers || {};
+            });
+            var [fratAutoFilled, setFratAutoFilled] = useState({});   // { V1: pts, V2: pts, V3: pts }
+            var [fratSkipped, setFratSkipped] = useState(function() {
+                try {
+                    var s = JSON.parse(localStorage.getItem(fratKey) || 'null');
+                    if (s && s.skipped != null) return s.skipped;
+                } catch(e) {}
+                return trip.fratSkipped || false;
+            });
             var [fratExpanded, setFratExpanded]   = useState(false);  // panel open/closed
 
             // --- AI Enhanced section state ---
@@ -3360,8 +3375,13 @@
                 if (combinedScore !== null && onScoreUpdate) onScoreUpdate(combinedScore);
             }, [combinedScore]);
 
-            // Persist FRAT answers & skipped flag back to the trip object
+            // Persist FRAT directly to localStorage (per-trip key) on every change.
+            // This is the source of truth — no dependency on the callback chain.
             useEffect(function() {
+                try {
+                    localStorage.setItem(fratKey, JSON.stringify({ answers: fratAnswers, skipped: fratSkipped }));
+                } catch(e) {}
+                // Also notify parent so the trip object and score ring stay in sync
                 if (onFratUpdate) onFratUpdate(fratAnswers, fratSkipped);
             }, [fratAnswers, fratSkipped]);
 
@@ -4949,7 +4969,14 @@
                             var weatherScore = calcDetailedScore(wxData, routeDist).total;
                             // Mirror BriefingPanel combinedScore logic:
                             // — FRAT complete → 70/30 blend; otherwise → weather − 20 penalty
-                            var savedAnswers  = t.fratAnswers || {};
+                            // Read from the dedicated per-trip FRAT key (same source BriefingPanel uses)
+                            var savedAnswers = (function() {
+                                try {
+                                    var s = JSON.parse(localStorage.getItem('flightscore_frat_' + t.id) || 'null');
+                                    if (s && s.answers) return s.answers;
+                                } catch(e) {}
+                                return t.fratAnswers || {};
+                            })();
                             var fratDone = FRAT_QUESTIONS.filter(function(q){ return savedAnswers[q.id] !== undefined; }).length === FRAT_TOTAL;
                             var score;
                             if (fratDone) {
