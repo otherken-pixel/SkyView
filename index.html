@@ -142,7 +142,7 @@
             --md-sys-color-surface:     var(--card);
             --md-sys-color-on-surface:  var(--text-primary);
             --md-sys-color-surface-variant:    var(--card-high);
-            --md-sys-color-on-surface-variant: var(--text-secondary);
+            --md-sys-color-on-surface-variant: #313438;
             --md-sys-color-surface-container-lowest:  #F9F9FB;
             --md-sys-color-surface-container-low:     var(--card);
             --md-sys-color-surface-container:         var(--card-mid);
@@ -222,7 +222,7 @@
             border-radius: 16px;
         }
         .fy-section-label {
-            font-size: 10px; font-weight: 700; letter-spacing: 0.8px;
+            font-size: 12px; font-weight: 700; letter-spacing: 0.8px;
             text-transform: uppercase; color: var(--text-tertiary);
             margin-bottom: 10px;
         }
@@ -1937,18 +1937,18 @@
                                         <span className="font-mono" style={{ fontWeight:700, fontSize:14, color:'var(--md-sys-color-primary)', minWidth:46 }}>{s.icao}</span>
                                         <div style={{ flex:1, minWidth:0 }}>
                                             <div style={{ fontSize:12, color:'var(--md-sys-color-on-surface)', lineHeight:1.3, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{s.name}</div>
-                                            <div style={{ fontSize:11, color:'var(--md-sys-color-on-surface-variant)' }}>
+                                            <div style={{ fontSize:12, color:'var(--md-sys-color-on-surface-variant)' }}>
                                                 {[s.city, s.state, s.country && s.country !== 'US' ? s.country : null].filter(Boolean).join(', ')}
                                             </div>
                                         </div>
                                         {s.src === 'OurAirports' && (
-                                            <span style={{ fontSize:9, color:'var(--md-sys-color-on-surface-variant)', background:'var(--md-sys-color-surface-container-high)', borderRadius:3, padding:'1px 4px', flexShrink:0, alignSelf:'center' }}>OA</span>
+                                            <span style={{ fontSize:12, color:'var(--md-sys-color-on-surface-variant)', background:'var(--md-sys-color-surface-container-high)', borderRadius:3, padding:'1px 4px', flexShrink:0, alignSelf:'center' }}>OA</span>
                                         )}
                                     </div>
                                 );
                             })}
                             {isLoadingOA && suggestions.length < 3 && (
-                                <div style={{ padding:'8px 14px', fontSize:11, color:'var(--md-sys-color-on-surface-variant)', display:'flex', alignItems:'center', gap:6 }}>
+                                <div style={{ padding:'8px 14px', fontSize:12, color:'var(--md-sys-color-on-surface-variant)', display:'flex', alignItems:'center', gap:6 }}>
                                     <MdIcon name="sync" style={{ fontSize:14, animation:'spin 1s linear infinite' }} />
                                     Loading airport database…
                                 </div>
@@ -1975,10 +1975,10 @@
                         <path d={pathD} fill="none" stroke={col} strokeWidth="10" strokeLinecap="round"
                             strokeDasharray={arcLen.toFixed(1)} strokeDashoffset={(arcLen * (1 - score / 100)).toFixed(1)}
                             style={{ transition:'stroke-dashoffset 0.9s ease-out' }} />
-                        <text x={cx - r - 2} y={cy + 16} textAnchor="middle" fontSize="10" fill="var(--md-sys-color-on-surface-variant)" fontFamily="sans-serif">0</text>
-                        <text x={cx + r + 2} y={cy + 16} textAnchor="middle" fontSize="10" fill="var(--md-sys-color-on-surface-variant)" fontFamily="sans-serif">100</text>
+                        <text x={cx - r - 2} y={cy + 16} textAnchor="middle" fontSize="12" fill="var(--md-sys-color-on-surface-variant)" fontFamily="sans-serif">0</text>
+                        <text x={cx + r + 2} y={cy + 16} textAnchor="middle" fontSize="12" fill="var(--md-sys-color-on-surface-variant)" fontFamily="sans-serif">100</text>
                         <text x={cx} y={cy - r * 0.1} textAnchor="middle" fontSize={Math.round(size * 0.18)} fontWeight="800" fill={col} fontFamily="monospace">{score}</text>
-                        <text x={cx} y={cy + 8} textAnchor="middle" fontSize="9" fill="var(--md-sys-color-on-surface-variant)" fontFamily="sans-serif" letterSpacing="1">SAFETY SCORE</text>
+                        <text x={cx} y={cy + 8} textAnchor="middle" fontSize="12" fill="var(--md-sys-color-on-surface-variant)" fontFamily="sans-serif" letterSpacing="1">SAFETY SCORE</text>
                     </svg>
                 </div>
             );
@@ -2010,7 +2010,7 @@
                                         <div style={{ height:6, background:'var(--md-sys-color-surface-container-highest)', borderRadius:3, overflow:'hidden', marginBottom:3 }}>
                                             <div style={{ width:(f.score/f.max*100)+'%', height:'100%', background:f.color, borderRadius:3, transition:'width 0.9s ease-out' }} />
                                         </div>
-                                        <div style={{ fontSize:11, color:'var(--md-sys-color-on-surface-variant)' }}>{f.detail}</div>
+                                        <div style={{ fontSize:12, color:'var(--md-sys-color-on-surface-variant)' }}>{f.detail}</div>
                                     </div>
                                 </div>
                             );
@@ -2055,7 +2055,7 @@
             }
             return (
                 <MdCard style={{ padding:12 }}>
-                    <div style={{ fontSize:11, color:'var(--cat-vfr-color)', marginBottom:8, display:'flex', alignItems:'center', gap:6 }}>
+                    <div style={{ fontSize:12, color:'var(--cat-vfr-color)', marginBottom:8, display:'flex', alignItems:'center', gap:6 }}>
                         <MdIcon name="verified" style={{ fontSize:14 }} />
                         Live PIREPs — AviationWeather.gov ({pireps.length} report{pireps.length !== 1 ? 's' : ''} within 200 NM)
                     </div>
@@ -2123,9 +2123,9 @@
                                 <div key={i} style={{ background: item.isConv ? 'var(--md-sys-color-error-container)' : 'var(--md-sys-color-surface-container-high)', borderRadius:10, padding:'10px 12px', borderLeft:'3px solid '+item.color }}>
                                     <div style={{ display:'flex', alignItems:'center', gap:7, marginBottom:4 }}>
                                         <MdIcon name={item.icon} style={{ fontSize:15, color:item.color, flexShrink:0 }} />
-                                        <span style={{ fontSize:11, fontWeight:700, color:item.color, textTransform:'uppercase', letterSpacing:'0.4px' }}>{item.label}</span>
+                                        <span style={{ fontSize:12, fontWeight:700, color:item.color, textTransform:'uppercase', letterSpacing:'0.4px' }}>{item.label}</span>
                                     </div>
-                                    <div className="font-mono" style={{ fontSize:11, color:'var(--md-sys-color-on-surface)', lineHeight:1.5, whiteSpace:'pre-wrap', wordBreak:'break-word' }}>{item.text}</div>
+                                    <div className="font-mono" style={{ fontSize:12, color:'var(--md-sys-color-on-surface)', lineHeight:1.5, whiteSpace:'pre-wrap', wordBreak:'break-word' }}>{item.text}</div>
                                 </div>
                             );
                         })}
@@ -2152,7 +2152,7 @@
                     <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:12 }}>
                         <MdIcon name="air" style={{ color:'var(--md-sys-color-secondary)', fontSize:18 }} />
                         <span style={{ fontWeight:700, fontSize:13, textTransform:'uppercase', letterSpacing:'0.5px', color:'var(--md-sys-color-secondary)' }}>Winds Aloft</span>
-                        <span style={{ fontSize:10, fontWeight:700, background:'var(--md-sys-color-secondary-container)', color:'var(--md-sys-color-on-secondary-container)', borderRadius:4, padding:'2px 6px', letterSpacing:'0.5px' }}>
+                        <span style={{ fontSize:12, fontWeight:700, background:'var(--md-sys-color-secondary-container)', color:'var(--md-sys-color-on-secondary-container)', borderRadius:4, padding:'2px 6px', letterSpacing:'0.5px' }}>
                             {(alt/1000).toFixed(0)}K FT · FD WINDS
                         </span>
                     </div>
@@ -2165,16 +2165,16 @@
                                         <div className="font-mono" style={{ fontSize:12, color:'var(--md-sys-color-on-surface)' }}>
                                             {r.w.lv ? 'LGT & VRB' : (r.w.wdir + '° @ ' + r.w.wspd + 'kt')}
                                             {r.w.temp != null && <span style={{ marginLeft:10, color:'var(--md-sys-color-on-surface-variant)' }}>{r.w.temp > 0 ? '+' : ''}{r.w.temp}°C</span>}
-                                            <span style={{ marginLeft:8, fontSize:10, color:'var(--md-sys-color-on-surface-variant)' }}>(via {r.stnId})</span>
+                                            <span style={{ marginLeft:8, fontSize:12, color:'var(--md-sys-color-on-surface-variant)' }}>(via {r.stnId})</span>
                                         </div>
                                     ) : (
-                                        <span style={{ fontSize:11, color:'var(--md-sys-color-on-surface-variant)' }}>No FD data</span>
+                                        <span style={{ fontSize:12, color:'var(--md-sys-color-on-surface-variant)' }}>No FD data</span>
                                     )}
                                 </div>
                             );
                         })}
                     </div>
-                    <div style={{ fontSize:10, color:'var(--md-sys-color-on-surface-variant)', marginTop:8, lineHeight:1.5 }}>
+                    <div style={{ fontSize:12, color:'var(--md-sys-color-on-surface-variant)', marginTop:8, lineHeight:1.5 }}>
                         Nearest FD reporting station used per waypoint. Source: AviationWeather.gov /api/data/windtemp.
                     </div>
                 </div>
@@ -2428,7 +2428,7 @@
                                 </div>
                                 <code style={{
                                     display: 'block',
-                                    fontFamily: 'Roboto Mono, monospace', fontSize: 11,
+                                    fontFamily: 'Roboto Mono, monospace', fontSize: 12,
                                     background: 'rgba(0,0,0,0.12)',
                                     padding: '8px 12px', borderRadius: 8, marginBottom: 16,
                                     wordBreak: 'break-all',
@@ -2494,11 +2494,11 @@
 
             return (
                 <div>
-                    <div style={{ fontSize: 11, color: "var(--md-sys-color-on-surface-variant)", marginBottom: 6, display: "flex", alignItems: "center", gap: 4, flexWrap: 'wrap' }}>
+                    <div style={{ fontSize: 12, color: "var(--md-sys-color-on-surface-variant)", marginBottom: 6, display: "flex", alignItems: "center", gap: 4, flexWrap: 'wrap' }}>
                         <MdIcon name="calendar_month" style={{ fontSize: 13 }} />
                         7-Day Forecast
-                        <span style={{ color: "var(--md-sys-color-primary)", fontWeight: 700, fontSize: 10, background: "var(--md-sys-color-primary-container)", borderRadius: 4, padding: "1px 5px", marginLeft: 4 }}>NWS LIVE</span>
-                        <span style={{ fontSize: 10, color: "var(--md-sys-color-on-surface-variant)", marginLeft: 2 }}>· General area outlook · Trip-specific analysis in Brief tab</span>
+                        <span style={{ color: "var(--md-sys-color-primary)", fontWeight: 700, fontSize: 12, background: "var(--md-sys-color-primary-container)", borderRadius: 4, padding: "1px 5px", marginLeft: 4 }}>NWS LIVE</span>
+                        <span style={{ fontSize: 12, color: "var(--md-sys-color-on-surface-variant)", marginLeft: 2 }}>· General area outlook · Trip-specific analysis in Brief tab</span>
                     </div>
                     <div style={{ display: "flex", gap: 8, overflowX: "auto", padding: "4px 0", WebkitOverflowScrolling: "touch" }}>
                         {forecasts.map((f, i) => {
@@ -2512,7 +2512,7 @@
                                     cursor: "pointer", textAlign: "center", transition: "all 0.2s"
                                 }}>
                                     <div style={{ fontSize: 12, fontWeight: 700, color: selected ? `var(--cat-${lc}-color)` : "var(--md-sys-color-on-surface)", marginBottom: 2 }}>{f.dayName}</div>
-                                    <div style={{ fontSize: 10, color: "var(--md-sys-color-on-surface-variant)", marginBottom: 8 }}>{f.dateStr}</div>
+                                    <div style={{ fontSize: 12, color: "var(--md-sys-color-on-surface-variant)", marginBottom: 8 }}>{f.dateStr}</div>
                                     <CatBadge cat={f.cat} />
                                     <div style={{ fontSize: 12, color: "var(--md-sys-color-on-surface)", marginTop: 8, fontWeight: 500 }}>{f.hi}&deg; <span style={{color: "var(--md-sys-color-on-surface-variant)"}}>{f.lo}&deg;</span></div>
                                 </button>
@@ -2606,15 +2606,15 @@
                         <div>
                             <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4, flexWrap: 'wrap' }}>
                                 <span style={{ fontSize: 12, fontWeight: 600, color: "var(--md-sys-color-primary)", textTransform: "uppercase", letterSpacing: "0.5px" }}>{label}</span>
-                                <span style={{ fontSize: 10, color: "var(--md-sys-color-on-surface-variant)", background: "var(--md-sys-color-surface-container-high)", borderRadius: 4, padding: "1px 6px" }}>
+                                <span style={{ fontSize: 12, color: "var(--md-sys-color-on-surface-variant)", background: "var(--md-sys-color-surface-container-high)", borderRadius: 4, padding: "1px 6px" }}>
                                     {liveMetar ? "Current observations · Live ASOS/AWOS" : "Current observations · Simulated"}
                                 </span>
                             </div>
                             <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                                 <span className="font-mono" style={{ fontSize: 20, fontWeight: 700 }}>{icao}</span>
                                 {apt && <span style={{ fontSize: 14, color: "var(--md-sys-color-on-surface-variant)" }}>{apt.city}, {apt.state}</span>}
-                                {liveMetar && <span style={{ fontSize: 10, color: "var(--md-sys-color-primary)", background: "var(--md-sys-color-primary-container)", borderRadius: 4, padding: "2px 6px", fontWeight: 700, letterSpacing: "0.5px" }}>LIVE NOW</span>}
-                                {!liveMetar && !loadingWx && <span style={{ fontSize: 10, color: "var(--md-sys-color-on-surface-variant)", background: "var(--md-sys-color-surface-container-high)", borderRadius: 4, padding: "2px 6px", fontWeight: 700, letterSpacing: "0.5px" }}>SIM</span>}
+                                {liveMetar && <span style={{ fontSize: 12, color: "var(--md-sys-color-primary)", background: "var(--md-sys-color-primary-container)", borderRadius: 4, padding: "2px 6px", fontWeight: 700, letterSpacing: "0.5px" }}>LIVE NOW</span>}
+                                {!liveMetar && !loadingWx && <span style={{ fontSize: 12, color: "var(--md-sys-color-on-surface-variant)", background: "var(--md-sys-color-surface-container-high)", borderRadius: 4, padding: "2px 6px", fontWeight: 700, letterSpacing: "0.5px" }}>SIM</span>}
                                 {loadingWx && <MdIcon name="sync" style={{ fontSize: 14, color: "var(--md-sys-color-on-surface-variant)", animation: "spin 1s linear infinite" }} />}
                             </div>
                         </div>
@@ -2630,11 +2630,11 @@
                             <div className="font-mono" style={{ background: "var(--md-sys-color-surface-container-lowest)", borderRadius: "8px", padding: "12px", fontSize: 13, color: "var(--md-sys-color-on-surface)", lineHeight: 1.6, wordBreak: "break-all", marginBottom: 16, border: "1px solid var(--md-sys-color-outline-variant)" }}>{metar.raw}</div>
 
                             <div className="font-mono" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(100px, 1fr))", gap: "12px 16px", fontSize: 13 }}>
-                                <div><span style={{ color: "var(--md-sys-color-on-surface-variant)", fontSize: 11, display: 'block' }}>WIND</span><span style={{ fontWeight: 600 }}>{metar.wind}</span></div>
-                                <div><span style={{ color: "var(--md-sys-color-on-surface-variant)", fontSize: 11, display: 'block' }}>VIS</span><span style={{ fontWeight: 600 }}>{metar.vis}</span></div>
-                                <div><span style={{ color: "var(--md-sys-color-on-surface-variant)", fontSize: 11, display: 'block' }}>SKY</span><span style={{ fontWeight: 600 }}>{metar.sky}</span></div>
-                                <div><span style={{ color: "var(--md-sys-color-on-surface-variant)", fontSize: 11, display: 'block' }}>TEMP</span><span style={{ fontWeight: 600 }}>{metar.temp}</span></div>
-                                <div><span style={{ color: "var(--md-sys-color-on-surface-variant)", fontSize: 11, display: 'block' }}>ALTM</span><span style={{ fontWeight: 600 }}>{metar.alt}</span></div>
+                                <div><span style={{ color: "var(--md-sys-color-on-surface-variant)", fontSize: 12, fontWeight: 700, display: 'block' }}>WIND</span><span style={{ fontWeight: 600 }}>{metar.wind}</span></div>
+                                <div><span style={{ color: "var(--md-sys-color-on-surface-variant)", fontSize: 12, fontWeight: 700, display: 'block' }}>VIS</span><span style={{ fontWeight: 600 }}>{metar.vis}</span></div>
+                                <div><span style={{ color: "var(--md-sys-color-on-surface-variant)", fontSize: 12, fontWeight: 700, display: 'block' }}>SKY</span><span style={{ fontWeight: 600 }}>{metar.sky}</span></div>
+                                <div><span style={{ color: "var(--md-sys-color-on-surface-variant)", fontSize: 12, fontWeight: 700, display: 'block' }}>TEMP</span><span style={{ fontWeight: 600 }}>{metar.temp}</span></div>
+                                <div><span style={{ color: "var(--md-sys-color-on-surface-variant)", fontSize: 12, fontWeight: 700, display: 'block' }}>ALTM</span><span style={{ fontWeight: 600 }}>{metar.alt}</span></div>
                             </div>
 
                             {(() => {
@@ -2649,16 +2649,16 @@
                                     <div style={{ marginTop: 12, paddingTop: 12, borderTop: "1px solid var(--md-sys-color-outline-variant)", display: "flex", alignItems: "center", gap: 24, flexWrap: "wrap" }}>
                                         <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
                                             <MdIcon name="airline_stops" style={{ fontSize: 16, color: "var(--md-sys-color-on-surface-variant)" }} />
-                                            <span style={{ fontSize: 11, color: "var(--md-sys-color-on-surface-variant)", textTransform: "uppercase", letterSpacing: "0.5px" }}>Recommended Runway</span>
+                                            <span style={{ fontSize: 12, fontWeight: 700, color: "var(--md-sys-color-on-surface-variant)", textTransform: "uppercase", letterSpacing: "0.5px" }}>Recommended Runway</span>
                                         </div>
                                         <span className="font-mono" style={{ fontWeight: 700, fontSize: 15 }}>{rec.rwy}</span>
                                         <div>
-                                            <span style={{ fontSize: 11, color: "var(--md-sys-color-on-surface-variant)", textTransform: "uppercase", letterSpacing: "0.5px" }}>Crosswind </span>
+                                            <span style={{ fontSize: 12, fontWeight: 700, color: "var(--md-sys-color-on-surface-variant)", textTransform: "uppercase", letterSpacing: "0.5px" }}>Crosswind </span>
                                             <span className="font-mono" style={{ fontWeight: 700, fontSize: 14, color: crossColor }}>{rec.crosswind}KT</span>
                                         </div>
                                         {rec.headwind > 0 && (
                                             <div>
-                                                <span style={{ fontSize: 11, color: "var(--md-sys-color-on-surface-variant)", textTransform: "uppercase", letterSpacing: "0.5px" }}>Headwind </span>
+                                                <span style={{ fontSize: 12, fontWeight: 700, color: "var(--md-sys-color-on-surface-variant)", textTransform: "uppercase", letterSpacing: "0.5px" }}>Headwind </span>
                                                 <span className="font-mono" style={{ fontWeight: 700, fontSize: 14 }}>{rec.headwind}KT</span>
                                             </div>
                                         )}
@@ -2712,7 +2712,7 @@
 
             return (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                    <div style={{ fontSize: 11, color: 'var(--cat-vfr-color)', marginBottom: 4, display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <div style={{ fontSize: 12, color: 'var(--cat-vfr-color)', marginBottom: 4, display: 'flex', alignItems: 'center', gap: 6 }}>
                         <MdIcon name="verified" style={{ fontSize: 14 }} />
                         Live NOTAMs — AviationWeather.gov ({notams.length} active)
                     </div>
@@ -2791,7 +2791,7 @@
 
                             {/* Fuel types */}
                             <div style={{ marginBottom: 14 }}>
-                                <div style={{ fontSize: 11, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.5px", color: "var(--md-sys-color-on-surface-variant)", marginBottom: 8 }}>Fuel Available</div>
+                                <div style={{ fontSize: 12, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.5px", color: "var(--md-sys-color-on-surface-variant)", marginBottom: 8 }}>Fuel Available</div>
                                 <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
                                     {fbo.fuel.map((f, fi) => {
                                         var c = fuelColor(f.type);
@@ -2810,7 +2810,7 @@
                                 <MdIcon name="price_check" style={{ fontSize: 20, color: "var(--md-sys-color-primary)", flexShrink: 0 }} />
                                 <div style={{ flex: 1 }}>
                                     <div style={{ fontSize: 13, fontWeight: 600, color: "var(--md-sys-color-on-surface)" }}>View Live Fuel Prices</div>
-                                    <div style={{ fontSize: 11, color: "var(--md-sys-color-on-surface-variant)" }}>Current 100LL &amp; Jet-A prices at {icao} on AOPA</div>
+                                    <div style={{ fontSize: 12, color: "var(--md-sys-color-on-surface-variant)" }}>Current 100LL &amp; Jet-A prices at {icao} on AOPA</div>
                                 </div>
                                 <MdIcon name="chevron_right" style={{ fontSize: 18, color: "var(--md-sys-color-on-surface-variant)" }} />
                             </a>
@@ -2818,7 +2818,7 @@
                             {/* Services */}
                             {fbo.services.length > 0 && (
                                 <div>
-                                    <div style={{ fontSize: 11, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.5px", color: "var(--md-sys-color-on-surface-variant)", marginBottom: 8 }}>Services</div>
+                                    <div style={{ fontSize: 12, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.5px", color: "var(--md-sys-color-on-surface-variant)", marginBottom: 8 }}>Services</div>
                                     <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
                                         {fbo.services.map((s, si) => (
                                             <span key={si} style={{ fontSize: 12, background: "var(--md-sys-color-surface-container)", color: "var(--md-sys-color-on-surface-variant)", borderRadius: 6, padding: "3px 8px" }}>{s}</span>
@@ -2829,7 +2829,7 @@
                         </div>
                     ))}
 
-                    <div style={{ marginTop: 14, paddingTop: 12, borderTop: "1px solid var(--md-sys-color-outline-variant)", fontSize: 11, color: "var(--md-sys-color-on-surface-variant)", lineHeight: 1.5 }}>
+                    <div style={{ marginTop: 14, paddingTop: 12, borderTop: "1px solid var(--md-sys-color-outline-variant)", fontSize: 12, color: "var(--md-sys-color-on-surface-variant)", lineHeight: 1.5 }}>
                         Verify phone &amp; hours before flight. Fuel prices change daily — always confirm with the FBO.
                     </div>
                 </MdCard>
@@ -2856,7 +2856,7 @@
                         </div>
                         <div style={{ textAlign: 'right' }}>
                             <div style={{ fontSize: 13, fontWeight: 600, color: "var(--md-sys-color-on-surface)" }}>{apt.facility || apt.artcc}</div>
-                            {apt.facility && <div style={{ fontSize: 11, color: "var(--md-sys-color-on-surface-variant)", marginTop: 1 }}>En Route: {apt.artcc}</div>}
+                            {apt.facility && <div style={{ fontSize: 12, color: "var(--md-sys-color-on-surface-variant)", marginTop: 1 }}>En Route: {apt.artcc}</div>}
                         </div>
                     </div>
                     <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px 24px" }}>
@@ -2897,11 +2897,11 @@
                         loading="lazy"
                     />
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 8, flexWrap: 'wrap', gap: 6 }}>
-                        <span style={{ fontSize: 11, color: 'var(--md-sys-color-on-surface-variant)' }}>
+                        <span style={{ fontSize: 12, color: 'var(--md-sys-color-on-surface-variant)' }}>
                             ECMWF model · wind/clouds overlay · centered on <strong>{icao}</strong>
                         </span>
                         <a href={windyFullUrl} target="_blank" rel="noopener noreferrer"
-                            style={{ fontSize: 11, fontWeight: 600, color: 'var(--md-sys-color-primary)', textDecoration: 'none', display: 'flex', alignItems: 'center', gap: 4 }}>
+                            style={{ fontSize: 12, fontWeight: 600, color: 'var(--md-sys-color-primary)', textDecoration: 'none', display: 'flex', alignItems: 'center', gap: 4 }}>
                             <MdIcon name="open_in_new" style={{ fontSize: 13 }} />
                             Open Windy.com
                         </a>
@@ -3672,16 +3672,16 @@
                 var advisoryCount = sigmets.length + gairmets.length + cwas.length;
 
                 // Dense styles — tighter than the app UI to match ForeFlight print density
-                var sh  = { fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '1px', color: '#0b57d0', borderBottom: '2px solid #0b57d0', paddingBottom: 4, marginBottom: 8, marginTop: 0 };
+                var sh  = { fontSize: 12, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '1px', color: '#0b57d0', borderBottom: '2px solid #0b57d0', paddingBottom: 4, marginBottom: 8, marginTop: 0 };
                 var shR = { ...sh, color: '#b71c1c', borderBottomColor: '#b71c1c' };
                 var cell   = { fontSize: 12, padding: '5px 8px', borderBottom: '1px solid #e8e8e8', verticalAlign: 'top' };
-                var cellHd = { ...cell, fontSize: 10, fontWeight: 700, color: '#666', background: '#f0f4f8', textTransform: 'uppercase', letterSpacing: '0.5px', padding: '4px 8px' };
+                var cellHd = { ...cell, fontSize: 12, fontWeight: 700, color: '#444', background: '#f0f4f8', textTransform: 'uppercase', letterSpacing: '0.5px', padding: '4px 8px' };
                 var mono   = { fontFamily: '"Roboto Mono",monospace' };
                 // Per-airport weather card — break-inside:avoid is applied via className="bs"
                 // (the print CSS in handlePrint maps .bs → break-inside:avoid)
                 function catChip(cat) {
-                    if (!cat || cat === '—') return <span style={{color:'#999'}}>—</span>;
-                    return <span style={{background:catBg(cat),color:catClr(cat),borderRadius:3,padding:'1px 6px',fontSize:10,fontWeight:700,whiteSpace:'nowrap',...mono}}>{cat}</span>;
+                    if (!cat || cat === '—') return <span style={{color:'#555'}}>—</span>;
+                    return <span style={{background:catBg(cat),color:catClr(cat),borderRadius:3,padding:'1px 6px',fontSize:12,fontWeight:700,whiteSpace:'nowrap',...mono}}>{cat}</span>;
                 }
                 // Compute NavLog rows — leg distance, cumulative distance, leg ETE, ETA
                 var cumNm = 0;
@@ -3775,18 +3775,18 @@
                                 <div style={{ display:'flex', alignItems:'flex-start', justifyContent:'space-between', gap:12 }}>
                                     {/* Left — branding + route */}
                                     <div>
-                                        <div style={{ fontSize:9, fontWeight:700, letterSpacing:'2px', textTransform:'uppercase', opacity:0.7 }}>FlightScore · Official Use for Reference Only</div>
+                                        <div style={{ fontSize:12, fontWeight:700, letterSpacing:'2px', textTransform:'uppercase', opacity:0.7 }}>FlightScore · Official Use for Reference Only</div>
                                         <div style={{ fontSize:26, fontWeight:900, letterSpacing:'0.5px', lineHeight:1, ...mono, marginTop:2 }}>
                                             {allRoutePts.join(' → ')}
                                         </div>
-                                        {trip.name && <div style={{ fontSize:11, opacity:0.8, marginTop:2 }}>{trip.name}</div>}
+                                        {trip.name && <div style={{ fontSize:12, opacity:0.8, marginTop:2 }}>{trip.name}</div>}
                                     </div>
                                     {/* Right — score + verdict */}
                                     {detailedScore && verd && (
                                         <div style={{ display:'flex', alignItems:'center', gap:10, flexShrink:0 }}>
                                             <div style={{ textAlign:'right' }}>
                                                 <div style={{ fontSize:38, fontWeight:900, lineHeight:1, ...mono }}>{detailedScore.total}</div>
-                                                <div style={{ fontSize:8, fontWeight:700, opacity:0.65, letterSpacing:'1.5px', textTransform:'uppercase' }}>/ 100</div>
+                                                <div style={{ fontSize:12, fontWeight:700, opacity:0.65, letterSpacing:'1.5px', textTransform:'uppercase' }}>/ 100</div>
                                             </div>
                                             <div style={{ background:vBg, color:vClr, borderRadius:8, padding:'6px 14px', textAlign:'center', minWidth:72 }}>
                                                 <MdIcon name={verd.verdictIcon} style={{ fontSize:20, display:'block', margin:'0 auto 2px' }} />
@@ -3807,7 +3807,7 @@
                                         ['Cruise',     `${(altFt/1000).toFixed(1)}k ft`],
                                     ].map(([lbl, val]) => (
                                         <div key={lbl}>
-                                            <div style={{ fontSize:8, fontWeight:700, textTransform:'uppercase', letterSpacing:'0.5px', opacity:0.65 }}>{lbl}</div>
+                                            <div style={{ fontSize:12, fontWeight:700, textTransform:'uppercase', letterSpacing:'0.5px', opacity:0.65 }}>{lbl}</div>
                                             <div style={{ fontSize:12, fontWeight:600, ...mono, marginTop:1 }}>{val}</div>
                                         </div>
                                     ))}
@@ -3820,19 +3820,19 @@
                                     <div style={{ ...shR, marginBottom:6 }}>Active Advisories ({advisoryCount})</div>
                                     <div style={{ display:'flex', flexDirection:'column', gap:5 }}>
                                         {sigmets.map((s, i) => (
-                                            <div key={i} style={{ display:'flex', gap:8, fontSize:11, color:'#b71c1c', lineHeight:1.45 }}>
+                                            <div key={i} style={{ display:'flex', gap:8, fontSize:12, color:'#b71c1c', lineHeight:1.45 }}>
                                                 <span style={{ fontWeight:700, flexShrink:0 }}>SIGMET</span>
                                                 <span style={{ ...mono, wordBreak:'break-all' }}>{s.rawAirSigmet || s.airSigmetId || `SIGMET ${i+1} active`}</span>
                                             </div>
                                         ))}
                                         {gairmets.map((g, i) => (
-                                            <div key={i} style={{ display:'flex', gap:8, fontSize:11, color:'#b45309', lineHeight:1.45 }}>
+                                            <div key={i} style={{ display:'flex', gap:8, fontSize:12, color:'#b45309', lineHeight:1.45 }}>
                                                 <span style={{ fontWeight:700, flexShrink:0 }}>G‑AIRMET</span>
                                                 <span style={{ ...mono, wordBreak:'break-all' }}>{g.hazard || g.severity || `G-AIRMET ${i+1} — review for IFR, turbulence, or icing`}</span>
                                             </div>
                                         ))}
                                         {cwas.map((c, i) => (
-                                            <div key={i} style={{ display:'flex', gap:8, fontSize:11, color:'#b71c1c', lineHeight:1.45 }}>
+                                            <div key={i} style={{ display:'flex', gap:8, fontSize:12, color:'#b71c1c', lineHeight:1.45 }}>
                                                 <span style={{ fontWeight:700, flexShrink:0 }}>CWA</span>
                                                 <span style={{ ...mono, wordBreak:'break-all' }}>{c.cwaText || c.cwaSeries || `CWA ${i+1} — check for convective activity`}</span>
                                             </div>
@@ -3864,23 +3864,23 @@
                                                 return (
                                                     <tr key={row.icao} style={{ background: idx%2===0?'#fff':'#f8faff' }}>
                                                         <td style={{ ...cell, ...mono, fontWeight:800, fontSize:13, color:'#0b57d0' }}>{row.icao}</td>
-                                                        <td style={{ ...cell, fontSize:11, maxWidth:120 }}>{row.apt ? row.apt.name : '—'}</td>
-                                                        <td style={{ ...cell, fontSize:11, color:'#555' }}>{role}</td>
+                                                        <td style={{ ...cell, fontSize:12, maxWidth:120 }}>{row.apt ? row.apt.name : '—'}</td>
+                                                        <td style={{ ...cell, fontSize:12, color:'#555' }}>{role}</td>
                                                         <td style={{ ...cell, ...mono, textAlign:'right' }}>{row.legNm > 0 ? row.legNm : '—'}</td>
                                                         <td style={{ ...cell, ...mono, textAlign:'right' }}>{row.cumNm || '—'}</td>
                                                         <td style={{ ...cell, ...mono, textAlign:'right' }}>{legEte}</td>
                                                         <td style={{ ...cell, ...mono }}>{row.eta || (idx===0 ? depUtcStr : '—')}</td>
-                                                        <td style={{ ...cell, ...mono, fontSize:11 }}>{row.windStr}</td>
+                                                        <td style={{ ...cell, ...mono, fontSize:12 }}>{row.windStr}</td>
                                                         <td style={{ ...cell }}>{catChip(cat)}</td>
-                                                        <td style={{ ...cell, ...mono, fontSize:11 }}>{m ? m.wind : '—'}</td>
-                                                        <td style={{ ...cell, ...mono, fontSize:11 }}>{m ? m.vis  : '—'}</td>
-                                                        <td style={{ ...cell, ...mono, fontSize:11 }}>{m ? m.sky  : '—'}</td>
+                                                        <td style={{ ...cell, ...mono, fontSize:12 }}>{m ? m.wind : '—'}</td>
+                                                        <td style={{ ...cell, ...mono, fontSize:12 }}>{m ? m.vis  : '—'}</td>
+                                                        <td style={{ ...cell, ...mono, fontSize:12 }}>{m ? m.sky  : '—'}</td>
                                                     </tr>
                                                 );
                                             })}
                                         </tbody>
                                     </table>
-                                    <div style={{ fontSize:10, color:'#888', marginTop:5 }}>
+                                    <div style={{ fontSize:12, color:'#444', marginTop:5 }}>
                                         {ac.name} · {ac.kts} kts · Cruise {(altFt/1000).toFixed(1)}k ft · Total {routeDist} NM · ETE {eteStr}
                                     </div>
                                 </div>
@@ -3892,16 +3892,16 @@
                                         <div style={{ display:'flex', flexDirection:'column', gap:7 }}>
                                             {detailedScore.breakdown.map((b, i) => (
                                                 <div key={i} style={{ display:'grid', gridTemplateColumns:'130px 1fr 52px 120px', alignItems:'center', gap:8 }}>
-                                                    <span style={{ fontSize:11, fontWeight:600, color:'#333' }}>{b.label}</span>
+                                                    <span style={{ fontSize:12, fontWeight:600, color:'#333' }}>{b.label}</span>
                                                     <div style={{ height:8, background:'#e8e8e8', borderRadius:4, overflow:'hidden' }}>
                                                         <div style={{ height:'100%', width:(b.score/b.max*100)+'%', background:scoreClr(b.score/b.max), borderRadius:4 }} />
                                                     </div>
-                                                    <span style={{ ...mono, fontSize:11, fontWeight:700, textAlign:'right', color:scoreClr(b.score/b.max) }}>{b.score}/{b.max}</span>
-                                                    <span style={{ fontSize:10, color:'#666', textAlign:'right' }}>{b.detail}</span>
+                                                    <span style={{ ...mono, fontSize:12, fontWeight:700, textAlign:'right', color:scoreClr(b.score/b.max) }}>{b.score}/{b.max}</span>
+                                                    <span style={{ fontSize:12, color:'#444', textAlign:'right' }}>{b.detail}</span>
                                                 </div>
                                             ))}
                                         </div>
-                                        {verd && <div style={{ marginTop:8, padding:'8px 12px', background:vBg, borderRadius:6, border:`1px solid ${vClr}33`, fontSize:11, color:vClr, lineHeight:1.5 }}>{verd.verdictDesc}</div>}
+                                        {verd && <div style={{ marginTop:8, padding:'8px 12px', background:vBg, borderRadius:6, border:`1px solid ${vClr}33`, fontSize:12, color:vClr, lineHeight:1.5 }}>{verd.verdictDesc}</div>}
                                     </div>
                                 )}
 
@@ -3942,11 +3942,11 @@
                                                         <div style={{ background: cat ? catBg(cat) : '#f5f5f5', padding:'5px 10px', display:'flex', alignItems:'center', justifyContent:'space-between', gap:8 }}>
                                                             <div style={{ display:'flex', alignItems:'center', gap:8 }}>
                                                                 <span style={{ ...mono, fontWeight:800, fontSize:14, color:'#0b57d0' }}>{e.icao}</span>
-                                                                {apt && <span style={{ fontSize:11, color:'#444' }}>{apt.name} · {apt.city}, {apt.state} · {apt.elev} ft MSL</span>}
+                                                                {apt && <span style={{ fontSize:12, color:'#444' }}>{apt.name} · {apt.city}, {apt.state} · {apt.elev} ft MSL</span>}
                                                             </div>
                                                             <div style={{ display:'flex', alignItems:'center', gap:6 }}>
                                                                 {catChip(cat)}
-                                                                <span style={{ fontSize:10, color:'#666' }}>{e.sourceLabel}</span>
+                                                                <span style={{ fontSize:12, color:'#444' }}>{e.sourceLabel}</span>
                                                             </div>
                                                         </div>
                                                         {/* Summary row */}
@@ -3954,8 +3954,8 @@
                                                             <div style={{ display:'grid', gridTemplateColumns:'repeat(6,1fr)', gap:'0 4px', padding:'5px 10px', background:'#fafafa', borderBottom:'1px solid #eee' }}>
                                                                 {[['Wind',m.wind],['Visibility',m.vis],['Sky',m.sky],['Temp / DP',m.temp],['Altimeter',m.alt],['Dewpoint',m.dew||'—']].map(([k,v])=>(
                                                                     <div key={k}>
-                                                                        <div style={{ fontSize:8, color:'#888', fontWeight:700, textTransform:'uppercase', letterSpacing:'0.3px' }}>{k}</div>
-                                                                        <div style={{ fontSize:11, fontWeight:600, ...mono }}>{v}</div>
+                                                                        <div style={{ fontSize:12, color:'#444', fontWeight:700, textTransform:'uppercase', letterSpacing:'0.3px' }}>{k}</div>
+                                                                        <div style={{ fontSize:12, fontWeight:600, ...mono }}>{v}</div>
                                                                     </div>
                                                                 ))}
                                                             </div>
@@ -3963,15 +3963,15 @@
                                                         {/* Raw METAR */}
                                                         {m && m.raw && (
                                                             <div style={{ padding:'4px 10px', background:'#fff' }}>
-                                                                <div style={{ fontSize:9, color:'#888', fontWeight:700, textTransform:'uppercase', letterSpacing:'0.5px', marginBottom:2 }}>METAR</div>
-                                                                <div style={{ ...mono, fontSize:11, color:'#222', lineHeight:1.5, wordBreak:'break-all', whiteSpace:'pre-wrap' }}>{m.raw}</div>
+                                                                <div style={{ fontSize:12, color:'#444', fontWeight:700, textTransform:'uppercase', letterSpacing:'0.5px', marginBottom:2 }}>METAR</div>
+                                                                <div style={{ ...mono, fontSize:12, color:'#222', lineHeight:1.5, wordBreak:'break-all', whiteSpace:'pre-wrap' }}>{m.raw}</div>
                                                             </div>
                                                         )}
                                                         {/* TAF (if available) */}
                                                         {m && m.taf && (
                                                             <div style={{ padding:'4px 10px 6px', background:'#fff', borderTop:'1px solid #f0f0f0' }}>
-                                                                <div style={{ fontSize:9, color:'#888', fontWeight:700, textTransform:'uppercase', letterSpacing:'0.5px', marginBottom:2 }}>TAF</div>
-                                                                <div style={{ ...mono, fontSize:11, color:'#333', lineHeight:1.5, wordBreak:'break-all', whiteSpace:'pre-wrap' }}>{m.taf}</div>
+                                                                <div style={{ fontSize:12, color:'#444', fontWeight:700, textTransform:'uppercase', letterSpacing:'0.5px', marginBottom:2 }}>TAF</div>
+                                                                <div style={{ ...mono, fontSize:12, color:'#333', lineHeight:1.5, wordBreak:'break-all', whiteSpace:'pre-wrap' }}>{m.taf}</div>
                                                             </div>
                                                         )}
                                                     </div>
@@ -4011,7 +4011,7 @@
                                                             <td style={{ ...cell, ...mono }}>{w ? (w.lv ? 'LGT & VRB' : `${String(w.wdir).padStart(3,'0')}°`) : 'No data'}</td>
                                                             <td style={{ ...cell, ...mono }}>{w && !w.lv ? `${w.wspd} kt` : '—'}</td>
                                                             <td style={{ ...cell, ...mono }}>{w && w.temp!=null ? `${w.temp>0?'+':''}${w.temp}` : '—'}</td>
-                                                            <td style={{ ...cell, fontSize:11, color: comp.startsWith('H') ? '#b71c1c' : comp.startsWith('T') ? '#2e7d32' : '#555' }}>{comp}</td>
+                                                            <td style={{ ...cell, fontSize:12, color: comp.startsWith('H') ? '#b71c1c' : comp.startsWith('T') ? '#2e7d32' : '#555' }}>{comp}</td>
                                                         </tr>
                                                     );
                                                 })}
@@ -4039,8 +4039,8 @@
 
                                 {/* ── 9. EN ROUTE PIREPs note ─────────────────── */}
                                 <div className="bs" style={{ background:'#f8faff', border:'1px solid #c5d8f7', borderRadius:6, padding:'8px 12px' }}>
-                                    <div style={{ fontSize:10, fontWeight:700, textTransform:'uppercase', letterSpacing:'1px', color:'#0b57d0', marginBottom:4 }}>En Route PIREPs</div>
-                                    <div style={{ fontSize:11, color:'#444', lineHeight:1.5 }}>
+                                    <div style={{ fontSize:12, fontWeight:700, textTransform:'uppercase', letterSpacing:'1px', color:'#0b57d0', marginBottom:4 }}>En Route PIREPs</div>
+                                    <div style={{ fontSize:12, color:'#444', lineHeight:1.5 }}>
                                         Live PIREPs are fetched dynamically — view current reports within 200 NM in the <strong>Brief</strong> tab before departure.
                                         Reference: <span style={{ ...mono }}>aviationweather.gov/pirep</span>
                                     </div>
@@ -4050,10 +4050,10 @@
 
                             {/* ══ FOOTER ══════════════════════════════════════ */}
                             <div style={{ background:'#f5f7fa', borderTop:'1px solid #e0e0e0', padding:'8px 20px', display:'flex', justifyContent:'space-between', alignItems:'center', flexWrap:'wrap', gap:6 }}>
-                                <div style={{ fontSize:10, color:'#555' }}>
+                                <div style={{ fontSize:12, color:'#444' }}>
                                     Generated by <strong>FlightScore</strong> · {nowUtcStr}
                                 </div>
-                                <div style={{ fontSize:10, color:'#888', textAlign:'right', maxWidth:400, lineHeight:1.4 }}>
+                                <div style={{ fontSize:12, color:'#444', textAlign:'right', maxWidth:400, lineHeight:1.4 }}>
                                     For flight planning reference only. Always obtain an official briefing at <strong>1800wxbrief.com</strong> before departure.
                                 </div>
                             </div>
@@ -4093,10 +4093,10 @@
                                 </div>
                                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px 20px' }}>
                                     <div>
-                                        <div style={{ fontSize: 10, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.5px', color: 'var(--md-sys-color-on-surface-variant)', marginBottom: 2 }}>Route</div>
+                                        <div style={{ fontSize: 12, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px', color: 'var(--md-sys-color-on-surface-variant)', marginBottom: 2 }}>Route</div>
                                         <div className="font-mono" style={{ fontSize: 15, fontWeight: 700, color: 'var(--md-sys-color-on-surface)' }}>{allRoutePts.join(' \u2794 ')}</div>
                                         {allRoutePts.length <= 2 && (
-                                            <div style={{ fontSize: 11, color: 'var(--md-sys-color-on-surface-variant)' }}>
+                                            <div style={{ fontSize: 12, color: 'var(--md-sys-color-on-surface-variant)' }}>
                                                 {(getAirport(allRoutePts[0]) || {}).city || allRoutePts[0]}
                                                 {' \u2192 '}
                                                 {(getAirport(allRoutePts[allRoutePts.length - 1]) || {}).city || allRoutePts[allRoutePts.length - 1]}
@@ -4104,14 +4104,14 @@
                                         )}
                                     </div>
                                     <div>
-                                        <div style={{ fontSize: 10, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.5px', color: 'var(--md-sys-color-on-surface-variant)', marginBottom: 2 }}>Aircraft</div>
+                                        <div style={{ fontSize: 12, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px', color: 'var(--md-sys-color-on-surface-variant)', marginBottom: 2 }}>Aircraft</div>
                                         <div style={{ fontSize: 13, fontWeight: 500, color: 'var(--md-sys-color-on-surface)' }}>{ac.name}</div>
-                                        <div style={{ fontSize: 11, color: 'var(--md-sys-color-on-surface-variant)' }}>{ac.cat} · {ac.kts} kts cruise</div>
+                                        <div style={{ fontSize: 12, color: 'var(--md-sys-color-on-surface-variant)' }}>{ac.cat} · {ac.kts} kts cruise</div>
                                     </div>
                                     <div>
-                                        <div style={{ fontSize: 10, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.5px', color: 'var(--md-sys-color-on-surface-variant)', marginBottom: 2 }}>Departure</div>
+                                        <div style={{ fontSize: 12, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px', color: 'var(--md-sys-color-on-surface-variant)', marginBottom: 2 }}>Departure</div>
                                         <div style={{ fontSize: 13, fontWeight: 500, color: 'var(--md-sys-color-on-surface)' }}>{trip.date}</div>
-                                        <div style={{ fontSize: 11, color: 'var(--md-sys-color-on-surface-variant)' }}>
+                                        <div style={{ fontSize: 12, color: 'var(--md-sys-color-on-surface-variant)' }}>
                                             {trip.time} local
                                             {tripTargetUtc && (
                                                 <span className="font-mono"> · {String(tripTargetUtc.getUTCHours()).padStart(2,'0')}{String(tripTargetUtc.getUTCMinutes()).padStart(2,'0')}Z</span>
@@ -4119,9 +4119,9 @@
                                         </div>
                                     </div>
                                     <div>
-                                        <div style={{ fontSize: 10, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.5px', color: 'var(--md-sys-color-on-surface-variant)', marginBottom: 2 }}>Distance / ETE</div>
+                                        <div style={{ fontSize: 12, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px', color: 'var(--md-sys-color-on-surface-variant)', marginBottom: 2 }}>Distance / ETE</div>
                                         <div className="font-mono" style={{ fontSize: 13, fontWeight: 600, color: 'var(--md-sys-color-on-surface)' }}>{routeDist} NM</div>
-                                        <div style={{ fontSize: 11, color: 'var(--md-sys-color-on-surface-variant)' }}>{eteStr} at cruise</div>
+                                        <div style={{ fontSize: 12, color: 'var(--md-sys-color-on-surface-variant)' }}>{eteStr} at cruise</div>
                                     </div>
                                 </div>
                             </div>
@@ -4139,7 +4139,7 @@
                             <div style={{ background: finalVerdict.verdictBg, borderRadius: 16, padding: '20px 24px', marginBottom: 16, display: 'flex', alignItems: 'center', gap: 16 }}>
                                 <MdIcon name={finalVerdict.verdictIcon} style={{ fontSize: 44, color: finalVerdict.verdictColor, flexShrink: 0 }} />
                                 <div>
-                                    <div style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '1px', color: finalVerdict.verdictColor, opacity: 0.75, marginBottom: 2 }}>Go/No-Go Assessment</div>
+                                    <div style={{ fontSize: 12, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '1px', color: finalVerdict.verdictColor, opacity: 0.75, marginBottom: 2 }}>Go/No-Go Assessment</div>
                                     <div style={{ fontSize: 30, fontWeight: 800, color: finalVerdict.verdictColor, fontFamily: 'monospace', lineHeight: 1 }}>{finalVerdict.verdict}</div>
                                     <div style={{ fontSize: 13, color: finalVerdict.verdictColor, opacity: 0.85, marginTop: 4, lineHeight: 1.4 }}>{finalVerdict.verdictDesc}</div>
                                 </div>
@@ -4172,7 +4172,7 @@
                                     <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12, padding: '12px 16px', borderRadius: 12, background: bgColor, marginBottom: 12 }}>
                                         <MdIcon name={icon} style={{ fontSize: 20, color: color, flexShrink: 0, marginTop: 2 }} />
                                         <div>
-                                            <div style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px', color: color, marginBottom: 3 }}>{label}</div>
+                                            <div style={{ fontSize: 12, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px', color: color, marginBottom: 3 }}>{label}</div>
                                             <div style={{ fontSize: 12, color: onBgColor, lineHeight: 1.55 }}>{desc}</div>
                                         </div>
                                     </div>
@@ -4187,7 +4187,7 @@
                                         <span style={{ fontWeight: 700, fontSize: 13, textTransform: 'uppercase', letterSpacing: '0.5px', color: 'var(--md-sys-color-secondary)' }}>Route Weather Summary</span>
                                     </div>
                                     {finalVerdict && finalVerdict.isFutureFlight && (
-                                        <span style={{ fontSize: 10, fontWeight: 700,
+                                        <span style={{ fontSize: 12, fontWeight: 700,
                                             color: finalVerdict.anyMos ? 'var(--md-sys-color-on-tertiary-container)' : 'var(--md-sys-color-on-secondary-container)',
                                             background: finalVerdict.anyMos ? 'var(--md-sys-color-tertiary-container)' : 'var(--md-sys-color-secondary-container)',
                                             borderRadius: 4, padding: '2px 6px', letterSpacing: '0.5px', textTransform: 'uppercase' }}>
@@ -4202,19 +4202,19 @@
                                     var rwyRec = wx ? getRunwayRecommendation(wx, apt) : null;
                                     return (
                                         <div key={e.icao} style={{ display: 'grid', gridTemplateColumns: '40px 1fr auto', gap: '6px 12px', padding: '10px 0', borderBottom: idx < effectiveWxData.length - 1 ? '1px solid var(--md-sys-color-outline-variant)' : 'none', alignItems: 'center' }}>
-                                            <span style={{ fontSize: 9, fontWeight: 700, color: 'var(--md-sys-color-on-surface-variant)', textTransform: 'uppercase', background: 'var(--md-sys-color-surface-container-high)', borderRadius: 4, padding: '2px 4px', textAlign: 'center', letterSpacing: '0.5px' }}>{roleLabel}</span>
+                                            <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--md-sys-color-on-surface-variant)', textTransform: 'uppercase', background: 'var(--md-sys-color-surface-container-high)', borderRadius: 4, padding: '2px 4px', textAlign: 'center', letterSpacing: '0.5px' }}>{roleLabel}</span>
                                             <div>
                                                 <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 2, flexWrap: 'wrap' }}>
                                                     <span className="font-mono" style={{ fontWeight: 700, fontSize: 14 }}>{e.icao}</span>
-                                                    {wx && <span style={{ fontSize: 11, fontWeight: 700, color: catColor(wx.cat) }}>{wx.cat}</span>}
-                                                    {!wx && <span style={{ fontSize: 11, color: 'var(--md-sys-color-on-surface-variant)' }}>No data</span>}
-                                                    <span style={{ fontSize: 9, fontWeight: 600,
+                                                    {wx && <span style={{ fontSize: 12, fontWeight: 700, color: catColor(wx.cat) }}>{wx.cat}</span>}
+                                                    {!wx && <span style={{ fontSize: 12, color: 'var(--md-sys-color-on-surface-variant)' }}>No data</span>}
+                                                    <span style={{ fontSize: 12, fontWeight: 600,
                                                         color: e.source === 'mos' ? 'var(--md-sys-color-on-tertiary-container)' : e.source === 'taf' ? 'var(--md-sys-color-primary)' : 'var(--md-sys-color-on-surface-variant)',
                                                         background: e.source === 'mos' ? 'var(--md-sys-color-tertiary-container)' : e.source === 'taf' ? 'var(--md-sys-color-primary-container)' : 'var(--md-sys-color-surface-container-high)',
                                                         borderRadius: 3, padding: '1px 5px', letterSpacing: '0.3px', textTransform: 'uppercase' }}>{e.sourceLabel}</span>
                                                 </div>
                                                 {wx && (
-                                                    <div className="font-mono" style={{ fontSize: 11, color: 'var(--md-sys-color-on-surface-variant)', lineHeight: 1.5 }}>
+                                                    <div className="font-mono" style={{ fontSize: 12, color: 'var(--md-sys-color-on-surface-variant)', lineHeight: 1.5 }}>
                                                         {wx.wind} &middot; {wx.vis} &middot; {wx.sky}
                                                         {rwyRec && <span> &middot; Rwy <span style={{ color: 'var(--md-sys-color-primary)', fontWeight: 600 }}>{rwyRec.rwy}</span> xwind <span style={{ color: rwyRec.crosswind > 15 ? 'var(--md-sys-color-error)' : rwyRec.crosswind > 10 ? 'var(--cat-mvfr-color)' : 'var(--md-sys-color-primary)', fontWeight: 600 }}>{rwyRec.crosswind}kt</span></span>}
                                                     </div>
@@ -4259,11 +4259,11 @@
                                     <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12, flexWrap: 'wrap' }}>
                                         <MdIcon name="air" style={{ color: 'var(--md-sys-color-tertiary)', fontSize: 18 }} />
                                         <span style={{ fontWeight: 700, fontSize: 13, textTransform: 'uppercase', letterSpacing: '0.5px', color: 'var(--md-sys-color-tertiary)' }}>Visual Forecast</span>
-                                        <span style={{ fontSize: 10, fontWeight: 700, background: 'var(--md-sys-color-tertiary-container)', color: 'var(--md-sys-color-on-tertiary-container)', borderRadius: 4, padding: '2px 7px', letterSpacing: '0.5px' }}>WINDY.COM · ECMWF</span>
-                                        <span style={{ fontSize: 11, color: 'var(--md-sys-color-on-surface-variant)', marginLeft: 'auto' }}>Centered on {effectiveWxData[0].icao} (dep)</span>
+                                        <span style={{ fontSize: 12, fontWeight: 700, background: 'var(--md-sys-color-tertiary-container)', color: 'var(--md-sys-color-on-tertiary-container)', borderRadius: 4, padding: '2px 7px', letterSpacing: '0.5px' }}>WINDY.COM · ECMWF</span>
+                                        <span style={{ fontSize: 12, color: 'var(--md-sys-color-on-surface-variant)', marginLeft: 'auto' }}>Centered on {effectiveWxData[0].icao} (dep)</span>
                                     </div>
                                     <WindyEmbed icao={effectiveWxData[0].icao} tripTargetUtc={tripTargetUtc} />
-                                    <div style={{ fontSize: 11, color: 'var(--md-sys-color-on-surface-variant)', marginTop: 10, lineHeight: 1.5 }}>
+                                    <div style={{ fontSize: 12, color: 'var(--md-sys-color-on-surface-variant)', marginTop: 10, lineHeight: 1.5 }}>
                                         Use the timeline slider in the map to navigate to your departure date/time. Wind barbs show direction and speed in knots.
                                     </div>
                                 </div>
@@ -4290,7 +4290,7 @@
                                 <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
                                     <MdIcon name="speaker_notes" style={{ color: 'var(--md-sys-color-primary)', fontSize: 18 }} />
                                     <span style={{ fontWeight: 700, fontSize: 13, textTransform: 'uppercase', letterSpacing: '0.5px', color: 'var(--md-sys-color-primary)' }}>En Route PIREPs</span>
-                                    <span style={{ fontSize: 10, color: 'var(--md-sys-color-on-surface-variant)', background: 'var(--md-sys-color-surface-container-high)', borderRadius: 4, padding: '1px 6px', marginLeft: 2 }}>Live · AviationWeather.gov</span>
+                                    <span style={{ fontSize: 12, color: 'var(--md-sys-color-on-surface-variant)', background: 'var(--md-sys-color-surface-container-high)', borderRadius: 4, padding: '1px 6px', marginLeft: 2 }}>Live · AviationWeather.gov</span>
                                 </div>
                                 <LivePireps dep={trip.dep} arr={trip.arr} />
                             </div>
@@ -4311,12 +4311,12 @@
                                             <MdIcon name="checklist_rtl" style={{ color:'var(--accent)', fontSize:20, flexShrink:0 }} />
                                             <span style={{ fontWeight:700, fontSize:13, textTransform:'uppercase', letterSpacing:'0.5px', flex:1 }}>FRAT — Flight Risk Assessment</span>
                                             {fratComplete
-                                                ? <span style={{ fontSize:10, fontWeight:700, background:'var(--go)', color:'#fff', borderRadius:4, padding:'2px 7px', flexShrink:0 }}>COMPLETE ✓</span>
+                                                ? <span style={{ fontSize:12, fontWeight:700, background:'var(--go)', color:'#fff', borderRadius:4, padding:'2px 7px', flexShrink:0 }}>COMPLETE ✓</span>
                                                 : fratSkipped
-                                                ? <span style={{ fontSize:10, fontWeight:700, background:'var(--nogo)', color:'#fff', borderRadius:4, padding:'2px 7px', flexShrink:0 }}>−20 PTS</span>
+                                                ? <span style={{ fontSize:12, fontWeight:700, background:'var(--nogo)', color:'#fff', borderRadius:4, padding:'2px 7px', flexShrink:0 }}>−20 PTS</span>
                                                 : fratAnsweredCount > 0
-                                                ? <span style={{ fontSize:10, fontWeight:600, background:'var(--caution-bg)', color:'var(--caution)', borderRadius:4, padding:'2px 7px', flexShrink:0 }}>{fratAnsweredCount}/{FRAT_TOTAL}</span>
-                                                : <span style={{ fontSize:10, color:'var(--md-sys-color-on-surface-variant)', background:'var(--md-sys-color-surface-container-high)', borderRadius:4, padding:'2px 7px', flexShrink:0 }}>OPTIONAL</span>
+                                                ? <span style={{ fontSize:12, fontWeight:600, background:'var(--caution-bg)', color:'var(--caution)', borderRadius:4, padding:'2px 7px', flexShrink:0 }}>{fratAnsweredCount}/{FRAT_TOTAL}</span>
+                                                : <span style={{ fontSize:12, color:'var(--md-sys-color-on-surface-variant)', background:'var(--md-sys-color-surface-container-high)', borderRadius:4, padding:'2px 7px', flexShrink:0 }}>OPTIONAL</span>
                                             }
                                             <MdIcon name={fratExpanded ? 'expand_less' : 'expand_more'} style={{ fontSize:20, color:'var(--md-sys-color-on-surface-variant)', flexShrink:0 }} />
                                         </button>
@@ -4329,17 +4329,17 @@
                                                           <MdIcon name="warning" style={{ color:'var(--nogo)', fontSize:18, flexShrink:0 }} />
                                                           <div style={{ flex:1 }}>
                                                               <div style={{ fontWeight:600, fontSize:12, color:'var(--nogo)' }}>FRAT Incomplete — −20 points applied to GO Score</div>
-                                                              <div style={{ fontSize:11, color:'var(--md-sys-color-on-surface-variant)', marginTop:2 }}>The Flight Risk Assessment helps identify pilot, aircraft, and situational risks beyond weather.</div>
+                                                              <div style={{ fontSize:12, color:'var(--md-sys-color-on-surface-variant)', marginTop:2 }}>The Flight Risk Assessment helps identify pilot, aircraft, and situational risks beyond weather.</div>
                                                           </div>
-                                                          <button onClick={function(e){ e.stopPropagation(); setFratSkipped(false); setFratExpanded(true); }} style={{ background:'var(--nogo)', color:'#fff', border:'none', borderRadius:8, padding:'6px 10px', fontSize:11, fontWeight:600, cursor:'pointer', flexShrink:0 }}>Restart</button>
+                                                          <button onClick={function(e){ e.stopPropagation(); setFratSkipped(false); setFratExpanded(true); }} style={{ background:'var(--nogo)', color:'#fff', border:'none', borderRadius:8, padding:'6px 10px', fontSize:12, fontWeight:600, cursor:'pointer', flexShrink:0 }}>Restart</button>
                                                       </div>
                                                     : <div style={{ background:'var(--md-sys-color-surface-container-high)', borderRadius:10, padding:'10px 14px', display:'flex', alignItems:'center', gap:10 }}>
                                                           <MdIcon name="info" style={{ color:'var(--accent)', fontSize:18, flexShrink:0 }} />
                                                           <div style={{ flex:1 }}>
                                                               <div style={{ fontWeight:600, fontSize:12, color:'var(--md-sys-color-on-surface)' }}>FRAT not completed — −20 points applied to GO Score</div>
-                                                              <div style={{ fontSize:11, color:'var(--md-sys-color-on-surface-variant)', marginTop:2 }}>Completing the FRAT unlocks a more accurate combined GO Score based on MMOPA PAVE methodology.</div>
+                                                              <div style={{ fontSize:12, color:'var(--md-sys-color-on-surface-variant)', marginTop:2 }}>Completing the FRAT unlocks a more accurate combined GO Score based on MMOPA PAVE methodology.</div>
                                                           </div>
-                                                          <button onClick={function(e){ e.stopPropagation(); setFratExpanded(true); }} style={{ background:'var(--accent)', color:'#fff', border:'none', borderRadius:8, padding:'6px 10px', fontSize:11, fontWeight:600, cursor:'pointer', flexShrink:0 }}>Start FRAT</button>
+                                                          <button onClick={function(e){ e.stopPropagation(); setFratExpanded(true); }} style={{ background:'var(--accent)', color:'#fff', border:'none', borderRadius:8, padding:'6px 10px', fontSize:12, fontWeight:600, cursor:'pointer', flexShrink:0 }}>Start FRAT</button>
                                                       </div>
                                                 }
                                             </div>
@@ -4356,8 +4356,8 @@
                                                     return (
                                                         <div key={i} style={{ flex:1, background:'var(--md-sys-color-surface-container-high)', borderRadius:10, padding:'10px 8px', textAlign:'center' }}>
                                                             <div style={{ fontSize:22, fontWeight:800, lineHeight:1, color:item.color||'var(--md-sys-color-on-surface)' }}>{item.value}</div>
-                                                            <div style={{ fontSize:9, textTransform:'uppercase', letterSpacing:'0.4px', color:'var(--md-sys-color-on-surface-variant)', marginTop:3, lineHeight:1.3 }}>{item.label}</div>
-                                                            {item.sub && <div style={{ fontSize:10, color:item.color||'var(--md-sys-color-on-surface-variant)', marginTop:2 }}>{item.sub}</div>}
+                                                            <div style={{ fontSize:12, fontWeight:700, textTransform:'uppercase', letterSpacing:'0.4px', color:'var(--md-sys-color-on-surface-variant)', marginTop:3, lineHeight:1.3 }}>{item.label}</div>
+                                                            {item.sub && <div style={{ fontSize:12, color:item.color||'var(--md-sys-color-on-surface-variant)', marginTop:2 }}>{item.sub}</div>}
                                                         </div>
                                                     );
                                                 })}
@@ -4381,7 +4381,7 @@
                                                             <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:10, paddingBottom:6, borderBottom:'1px solid var(--card-border)' }}>
                                                                 <MdIcon name={FRAT_CAT_ICON[cat]} style={{ color:'var(--md-sys-color-primary)', fontSize:18 }} />
                                                                 <span style={{ fontWeight:700, fontSize:12, textTransform:'uppercase', letterSpacing:'0.5px', color:'var(--md-sys-color-primary)' }}>{FRAT_CAT_LABEL[cat]}</span>
-                                                                <span style={{ fontSize:10, color:'var(--md-sys-color-on-surface-variant)', marginLeft:'auto' }}>{catWeight} weight</span>
+                                                                <span style={{ fontSize:12, color:'var(--md-sys-color-on-surface-variant)', marginLeft:'auto' }}>{catWeight} weight</span>
                                                             </div>
                                                             <div style={{ display:'flex', flexDirection:'column', gap:14 }}>
                                                                 {qs.map(function(q) {
@@ -4390,8 +4390,8 @@
                                                                         <div key={q.id}>
                                                                             <div style={{ display:'flex', alignItems:'center', gap:6, marginBottom:6, flexWrap:'wrap' }}>
                                                                                 <span style={{ fontSize:12, fontWeight:600, color:'var(--md-sys-color-on-surface)' }}>{q.id}. {q.label}</span>
-                                                                                {isAuto && <span style={{ fontSize:9, background:'var(--accent-dim)', color:'var(--accent)', borderRadius:4, padding:'1px 5px', fontWeight:700, flexShrink:0 }}>AUTO-FILLED · tap to override</span>}
-                                                                                {q.hint && <span style={{ fontSize:10, color:'var(--md-sys-color-on-surface-variant)', fontStyle:'italic', width:'100%' }}>{q.hint}</span>}
+                                                                                {isAuto && <span style={{ fontSize:12, background:'var(--accent-dim)', color:'var(--accent)', borderRadius:4, padding:'1px 5px', fontWeight:700, flexShrink:0 }}>AUTO-FILLED · tap to override</span>}
+                                                                                {q.hint && <span style={{ fontSize:12, color:'var(--md-sys-color-on-surface-variant)', fontStyle:'italic', width:'100%' }}>{q.hint}</span>}
                                                                             </div>
                                                                             <div style={{ display:'flex', flexDirection:'column', gap:5 }}>
                                                                                 {q.opts.map(function(opt) {
@@ -4415,7 +4415,7 @@
                                                                                                 {isSelected && <div style={{ width:5, height:5, borderRadius:'50%', background:'#fff' }} />}
                                                                                             </div>
                                                                                             <span style={{ fontSize:12, color:'var(--md-sys-color-on-surface)', flex:1, lineHeight:1.4 }}>{opt.l}</span>
-                                                                                            <span style={{ fontSize:10, fontWeight:700, color:riskColor, opacity:0.75, flexShrink:0 }}>
+                                                                                            <span style={{ fontSize:12, fontWeight:700, color:riskColor, opacity:0.75, flexShrink:0 }}>
                                                                                                 {opt.p === 0 ? '✓' : `+${opt.p} risk`}
                                                                                             </span>
                                                                                         </button>
@@ -4433,8 +4433,8 @@
                                                 {/* Progress bar */}
                                                 <div style={{ marginBottom:16 }}>
                                                     <div style={{ display:'flex', justifyContent:'space-between', marginBottom:4 }}>
-                                                        <span style={{ fontSize:11, color:'var(--md-sys-color-on-surface-variant)' }}>Progress</span>
-                                                        <span style={{ fontSize:11, fontWeight:600, color:'var(--md-sys-color-on-surface)' }}>{fratAnsweredCount} / {FRAT_TOTAL} answered</span>
+                                                        <span style={{ fontSize:12, color:'var(--md-sys-color-on-surface-variant)' }}>Progress</span>
+                                                        <span style={{ fontSize:12, fontWeight:600, color:'var(--md-sys-color-on-surface)' }}>{fratAnsweredCount} / {FRAT_TOTAL} answered</span>
                                                     </div>
                                                     <div style={{ height:6, background:'var(--md-sys-color-surface-container-high)', borderRadius:3, overflow:'hidden' }}>
                                                         <div style={{ height:'100%', width:`${(fratAnsweredCount/FRAT_TOTAL)*100}%`, background: fratComplete ? 'var(--go)' : 'var(--accent)', borderRadius:3, transition:'width 0.3s' }} />
@@ -4444,7 +4444,7 @@
                                                 {/* Score summary when complete */}
                                                 {fratComplete && fratBand && (
                                                     <div style={{ background:'var(--md-sys-color-surface-container-high)', borderRadius:12, padding:'14px 16px', marginBottom:14 }}>
-                                                        <div style={{ fontWeight:700, fontSize:11, textTransform:'uppercase', letterSpacing:'0.5px', color:'var(--md-sys-color-on-surface-variant)', marginBottom:10 }}>Score Breakdown — 70 / 30 Blend</div>
+                                                        <div style={{ fontWeight:700, fontSize:12, textTransform:'uppercase', letterSpacing:'0.5px', color:'var(--md-sys-color-on-surface-variant)', marginBottom:10 }}>Score Breakdown — 70 / 30 Blend</div>
                                                         <div style={{ display:'flex', gap:10 }}>
                                                             {[
                                                                 { label:'Base Weather Score', value:baseScore, sub:'weather + route' },
@@ -4454,8 +4454,8 @@
                                                                 return (
                                                                     <div key={i} style={{ flex:1, background:'var(--md-sys-color-surface-container)', borderRadius:10, padding:'10px 8px', textAlign:'center' }}>
                                                                         <div style={{ fontSize:26, fontWeight:800, lineHeight:1, color:item.color||'var(--md-sys-color-on-surface)' }}>{item.value}</div>
-                                                                        <div style={{ fontSize:9, textTransform:'uppercase', letterSpacing:'0.4px', color:'var(--md-sys-color-on-surface-variant)', marginTop:4, lineHeight:1.3 }}>{item.label}</div>
-                                                                        {item.sub && <div style={{ fontSize:10, color:item.color||'var(--md-sys-color-on-surface-variant)', marginTop:2 }}>{item.sub}</div>}
+                                                                        <div style={{ fontSize:12, fontWeight:700, textTransform:'uppercase', letterSpacing:'0.4px', color:'var(--md-sys-color-on-surface-variant)', marginTop:4, lineHeight:1.3 }}>{item.label}</div>
+                                                                        {item.sub && <div style={{ fontSize:12, color:item.color||'var(--md-sys-color-on-surface-variant)', marginTop:2 }}>{item.sub}</div>}
                                                                     </div>
                                                                 );
                                                             })}
@@ -4494,7 +4494,7 @@
                                 <RouteMap dep={trip.dep} arr={trip.arr} wps={trip.wps||[]} />
                             </div>
 
-                            <div style={{ fontSize: 11, color: 'var(--md-sys-color-on-surface-variant)', textAlign: 'center', padding: '4px 16px 20px', lineHeight: 1.5 }}>
+                            <div style={{ fontSize: 12, color: 'var(--md-sys-color-on-surface-variant)', textAlign: 'center', padding: '4px 16px 20px', lineHeight: 1.5 }}>
                                 {finalVerdict.anyMos
                                     ? <>GFS model forecast from <strong>AviationWeather.gov</strong> · visual from <strong>Windy.com</strong>. Long-range accuracy is limited — <strong>re-check with TAF 24h before departure</strong>.</>
                                     : finalVerdict.isFutureFlight
@@ -4515,7 +4515,7 @@
 
                         {showAI && (
                             <>
-                                <div style={{ marginBottom: 8, fontSize: 11, color: 'var(--md-sys-color-on-surface-variant)', lineHeight: 1.5, display: 'flex', alignItems: 'flex-start', gap: 6 }}>
+                                <div style={{ marginBottom: 8, fontSize: 12, color: 'var(--md-sys-color-on-surface-variant)', lineHeight: 1.5, display: 'flex', alignItems: 'flex-start', gap: 6 }}>
                                     <MdIcon name="lock" style={{ fontSize: 13, marginTop: 1, flexShrink: 0 }} />
                                     Key is sent directly from your browser to Anthropic. Use a key with a spending limit set — never your primary production key.
                                 </div>
@@ -4566,7 +4566,7 @@
                                         <button onClick={() => setAiFeedback('down')} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 4, display: 'inline-flex' }}>
                                             <MdIcon name="thumb_down" style={{ fontSize: 20, color: aiFeedback === 'down' ? 'var(--md-sys-color-error)' : 'var(--md-sys-color-outline)' }} />
                                         </button>
-                                        {aiFeedback && <span style={{ fontSize: 11, color: 'var(--md-sys-color-on-surface-variant)' }}>{aiFeedback === 'up' ? 'Thanks! Feedback helps improve AI responses.' : 'Thanks for the feedback.'}</span>}
+                                        {aiFeedback && <span style={{ fontSize: 12, color: 'var(--md-sys-color-on-surface-variant)' }}>{aiFeedback === 'up' ? 'Thanks! Feedback helps improve AI responses.' : 'Thanks for the feedback.'}</span>}
                                     </div>
                                 )}
 
@@ -4583,7 +4583,7 @@
                                             <MdIcon name="chat" style={{ fontSize: 16, color: 'var(--md-sys-color-primary)' }} />
                                             <span style={{ fontWeight: 600, fontSize: 13, color: 'var(--md-sys-color-on-surface)', flex: 1 }}>Ask AI about this flight</span>
                                             {chatMessages.length > 0 && (
-                                                <button onClick={() => setChatMessages([])} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 11, color: 'var(--md-sys-color-on-surface-variant)', padding: '2px 6px' }}>Clear</button>
+                                                <button onClick={() => setChatMessages([])} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 12, color: 'var(--md-sys-color-on-surface-variant)', padding: '2px 6px' }}>Clear</button>
                                             )}
                                         </div>
                                         {chatMessages.length > 0 && (
@@ -4681,7 +4681,7 @@
                 display:'flex', flexDirection:'column', gap:22
             };
             var sectionHead = {
-                fontSize:11, fontWeight:700, textTransform:'uppercase',
+                fontSize:12, fontWeight:700, textTransform:'uppercase',
                 letterSpacing:'1px', color:'var(--md-sys-color-primary)',
                 borderBottom:'2px solid var(--md-sys-color-primary)',
                 paddingBottom:5, marginBottom:10
@@ -4771,7 +4771,7 @@
                         </div>
 
                         {/* ── About / Data Sources ── */}
-                        <div style={{ fontSize:11, color:'var(--md-sys-color-on-surface-variant)', lineHeight:1.6, borderTop:'1px solid var(--md-sys-color-outline-variant)', paddingTop:14 }}>
+                        <div style={{ fontSize:12, color:'var(--md-sys-color-on-surface-variant)', lineHeight:1.6, borderTop:'1px solid var(--md-sys-color-outline-variant)', paddingTop:14 }}>
                             <strong>Weather:</strong> NOAA AviationWeather.gov (free, no key) ·
                             <strong> Airports:</strong> OurAirports CC0 public domain ·
                             <strong> Enrichment:</strong> OpenAIP (rate-limited, 1 h cache)
@@ -5297,10 +5297,10 @@
                                                                 { label: ac.name },
                                                                 trip.date && { label: trip.date },
                                                             ].filter(Boolean).map((p, i) => (
-                                                                <span key={i} style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-tertiary)', background: 'var(--card-high)', borderRadius: 6, padding: '3px 8px' }}>{p.label}</span>
+                                                                <span key={i} style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-tertiary)', background: 'var(--card-high)', borderRadius: 6, padding: '3px 8px' }}>{p.label}</span>
                                                             ))}
                                                             {tripCountdown && (
-                                                                <span style={{ fontSize: 11, fontWeight: 700, borderRadius: 6, padding: '3px 8px',
+                                                                <span style={{ fontSize: 12, fontWeight: 700, borderRadius: 6, padding: '3px 8px',
                                                                     background: tripCountdown.past ? 'var(--lifr-bg)' : tripCountdown.soon ? 'var(--ifr-bg)' : 'var(--accent-dim)',
                                                                     color:      tripCountdown.past ? 'var(--lifr)'   : tripCountdown.soon ? 'var(--ifr)'   : 'var(--accent)',
                                                                 }}>
@@ -5488,7 +5488,7 @@
                                             return (
                                                 <button key={t.id} onClick={() => setTab(t.id)} style={{ background:'none', border:'none', cursor:'pointer', display:'flex', flexDirection:'column', alignItems:'center', gap:2, padding:'6px 10px', minWidth:48 }}>
                                                     <MdIcon name={t.icon} style={{ fontSize:22, color: active ? 'var(--accent)' : 'var(--text-tertiary)' }} />
-                                                    <span style={{ fontSize:10, fontWeight: active ? 600 : 400, letterSpacing:'0.3px', color: active ? 'var(--accent)' : 'var(--text-tertiary)' }}>{t.label}</span>
+                                                    <span style={{ fontSize:12, fontWeight: active ? 600 : 400, letterSpacing:'0.3px', color: active ? 'var(--accent)' : 'var(--text-tertiary)' }}>{t.label}</span>
                                                 </button>
                                             );
                                         })}
