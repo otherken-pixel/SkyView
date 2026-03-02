@@ -14,17 +14,321 @@
     <!-- Leaflet Maps -->
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-    <!-- Google Fonts & Material Symbols (MD3) -->
+    <!-- Fonts: Inter (body) + Roboto Mono (METAR/data) + Material Symbols -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Roboto+Mono:wght@400;500;600;700&family=Roboto:wght@300;400;500;700;900&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=Roboto+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" />
     
     <style>
-        /* Material Design 3 (Material You) Token System */
+        /* ════════════════════════════════════════════════════════════
+           FLIGHTY-INSPIRED AVIATION DARK DESIGN SYSTEM
+           Premium iOS aesthetic · OLED blacks · Neon status accents
+        ════════════════════════════════════════════════════════════ */
         :root {
-            /* LIGHT THEME (Default) */
-            --md-sys-color-primary: #0b57d0;
+            /* ── Core palette — always-dark (OLED-optimised) ── */
+            --bg:               #000000;          /* true OLED black */
+            --bg-elevated:      #0A0A0F;          /* page background */
+            --card:             #131317;          /* floating card surface */
+            --card-mid:         #1C1C22;          /* inner card / section */
+            --card-high:        #26262E;          /* raised element */
+            --card-border:      rgba(255,255,255,0.08);
+            --card-border-soft: rgba(255,255,255,0.05);
+
+            /* ── Typography ── */
+            --text-primary:   #FFFFFF;
+            --text-secondary: rgba(255,255,255,0.60);
+            --text-tertiary:  rgba(255,255,255,0.35);
+            --text-mono:      #E0E0FF;            /* METAR/data mono text */
+
+            /* ── Accent — iOS blue (Flighty brand) ── */
+            --accent:         #0A84FF;
+            --accent-dim:     rgba(10,132,255,0.15);
+            --accent-glow:    0 0 20px rgba(10,132,255,0.35);
+
+            /* ── Flight category — neon status colors ── */
+            --vfr:            #30D158;            /* iOS green */
+            --vfr-bg:         rgba(48,209,88,0.12);
+            --vfr-glow:       0 0 12px rgba(48,209,88,0.4);
+            --mvfr:           #0A84FF;            /* iOS blue */
+            --mvfr-bg:        rgba(10,132,255,0.12);
+            --ifr:            #FF9F0A;            /* iOS orange — caution, not red */
+            --ifr-bg:         rgba(255,159,10,0.12);
+            --lifr:           #FF453A;            /* iOS red */
+            --lifr-bg:        rgba(255,69,58,0.12);
+            --lifr-glow:      0 0 16px rgba(255,69,58,0.45);
+
+            /* ── Legacy MD3 aliases (keeps existing components working) ── */
+            --md-sys-color-primary:                   var(--accent);
+            --md-sys-color-on-primary:                #000;
+            --md-sys-color-primary-container:         var(--accent-dim);
+            --md-sys-color-on-primary-container:      var(--accent);
+            --md-sys-color-secondary:                 rgba(255,255,255,0.55);
+            --md-sys-color-on-secondary:              #000;
+            --md-sys-color-secondary-container:       var(--card-high);
+            --md-sys-color-on-secondary-container:    var(--text-primary);
+            --md-sys-color-tertiary:                  rgba(255,255,255,0.40);
+            --md-sys-color-on-tertiary:               #000;
+            --md-sys-color-tertiary-container:        rgba(255,255,255,0.08);
+            --md-sys-color-on-tertiary-container:     var(--text-secondary);
+            --md-sys-color-error:                     var(--lifr);
+            --md-sys-color-on-error:                  #fff;
+            --md-sys-color-error-container:           var(--lifr-bg);
+            --md-sys-color-on-error-container:        var(--lifr);
+            --md-sys-color-warning:                   var(--ifr);
+            --md-sys-color-warning-container:         var(--ifr-bg);
+            --md-sys-color-on-warning-container:      var(--ifr);
+            --md-sys-color-background:                var(--bg-elevated);
+            --md-sys-color-on-background:             var(--text-primary);
+            --md-sys-color-surface:                   var(--card);
+            --md-sys-color-on-surface:                var(--text-primary);
+            --md-sys-color-surface-variant:           var(--card-high);
+            --md-sys-color-on-surface-variant:        var(--text-secondary);
+            --md-sys-color-surface-container-lowest:  var(--bg);
+            --md-sys-color-surface-container-low:     var(--card);
+            --md-sys-color-surface-container:         var(--card-mid);
+            --md-sys-color-surface-container-high:    var(--card-high);
+            --md-sys-color-surface-container-highest: #2E2E38;
+            --md-sys-color-outline:                   rgba(255,255,255,0.20);
+            --md-sys-color-outline-variant:           rgba(255,255,255,0.08);
+            /* Flight category via legacy vars */
+            --cat-vfr-color:  var(--vfr);   --cat-vfr-bg:  var(--vfr-bg);
+            --cat-mvfr-color: var(--mvfr);  --cat-mvfr-bg: var(--mvfr-bg);
+            --cat-ifr-color:  var(--ifr);   --cat-ifr-bg:  var(--ifr-bg);
+            --cat-lifr-color: var(--lifr);  --cat-lifr-bg: var(--lifr-bg);
+            /* Fonts */
+            --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'SF Pro Display', sans-serif;
+            --font-mono: 'Roboto Mono', 'SF Mono', monospace;
+        }
+
+        /* Light-theme JS override — keeps the toggle working */
+        body.light-theme {
+            --bg:             #F2F2F7;
+            --bg-elevated:    #FFFFFF;
+            --card:           #FFFFFF;
+            --card-mid:       #F2F2F7;
+            --card-high:      #E5E5EA;
+            --card-border:    rgba(0,0,0,0.08);
+            --card-border-soft: rgba(0,0,0,0.04);
+            --text-primary:   #000000;
+            --text-secondary: rgba(0,0,0,0.55);
+            --text-tertiary:  rgba(0,0,0,0.30);
+            --text-mono:      #1a1a2e;
+            --accent:         #007AFF;
+            --accent-dim:     rgba(0,122,255,0.10);
+            --accent-glow:    none;
+            --vfr:  #34C759; --vfr-bg:  rgba(52,199,89,0.10);   --vfr-glow: none;
+            --mvfr: #007AFF; --mvfr-bg: rgba(0,122,255,0.10);
+            --ifr:  #FF9500; --ifr-bg:  rgba(255,149,0,0.10);
+            --lifr: #FF3B30; --lifr-bg: rgba(255,59,48,0.10);   --lifr-glow: none;
+            /* MD3 aliases for light mode */
+            --md-sys-color-background:  var(--bg-elevated);
+            --md-sys-color-on-background: var(--text-primary);
+            --md-sys-color-surface:     var(--card);
+            --md-sys-color-on-surface:  var(--text-primary);
+            --md-sys-color-surface-variant:    var(--card-high);
+            --md-sys-color-on-surface-variant: var(--text-secondary);
+            --md-sys-color-surface-container-lowest:  #F9F9FB;
+            --md-sys-color-surface-container-low:     var(--card);
+            --md-sys-color-surface-container:         var(--card-mid);
+            --md-sys-color-surface-container-high:    var(--card-high);
+            --md-sys-color-surface-container-highest: #DEDEDF;
+            --md-sys-color-outline:         rgba(0,0,0,0.15);
+            --md-sys-color-outline-variant: rgba(0,0,0,0.06);
+            --md-sys-color-primary:                  var(--accent);
+            --md-sys-color-on-primary:               #fff;
+            --md-sys-color-primary-container:        var(--accent-dim);
+            --md-sys-color-on-primary-container:     var(--accent);
+            --md-sys-color-secondary-container:      var(--card-high);
+            --md-sys-color-on-secondary-container:   var(--text-primary);
+            --md-sys-color-error:                    var(--lifr);
+            --md-sys-color-error-container:          var(--lifr-bg);
+            --md-sys-color-on-error-container:       var(--lifr);
+            --cat-vfr-color: var(--vfr); --cat-vfr-bg: var(--vfr-bg);
+            --cat-mvfr-color: var(--mvfr); --cat-mvfr-bg: var(--mvfr-bg);
+            --cat-ifr-color: var(--ifr); --cat-ifr-bg: var(--ifr-bg);
+            --cat-lifr-color: var(--lifr); --cat-lifr-bg: var(--lifr-bg);
+        }
+        /* dark-theme class = same as :root (always dark by default) */
+        body.dark-theme { /* inherits :root — nothing to override */ }
+
+        /* ── Base ── */
+        body {
+            margin: 0; padding: 0;
+            background-color: var(--bg-elevated);
+            color: var(--text-primary);
+            font-family: var(--font-sans);
+            -webkit-font-smoothing: antialiased;
+            -moz-osx-font-smoothing: grayscale;
+            overflow-x: hidden;
+            font-feature-settings: 'cv11', 'ss01'; /* Inter optical sizing */
+        }
+        * { box-sizing: border-box; }
+
+        /* ── Material Symbols — use Rounded variant for softer feel ── */
+        .material-symbols-outlined,
+        .material-symbols-rounded {
+            font-family: 'Material Symbols Rounded', 'Material Symbols Outlined';
+            font-variation-settings: 'FILL' 0, 'wght' 300, 'GRAD' 0, 'opsz' 24;
+            display: inline-block; vertical-align: middle; line-height: 1;
+        }
+
+        /* ── Scrollbar — ultra-thin iOS-style ── */
+        ::-webkit-scrollbar { width: 4px; height: 4px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.12); border-radius: 99px; }
+        ::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.22); }
+        body.light-theme ::-webkit-scrollbar-thumb { background: rgba(0,0,0,0.12); }
+        body.light-theme ::-webkit-scrollbar-thumb:hover { background: rgba(0,0,0,0.22); }
+
+        /* ── Typography utilities ── */
+        .font-mono { font-family: var(--font-mono); }
+        .text-secondary { color: var(--text-secondary); }
+
+        /* ── Interactive transitions ── */
+        button, a { transition: opacity 0.15s ease, transform 0.15s ease; }
+        button:active { transform: scale(0.97); }
+
+        /* ── Animations ── */
+        @keyframes spin    { from { transform: rotate(0deg); }   to { transform: rotate(360deg); } }
+        @keyframes fadeIn  { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
+        @keyframes pulse   { 0%,100% { opacity:1; } 50% { opacity:0.5; } }
+
+        /* ── Flighty card surface ── */
+        .fy-card {
+            background: var(--card);
+            border: 1px solid var(--card-border);
+            border-radius: 20px;
+            box-shadow: 0 2px 16px rgba(0,0,0,0.45), 0 1px 0 rgba(255,255,255,0.04) inset;
+            animation: fadeIn 0.25s ease;
+        }
+        .fy-card-mid {
+            background: var(--card-mid);
+            border: 1px solid var(--card-border-soft);
+            border-radius: 16px;
+        }
+        .fy-section-label {
+            font-size: 10px; font-weight: 700; letter-spacing: 0.8px;
+            text-transform: uppercase; color: var(--text-tertiary);
+            margin-bottom: 10px;
+        }
+
+        /* ── Status pill / badge ── */
+        .status-pill {
+            display: inline-flex; align-items: center;
+            padding: 3px 10px; border-radius: 99px;
+            font-size: 11px; font-weight: 700; letter-spacing: 0.4px;
+        }
+
+        /* ── Glassmorphism utility (for map overlays) ── */
+        .glass {
+            background: rgba(10,10,15,0.65);
+            backdrop-filter: blur(20px) saturate(180%);
+            -webkit-backdrop-filter: blur(20px) saturate(180%);
+            border: 1px solid rgba(255,255,255,0.10);
+            border-radius: 14px;
+        }
+        body.light-theme .glass {
+            background: rgba(255,255,255,0.72);
+            border: 1px solid rgba(0,0,0,0.08);
+        }
+
+        /* ── Airport autocomplete dropdown ── */
+        .apt-suggest-drop {
+            position: absolute; top: calc(100% + 4px); left: 0; right: 0;
+            background: var(--card-mid);
+            border: 1px solid var(--card-border);
+            border-radius: 14px; overflow: hidden;
+            box-shadow: 0 8px 32px rgba(0,0,0,0.6);
+            z-index: 9999; max-height: 240px; overflow-y: auto;
+        }
+        .apt-suggest-item {
+            display: flex; align-items: center; gap: 10px; padding: 10px 14px;
+            cursor: pointer;
+            border-bottom: 1px solid var(--card-border-soft);
+            transition: background 0.12s;
+        }
+        .apt-suggest-item:hover { background: var(--card-high); }
+        .apt-suggest-item:last-child { border-bottom: none; }
+
+        /* ── AI Chat bubbles ── */
+        .chat-bubble-user {
+            align-self: flex-end; max-width: 85%;
+            background: var(--accent-dim); color: var(--accent);
+            border: 1px solid rgba(10,132,255,0.25);
+            border-radius: 18px 18px 4px 18px;
+            padding: 10px 14px; font-size: 13px; line-height: 1.5; white-space: pre-wrap;
+        }
+        .chat-bubble-ai {
+            align-self: flex-start; max-width: 92%;
+            background: var(--card-mid); color: var(--text-primary);
+            border: 1px solid var(--card-border-soft);
+            border-radius: 18px 18px 18px 4px;
+            padding: 10px 14px; font-size: 13px; line-height: 1.5; white-space: pre-wrap;
+        }
+
+        /* ── Leaflet map ── */
+        .leaflet-container { z-index: 0; font-family: var(--font-sans); }
+        .leaflet-control-attribution { font-size: 9px !important; opacity: 0.45; }
+        .leaflet-control-zoom a {
+            background: var(--card) !important;
+            color: var(--text-primary) !important;
+            border-color: var(--card-border) !important;
+        }
+        /* ICAO tooltip labels — white text on dark map */
+        .route-icao-label {
+            background: transparent !important; border: none !important;
+            box-shadow: none !important;
+            font-family: var(--font-mono); font-weight: 700; font-size: 11px;
+            color: #ffffff;
+            text-shadow: 0 0 6px rgba(0,0,0,0.9), 0 0 12px rgba(0,0,0,0.7),
+                         0 1px 0 rgba(0,0,0,0.8);
+            white-space: nowrap; letter-spacing: 0.5px;
+        }
+        body.light-theme .route-icao-label {
+            color: #ffffff;
+            text-shadow: 0 0 4px #000, 0 0 8px rgba(0,0,0,0.8);
+        }
+
+        /* ── Nav rail (desktop side tab bar) ── */
+        .nav-rail-item {
+            display: flex; flex-direction: column; align-items: center;
+            width: 100%; padding: 8px 0; gap: 4px; cursor: pointer;
+            background: none; border: none; color: var(--text-tertiary);
+            transition: color 0.15s;
+        }
+        .nav-rail-item.active { color: var(--accent); }
+        .nav-rail-item .rail-pip {
+            width: 36px; height: 32px; border-radius: 10px;
+            display: flex; align-items: center; justify-content: center;
+            transition: background 0.15s;
+        }
+        .nav-rail-item.active .rail-pip { background: var(--accent-dim); }
+        .nav-rail-item:not(.active):hover .rail-pip { background: rgba(255,255,255,0.06); }
+        .nav-rail-label { font-size: 10px; font-weight: 600; letter-spacing: 0.3px; }
+
+        /* ── Mobile bottom nav ── */
+        .mobile-bottom-nav { display: none; }
+        @media (max-width: 640px) {
+            .nav-rail { display: none !important; }
+            .mobile-bottom-nav {
+                display: flex !important;
+                position: fixed; bottom: 0; left: 0; right: 0;
+                background: rgba(10,10,15,0.92);
+                backdrop-filter: blur(20px);
+                border-top: 1px solid var(--card-border);
+                justify-content: space-around; align-items: center;
+                height: 60px; z-index: 200;
+                padding-bottom: env(safe-area-inset-bottom, 0px);
+            }
+            body.light-theme .mobile-bottom-nav {
+                background: rgba(242,242,247,0.92);
+            }
+            .briefing-content { padding: 16px 12px 80px !important; }
+        }
+
+        /* Print styles live in the standalone tab opened by handlePrint(). */
+    </style>
             --md-sys-color-on-primary: #ffffff;
             --md-sys-color-primary-container: #d3e3fd;
             --md-sys-color-on-primary-container: #041e49;
@@ -275,8 +579,10 @@
             .mobile-bottom-nav {
                 display: flex !important;
                 position: fixed; bottom: 0; left: 0; right: 0;
-                background: var(--md-sys-color-surface);
-                border-top: 1px solid var(--md-sys-color-outline-variant);
+                background: rgba(10,10,15,0.92);
+                backdrop-filter: blur(20px);
+                -webkit-backdrop-filter: blur(20px);
+                border-top: 1px solid var(--card-border);
                 justify-content: space-around; align-items: center;
                 height: 60px; z-index: 200;
                 padding-bottom: env(safe-area-inset-bottom, 0px);
@@ -2115,7 +2421,7 @@
                 if (!leafletMapRef.current) {
                     leafletMapRef.current = L.map(mapContainerRef.current, { zoomControl: true });
                     L.tileLayer(
-                        'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png',
+                        'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',
                         { attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/">CARTO</a>', subdomains: 'abcd', maxZoom: 19 }
                     ).addTo(leafletMapRef.current);
                 }
@@ -2129,19 +2435,21 @@
 
                 const latLngs = allPts.map(p => [p.lat, p.lon]);
 
-                // Route polyline
-                const line = L.polyline(latLngs, { color: '#0b57d0', weight: 3, dashArray: '8 5', opacity: 0.9 });
+                // Glowing route polyline — soft shadow halo + bright line on top
+                const lineGlow = L.polyline(latLngs, { color: '#0A84FF', weight: 10, opacity: 0.18 });
+                lineGlow.addTo(map);
+                layersRef.current.push(lineGlow);
+                const line = L.polyline(latLngs, { color: '#0A84FF', weight: 3, opacity: 0.95 });
                 line.addTo(map);
                 layersRef.current.push(line);
 
-                // Waypoint markers
-                const colors = { dep: '#0b57d0', arr: '#6b5778', wp: '#535f70' };
+                // Waypoint markers — neon palette matching dark theme
                 allPts.forEach((p, i) => {
                     const isDep = i === 0, isArr = i === allPts.length - 1;
-                    const color = isDep ? colors.dep : isArr ? colors.arr : colors.wp;
+                    const fillColor = isDep ? '#30D158' : isArr ? '#FF453A' : '#0A84FF';
                     const marker = L.circleMarker([p.lat, p.lon], {
-                        radius: (isDep || isArr) ? 9 : 7,
-                        fillColor: color, color: '#fff', weight: 2, fillOpacity: 1
+                        radius: (isDep || isArr) ? 8 : 6,
+                        fillColor, color: '#000', weight: 1.5, fillOpacity: 1
                     });
                     marker.addTo(map);
                     marker.bindTooltip(allCodes[i], { permanent: true, direction: 'top', offset: [0, -8], className: 'route-icao-label' });
@@ -2163,21 +2471,21 @@
 
             if (allPts.length < 2) {
                 return (
-                    <div style={{ display: "flex", alignItems: "center", justifyContent: "center", background: "var(--md-sys-color-surface-container-lowest)", borderRadius: "16px", minHeight: "420px" }}>
-                        <span style={{ color: "var(--md-sys-color-on-surface-variant)", fontSize: "14px" }}>Enter valid route to view map</span>
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "center", background: "var(--card)", borderRadius: "20px", minHeight: "420px", border: "1px solid var(--card-border)" }}>
+                        <span style={{ color: "var(--text-tertiary)", fontSize: "14px" }}>Enter valid route to view map</span>
                     </div>
                 );
             }
 
             return (
-                <div style={{ position: "relative", borderRadius: "16px", overflow: "hidden" }}>
+                <div style={{ position: "relative", borderRadius: "20px", overflow: "hidden", border: "1px solid var(--card-border)" }}>
                     <div ref={mapContainerRef} style={{ width: "100%", height: "420px" }} />
                     <div className="font-mono" style={{ position: "absolute", bottom: 36, left: 12, zIndex: 1000, display: "flex", gap: 8, fontSize: 12, pointerEvents: "none" }}>
-                        <div style={{ background: "rgba(255,255,255,0.95)", borderRadius: "8px", padding: "6px 12px", color: "#1a1c1e", boxShadow: "0 2px 6px rgba(0,0,0,0.18)" }}>
-                            <span style={{ color: "#73777f" }}>DIST </span><span style={{ fontWeight: 700 }}>{Math.round(totalDist)} NM</span>
+                        <div style={{ background: "rgba(0,0,0,0.65)", backdropFilter: "blur(12px)", borderRadius: "10px", padding: "6px 12px", color: "var(--text-primary)", border: "1px solid rgba(255,255,255,0.10)" }}>
+                            <span style={{ color: "var(--text-tertiary)" }}>DIST </span><span style={{ fontWeight: 700 }}>{Math.round(totalDist)} NM</span>
                         </div>
-                        <div style={{ background: "rgba(255,255,255,0.95)", borderRadius: "8px", padding: "6px 12px", color: "#1a1c1e", boxShadow: "0 2px 6px rgba(0,0,0,0.18)" }}>
-                            <span style={{ color: "#73777f" }}>HDG </span><span style={{ fontWeight: 700 }}>{String(Math.round(heading)).padStart(3, "0")}&deg;</span>
+                        <div style={{ background: "rgba(0,0,0,0.65)", backdropFilter: "blur(12px)", borderRadius: "10px", padding: "6px 12px", color: "var(--text-primary)", border: "1px solid rgba(255,255,255,0.10)" }}>
+                            <span style={{ color: "var(--text-tertiary)" }}>HDG </span><span style={{ fontWeight: 700 }}>{String(Math.round(heading)).padStart(3, "0")}&deg;</span>
                         </div>
                     </div>
                 </div>
@@ -4642,44 +4950,79 @@
                 { id: "export", label: "Export", icon: "print" }
             ];
 
+            // ── Flighty-style icon button ──────────────────────────────────────────
+            var IconBtn = ({ icon, onClick, title, active, style: s }) => (
+                <button onClick={onClick} title={title} style={{
+                    background: active ? 'var(--accent-dim)' : 'none',
+                    border: '1px solid ' + (active ? 'rgba(10,132,255,0.3)' : 'transparent'),
+                    borderRadius: 12, padding: 9, cursor: 'pointer', lineHeight: 1,
+                    color: active ? 'var(--accent)' : 'var(--text-secondary)',
+                    display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                    transition: 'all 0.15s', ...s
+                }}>
+                    <MdIcon name={icon} style={{ fontSize: 20 }} />
+                </button>
+            );
+
             return (
-                <div style={{ display: "flex", flexDirection: "column", height: "100vh", overflow: "hidden" }}>
-                    
-                    {/* MD3 Top App Bar */}
-                    <header style={{ 
-                        height: "64px", display: "flex", alignItems: "center", justifyContent: "space-between", 
-                        padding: "0 16px", background: "var(--md-sys-color-surface)", 
-                        color: "var(--md-sys-color-on-surface)",
-                        boxShadow: "0 1px 2px rgba(0,0,0,0.05)", zIndex: 10 
+                <div style={{ display: "flex", flexDirection: "column", height: "100vh", overflow: "hidden", background: 'var(--bg-elevated)' }}>
+
+                    {/* ── Flighty-style top bar ── */}
+                    <header style={{
+                        height: "56px", display: "flex", alignItems: "center", justifyContent: "space-between",
+                        padding: "0 16px 0 20px",
+                        background: "rgba(10,10,15,0.85)",
+                        backdropFilter: "blur(20px)",
+                        borderBottom: "1px solid var(--card-border)",
+                        zIndex: 100, flexShrink: 0
                     }}>
-                        <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
                             {view === "briefing" ? (
-                                <MdButton variant="text" icon="arrow_back" onClick={() => { setView("trips"); setActiveTrip(null); }} style={{ padding: '8px' }} />
+                                <button onClick={() => { setView("trips"); setActiveTrip(null); }} style={{
+                                    background: 'none', border: 'none', cursor: 'pointer', padding: '6px 4px 6px 0',
+                                    color: 'var(--accent)', display: 'flex', alignItems: 'center', gap: 4, fontSize: 15, fontWeight: 600
+                                }}>
+                                    <MdIcon name="chevron_left" style={{ fontSize: 22 }} /> Flights
+                                </button>
                             ) : (
-                                <MdIcon name="flight" style={{ color: 'var(--md-sys-color-primary)', fontSize: 28, marginLeft: 8 }} />
+                                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                                    <div style={{ width: 28, height: 28, borderRadius: 8, background: 'var(--accent)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                                        <MdIcon name="flight" style={{ fontSize: 16, color: '#fff' }} />
+                                    </div>
+                                    <span style={{ fontSize: 17, fontWeight: 700, letterSpacing: '-0.3px' }}>FlightScore</span>
+                                </div>
                             )}
-                            <div style={{ fontSize: 22, fontWeight: 500 }}>FlightScore</div>
                         </div>
-                        <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
-                            <MdButton variant="tonal" icon="add" onClick={() => setView("create")}>New Trip</MdButton>
-                            <MdButton variant="text" icon={darkMode ? 'light_mode' : 'dark_mode'} title={darkMode ? 'Switch to Light Mode' : 'Switch to Dark Mode'} onClick={() => setDarkMode(function(d) { return !d; })} style={{ padding: '8px' }} />
-                            <MdButton variant="text" icon="import_export" title="Export / Import trips" onClick={() => setShowDataModal(true)} style={{ padding: '8px' }} />
-                            <MdButton variant="text" icon="tune" title="Settings — OpenAIP key, airport database" onClick={() => setShowSettingsModal(true)} style={{ padding: '8px' }} />
+                        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                            {view !== "briefing" && (
+                                <button onClick={() => setView("create")} style={{
+                                    background: 'var(--accent)', color: '#fff', border: 'none', borderRadius: 20,
+                                    padding: '7px 16px', fontSize: 14, fontWeight: 600, cursor: 'pointer',
+                                    display: 'flex', alignItems: 'center', gap: 6
+                                }}>
+                                    <MdIcon name="add" style={{ fontSize: 18 }} /> New
+                                </button>
+                            )}
+                            <IconBtn icon={darkMode ? 'light_mode' : 'dark_mode'} title={darkMode ? 'Light Mode' : 'Dark Mode'} onClick={() => setDarkMode(d => !d)} />
+                            <IconBtn icon="import_export" title="Export / Import trips" onClick={() => setShowDataModal(true)} />
+                            <IconBtn icon="tune" title="Settings" onClick={() => setShowSettingsModal(true)} />
                         </div>
                     </header>
                     {showDataModal     && <DataModal trips={trips} onImport={importTrips} onClose={() => setShowDataModal(false)} />}
                     {showSettingsModal && <SettingsModal onClose={() => setShowSettingsModal(false)} />}
 
-                    <main style={{ flex: 1, overflowY: "auto", background: "var(--md-sys-color-background)" }}>
+                    <main style={{ flex: 1, overflowY: "auto", background: "var(--bg-elevated)" }}>
                         
-                        {/* TRIPS LIST */}
+                        {/* ══ TRIPS LIST ══════════════════════════════════════════════════ */}
                         {view === "trips" && (
-                            <div style={{ maxWidth: 840, margin: "0 auto", padding: "32px 16px" }}>
-                                <h1 style={{ fontSize: 32, fontWeight: 400, margin: "0 0 24px", color: "var(--md-sys-color-on-background)" }}>My Trips</h1>
-                                <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+                            <div style={{ maxWidth: 680, margin: "0 auto", padding: "28px 16px 40px" }}>
+
+                                {/* Section label */}
+                                <div style={{ fontSize: 12, fontWeight: 700, letterSpacing: '1px', textTransform: 'uppercase', color: 'var(--text-tertiary)', marginBottom: 16 }}>My Flights</div>
+
+                                <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
                                     {trips.map(trip => {
                                         var ac = AIRCRAFT.find(a => a.id === trip.aircraft) || AIRCRAFT[0];
-                                        
                                         var fullRoute = [trip.dep].concat(trip.wps || []).concat([trip.arr]).map(r => r ? r.trim().toUpperCase() : r);
                                         var validRoutePts = fullRoute.filter(r => r && getAirport(r));
                                         var d = 0;
@@ -4689,7 +5032,6 @@
                                             if (p1 && p2) d += calcDist(p1.lat, p1.lon, p2.lat, p2.lon);
                                         }
                                         var ete = ac ? d / ac.kts : 0;
-
                                         var depApt = getAirport(trip.dep);
                                         var tripTarget = (trip.date && trip.time && depApt) ? getTripTargetUtc(trip, depApt.tz || lonToIanaTz(depApt.lon)) : null;
                                         var tripCountdown = null;
@@ -4697,97 +5039,112 @@
                                             var msUntil = tripTarget.getTime() - Date.now();
                                             var hUntil = msUntil / 3600000;
                                             if (msUntil < 0) {
-                                                tripCountdown = { label: 'Trip Is Outdated', past: true, soon: false };
+                                                tripCountdown = { label: 'Outdated', past: true, soon: false };
                                             } else {
                                                 var totalMins = Math.round(msUntil / 60000);
                                                 var cdLabel;
-                                                if (totalMins < 60) {
-                                                    cdLabel = 'In ' + totalMins + 'm';
-                                                } else if (hUntil < 24) {
-                                                    var hh = Math.floor(hUntil), mm = Math.round((hUntil - hh) * 60);
-                                                    cdLabel = 'In ' + hh + 'h' + (mm > 0 ? ' ' + mm + 'm' : '');
-                                                } else if (Math.round(hUntil / 24) === 1) {
-                                                    cdLabel = 'Tomorrow';
-                                                } else if (hUntil < 168) {
-                                                    cdLabel = 'In ' + Math.round(hUntil / 24) + ' days';
-                                                } else if (hUntil < 720) {
-                                                    var wks = Math.round(hUntil / 168);
-                                                    cdLabel = 'In ' + wks + (wks === 1 ? ' week' : ' weeks');
-                                                } else {
-                                                    var mos = Math.round(hUntil / 720);
-                                                    cdLabel = 'In ' + mos + (mos === 1 ? ' month' : ' months');
-                                                }
+                                                if (totalMins < 60) { cdLabel = 'In ' + totalMins + 'm'; }
+                                                else if (hUntil < 24) { var hh = Math.floor(hUntil), mm = Math.round((hUntil - hh) * 60); cdLabel = 'In ' + hh + 'h' + (mm > 0 ? ' ' + mm + 'm' : ''); }
+                                                else if (Math.round(hUntil / 24) === 1) { cdLabel = 'Tomorrow'; }
+                                                else if (hUntil < 168) { cdLabel = 'In ' + Math.round(hUntil / 24) + 'd'; }
+                                                else { cdLabel = 'In ' + Math.round(hUntil / 168) + 'w'; }
                                                 tripCountdown = { label: cdLabel, past: false, soon: hUntil < 2 };
                                             }
                                         }
 
+                                        // Score-based card accent color
+                                        var scoreColor = !trip.goScore ? 'var(--text-tertiary)'
+                                            : trip.goScore >= 80 ? 'var(--vfr)'
+                                            : trip.goScore >= 60 ? 'var(--mvfr)'
+                                            : trip.goScore >= 40 ? 'var(--ifr)'
+                                            : 'var(--lifr)';
+
                                         return (
-                                            <MdCard key={trip.id} onClick={() => openTrip(trip)} style={{ padding: 0, overflow: 'hidden' }}>
-                                                <div style={{ display: "flex", alignItems: "stretch" }}>
-                                                    <div style={{ width: 100, display: "flex", alignItems: "center", justifyContent: "center", padding: 16, background: "var(--md-sys-color-surface-container-highest)" }}>
-                                                        {trip.goScore ? <GoScoreRing score={trip.goScore} size={70} /> : <MdIcon name="pending" />}
-                                                    </div>
-                                                    <div style={{ flex: 1, padding: "16px 20px" }}>
-                                                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 8 }}>
-                                                            <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-                                                                {fullRoute.map((rt, idx) => (
-                                                                    <React.Fragment key={idx}>
-                                                                        <span className="font-mono" style={{ fontSize: 20, fontWeight: 700, color: idx === 0 ? "var(--md-sys-color-primary)" : idx === fullRoute.length - 1 ? "var(--md-sys-color-tertiary)" : "var(--md-sys-color-secondary)" }}>{rt}</span>
-                                                                        {idx < fullRoute.length - 1 && <MdIcon name="flight" style={{ color: "var(--md-sys-color-outline)", transform: "rotate(45deg)", fontSize: "18px" }} />}
-                                                                    </React.Fragment>
-                                                                ))}
-                                                            </div>
-                                                            <div style={{ display:'flex', gap:0 }}>
-                                                                <MdButton variant="text" icon={copiedTripId === trip.id ? "check" : "share"} title="Copy shareable link" onClick={(e) => copyTripLink(trip, e)} style={{ padding: '8px', color: copiedTripId === trip.id ? 'var(--md-sys-color-primary)' : 'var(--md-sys-color-outline)' }} />
-                                                                <MdButton variant="text" icon="edit" title="Edit trip" onClick={(e) => editTrip(trip, e)} style={{ padding: '8px', color: 'var(--md-sys-color-outline)' }} />
-                                                                <MdButton variant="text" icon="delete" onClick={(e) => { e.stopPropagation(); deleteTrip(trip.id); }} style={{ padding: '8px', color: 'var(--md-sys-color-outline)' }} />
-                                                            </div>
-                                                        </div>
-                                                        <div style={{ display: "flex", alignItems: "center", gap: 16, fontSize: 14, color: "var(--md-sys-color-on-surface-variant)", flexWrap: "wrap" }}>
-                                                            <span>{fullRoute.map(rt => getAirport(rt)?.city).filter(Boolean).join(" \u2794 ")}</span>
-                                                            <span className="font-mono" style={{ background: 'var(--md-sys-color-surface-variant)', padding: '2px 8px', borderRadius: '4px', fontSize: 12 }}>{Math.round(d)} NM</span>
-                                                            {ete > 0 && <span className="font-mono" style={{ background: 'var(--md-sys-color-surface-variant)', padding: '2px 8px', borderRadius: '4px', fontSize: 12 }}>{Math.floor(ete)}h{Math.round((ete % 1) * 60)}m</span>}
-                                                            <span>{ac.name}</span>
-                                                        </div>
-                                                        {(trip.date || trip.time) && (
-                                                            <div style={{ fontSize: 13, color: "var(--md-sys-color-on-surface-variant)", marginTop: 8, display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
-                                                                <MdIcon name="calendar_today" style={{ fontSize: 14 }} />
-                                                                <span>{trip.date}{trip.time && ` \u2022 ${trip.time}`}</span>
-                                                                {tripCountdown && (
-                                                                    <span style={{
-                                                                        fontSize: 11, fontWeight: 700, letterSpacing: '0.3px',
-                                                                        padding: '2px 9px', borderRadius: 12,
-                                                                        background: tripCountdown.past
-                                                                            ? 'var(--md-sys-color-error-container)'
-                                                                            : tripCountdown.soon
-                                                                                ? 'rgba(255,152,0,0.18)'
-                                                                                : 'var(--md-sys-color-primary-container)',
-                                                                        color: tripCountdown.past
-                                                                            ? 'var(--md-sys-color-on-error-container)'
-                                                                            : tripCountdown.soon
-                                                                                ? '#b45309'
-                                                                                : 'var(--md-sys-color-on-primary-container)',
-                                                                    }}>
-                                                                        {tripCountdown.label}
-                                                                    </span>
-                                                                )}
+                                            <div key={trip.id} onClick={() => openTrip(trip)}
+                                                className="fy-card"
+                                                style={{ padding: 0, overflow: 'hidden', cursor: 'pointer', transition: 'transform 0.15s, box-shadow 0.15s' }}
+                                                onMouseEnter={e => { e.currentTarget.style.transform = 'translateY(-1px)'; e.currentTarget.style.boxShadow = '0 8px 32px rgba(0,0,0,0.55), 0 1px 0 rgba(255,255,255,0.04) inset'; }}
+                                                onMouseLeave={e => { e.currentTarget.style.transform = ''; e.currentTarget.style.boxShadow = ''; }}
+                                            >
+                                                {/* Score bar — 4px top accent */}
+                                                <div style={{ height: 3, background: `linear-gradient(90deg, ${scoreColor}, transparent)`, opacity: 0.8 }} />
+
+                                                <div style={{ display: "flex", alignItems: "center", padding: "18px 20px", gap: 20 }}>
+                                                    {/* Score ring */}
+                                                    <div style={{ flexShrink: 0 }}>
+                                                        {trip.goScore ? <GoScoreRing score={trip.goScore} size={60} /> : (
+                                                            <div style={{ width: 60, height: 60, borderRadius: '50%', border: '2px dashed var(--card-border)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                                                                <MdIcon name="pending" style={{ color: 'var(--text-tertiary)', fontSize: 22 }} />
                                                             </div>
                                                         )}
                                                     </div>
+
+                                                    {/* Route & info */}
+                                                    <div style={{ flex: 1, minWidth: 0 }}>
+                                                        {/* ICAO route — large bold */}
+                                                        <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 5, flexWrap: 'wrap' }}>
+                                                            {fullRoute.map((rt, idx) => (
+                                                                <React.Fragment key={idx}>
+                                                                    <span className="font-mono" style={{ fontSize: 22, fontWeight: 800, letterSpacing: '-0.5px', color: idx === 0 ? 'var(--text-primary)' : idx === fullRoute.length - 1 ? 'var(--text-primary)' : 'var(--text-secondary)' }}>{rt}</span>
+                                                                    {idx < fullRoute.length - 1 && (
+                                                                        <MdIcon name="arrow_forward" style={{ color: 'var(--text-tertiary)', fontSize: 14 }} />
+                                                                    )}
+                                                                </React.Fragment>
+                                                            ))}
+                                                        </div>
+
+                                                        {/* City names */}
+                                                        <div style={{ fontSize: 13, color: 'var(--text-secondary)', marginBottom: 8, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                                            {fullRoute.map(rt => getAirport(rt)?.city).filter(Boolean).join(' → ')}
+                                                        </div>
+
+                                                        {/* Metadata pills row */}
+                                                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                                                            {[
+                                                                d > 0 && { label: Math.round(d) + ' NM' },
+                                                                ete > 0 && { label: Math.floor(ete) + 'h ' + Math.round((ete % 1) * 60) + 'm' },
+                                                                { label: ac.name },
+                                                                trip.date && { label: trip.date },
+                                                            ].filter(Boolean).map((p, i) => (
+                                                                <span key={i} style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-tertiary)', background: 'var(--card-high)', borderRadius: 6, padding: '3px 8px' }}>{p.label}</span>
+                                                            ))}
+                                                            {tripCountdown && (
+                                                                <span style={{ fontSize: 11, fontWeight: 700, borderRadius: 6, padding: '3px 8px',
+                                                                    background: tripCountdown.past ? 'var(--lifr-bg)' : tripCountdown.soon ? 'var(--ifr-bg)' : 'var(--accent-dim)',
+                                                                    color:      tripCountdown.past ? 'var(--lifr)'   : tripCountdown.soon ? 'var(--ifr)'   : 'var(--accent)',
+                                                                }}>
+                                                                    {tripCountdown.label}
+                                                                </span>
+                                                            )}
+                                                        </div>
+                                                    </div>
+
+                                                    {/* Action icons */}
+                                                    <div style={{ display: 'flex', flexDirection: 'column', gap: 4, flexShrink: 0 }} onClick={e => e.stopPropagation()}>
+                                                        <IconBtn icon={copiedTripId === trip.id ? "check" : "share"} title="Copy link" onClick={e => copyTripLink(trip, e)} active={copiedTripId === trip.id} />
+                                                        <IconBtn icon="edit" title="Edit" onClick={e => editTrip(trip, e)} />
+                                                        <IconBtn icon="delete" title="Delete" onClick={() => deleteTrip(trip.id)} />
+                                                    </div>
                                                 </div>
-                                            </MdCard>
+                                            </div>
                                         );
                                     })}
 
-                                    {/* Aviation dad joke — new one every page refresh */}
-                                    <div style={{ display: 'flex', alignItems: 'flex-start', gap: 14, padding: '14px 18px', borderRadius: 12, background: 'var(--md-sys-color-surface-container)', color: 'var(--md-sys-color-on-surface-variant)', fontSize: 13, marginTop: 4 }}>
-                                        <span style={{ fontSize: 22, lineHeight: 1, flexShrink: 0, marginTop: 1 }}>✈️</span>
-                                        <div>
-                                            <span style={{ fontWeight: 600, color: 'var(--md-sys-color-on-surface)' }}>{dadJoke.q}</span>
-                                            {' '}
-                                            <span style={{ opacity: 0.75 }}>{dadJoke.a}</span>
+                                    {trips.length === 0 && (
+                                        <div style={{ textAlign: 'center', padding: '60px 24px', color: 'var(--text-tertiary)' }}>
+                                            <MdIcon name="flight_takeoff" style={{ fontSize: 48, marginBottom: 12, display: 'block', opacity: 0.4 }} />
+                                            <div style={{ fontSize: 16, fontWeight: 600, marginBottom: 6, color: 'var(--text-secondary)' }}>No flights yet</div>
+                                            <div style={{ fontSize: 13 }}>Tap <strong style={{ color: 'var(--accent)' }}>New</strong> to plan your first flight.</div>
                                         </div>
-                                    </div>
+                                    )}
+
+                                    {/* Aviation dad joke */}
+                                    {trips.length > 0 && (
+                                        <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12, padding: '14px 18px', borderRadius: 14, background: 'var(--card)', border: '1px solid var(--card-border-soft)', color: 'var(--text-tertiary)', fontSize: 12, marginTop: 6 }}>
+                                            <span style={{ fontSize: 18, flexShrink: 0, marginTop: 1 }}>✈️</span>
+                                            <div><span style={{ fontWeight: 600, color: 'var(--text-secondary)' }}>{dadJoke.q}</span>{' '}<span>{dadJoke.a}</span></div>
+                                        </div>
+                                    )}
                                 </div>
                             </div>
                         )}
@@ -4911,32 +5268,25 @@
                             
                             return (
                                 <div style={{ display: "flex", height: "100%" }}>
-                                    {/* MD3 Navigation Rail (hidden on mobile via .nav-rail CSS class) */}
+                                    {/* Flighty Navigation Rail (hidden on mobile) */}
                                     <div className="nav-rail" style={{
-                                        width: "80px", background: "var(--md-sys-color-surface)",
-                                        borderRight: "1px solid var(--md-sys-color-outline-variant)",
-                                        display: "flex", flexDirection: "column", alignItems: "center", paddingTop: 16, gap: 12
+                                        width: "72px", background: "var(--bg-elevated)",
+                                        borderRight: "1px solid var(--card-border)",
+                                        display: "flex", flexDirection: "column", alignItems: "center",
+                                        paddingTop: 12, paddingBottom: 12, gap: 4
                                     }}>
                                         {tabList.map(t => {
                                             var active = tab === t.id;
                                             return (
-                                                <button key={t.id} onClick={() => setTab(t.id)} style={{
-                                                    background: "none", border: "none", display: "flex", flexDirection: "column", 
-                                                    alignItems: "center", cursor: "pointer", width: "100%", padding: "8px 0"
-                                                }}>
-                                                    <div style={{ 
-                                                        background: active ? "var(--md-sys-color-secondary-container)" : "transparent",
-                                                        color: active ? "var(--md-sys-color-on-secondary-container)" : "var(--md-sys-color-on-surface-variant)",
-                                                        borderRadius: "16px", padding: "4px 16px", transition: "background 0.2s"
-                                                    }}>
-                                                        <MdIcon name={t.icon} style={{ fontSize: 24 }} />
+                                                <button key={t.id} onClick={() => setTab(t.id)}
+                                                    className={"nav-rail-item" + (active ? " active" : "")}
+                                                    style={{ background: "none", border: "none", cursor: "pointer", width: "100%", padding: "6px 0" }}>
+                                                    <div className="rail-pip">
+                                                        <MdIcon name={t.icon} style={{ fontSize: 22, display: "block" }} />
                                                     </div>
-                                                    <span style={{ 
-                                                        fontSize: 11, fontWeight: active ? 600 : 400, marginTop: 4,
-                                                        color: active ? "var(--md-sys-color-on-surface)" : "var(--md-sys-color-on-surface-variant)"
-                                                    }}>{t.label}</span>
+                                                    <span className="nav-rail-label">{t.label}</span>
                                                 </button>
-                                            )
+                                            );
                                         })}
                                     </div>
 
@@ -4946,29 +5296,42 @@
                                             var active = tab === t.id;
                                             return (
                                                 <button key={t.id} onClick={() => setTab(t.id)} style={{ background:'none', border:'none', cursor:'pointer', display:'flex', flexDirection:'column', alignItems:'center', gap:2, padding:'6px 10px', minWidth:48 }}>
-                                                    <MdIcon name={t.icon} style={{ fontSize:22, color: active ? 'var(--md-sys-color-primary)' : 'var(--md-sys-color-on-surface-variant)' }} />
-                                                    <span style={{ fontSize:10, fontWeight: active ? 600 : 400, color: active ? 'var(--md-sys-color-primary)' : 'var(--md-sys-color-on-surface-variant)' }}>{t.label}</span>
+                                                    <MdIcon name={t.icon} style={{ fontSize:22, color: active ? 'var(--accent)' : 'var(--text-tertiary)' }} />
+                                                    <span style={{ fontSize:10, fontWeight: active ? 600 : 400, letterSpacing:'0.3px', color: active ? 'var(--accent)' : 'var(--text-tertiary)' }}>{t.label}</span>
                                                 </button>
                                             );
                                         })}
                                     </div>
 
                                     {/* Content Area */}
-                                    <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden", background: "var(--md-sys-color-background)" }}>
-                                        {/* Trip Header Banner */}
-                                        <div style={{ padding: "16px 24px", display: "flex", alignItems: "center", gap: 24, borderBottom: "1px solid var(--md-sys-color-surface-variant)" }}>
-                                            <GoScoreRing score={activeTrip.goScore || 50} size={56} />
-                                            <div>
-                                                <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4, flexWrap: "wrap" }}>
+                                    <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden", background: "var(--bg)" }}>
+                                        {/* Trip Header Banner — Flighty style */}
+                                        <div style={{
+                                            padding: "14px 24px",
+                                            display: "flex", alignItems: "center", gap: 18,
+                                            borderBottom: "1px solid var(--card-border)",
+                                            background: "rgba(10,10,15,0.90)",
+                                            backdropFilter: "blur(16px)"
+                                        }}>
+                                            <GoScoreRing score={activeTrip.goScore || 50} size={52} />
+                                            <div style={{ flex: 1, minWidth: 0 }}>
+                                                <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 3, flexWrap: "wrap" }}>
                                                     {fullRoute.map((rt, idx) => (
                                                         <React.Fragment key={idx}>
-                                                            <span className="font-mono" style={{ fontSize: 22, fontWeight: 700, color: idx === 0 ? "var(--md-sys-color-primary)" : idx === fullRoute.length - 1 ? "var(--md-sys-color-tertiary)" : "var(--md-sys-color-secondary)" }}>{rt}</span>
-                                                            {idx < fullRoute.length - 1 && <MdIcon name="flight" style={{ color: "var(--md-sys-color-outline)", transform: "rotate(45deg)", fontSize: "18px" }} />}
+                                                            <span className="font-mono" style={{
+                                                                fontSize: 20, fontWeight: 800, letterSpacing: "-0.5px",
+                                                                color: "var(--text-primary)"
+                                                            }}>{rt}</span>
+                                                            {idx < fullRoute.length - 1 && (
+                                                                <MdIcon name="arrow_forward" style={{ color: "var(--text-tertiary)", fontSize: 15 }} />
+                                                            )}
                                                         </React.Fragment>
                                                     ))}
                                                 </div>
-                                                <div style={{ fontSize: 13, color: "var(--md-sys-color-on-surface-variant)" }}>
-                                                    {ac.name} {'•'} {activeTrip.date}
+                                                <div style={{ fontSize: 12, color: "var(--text-tertiary)", fontWeight: 500 }}>
+                                                    {ac.name}
+                                                    <span style={{ margin: "0 6px", opacity: 0.4 }}>·</span>
+                                                    {activeTrip.date}
                                                 </div>
                                             </div>
                                         </div>
@@ -4983,15 +5346,15 @@
                                                     }} />
                                                 </WxErrorBoundary>
                                             )}
-                                            
+
                                             {tab === "wx" && (
                                                 <div style={{display: 'flex', flexDirection: 'column', gap: '24px'}}>
                                                     {fullRoute.map((rt, idx) => {
                                                         let label = idx === 0 ? "Departure" : idx === fullRoute.length - 1 ? "Destination" : `Waypoint ${idx}`;
                                                         return (
                                                             <div key={idx}>
-                                                                <h2 style={{fontSize: 16, fontWeight: 500, margin: "0 0 12px", color: "var(--md-sys-color-on-surface)"}}>
-                                                                    {label} - {getAirport(rt)?.city || rt}
+                                                                <h2 style={{fontSize: 14, fontWeight: 700, margin: "0 0 12px", color: "var(--text-secondary)", textTransform: "uppercase", letterSpacing: "0.8px"}}>
+                                                                    {label} · {getAirport(rt)?.city || rt}
                                                                 </h2>
                                                                 <WeatherDetail icao={rt} label={label} />
                                                                 <WxErrorBoundary label={`Forecast Strip (${rt})`} compact>
@@ -5009,8 +5372,8 @@
                                                 <div style={{display: 'flex', flexDirection: 'column', gap: '24px'}}>
                                                     {fullRoute.map((rt, idx) => (
                                                         <div key={idx}>
-                                                            <h2 style={{fontSize: 16, fontWeight: 500, margin: "0 0 12px", color: "var(--md-sys-color-on-surface)"}}>
-                                                                NOTAMs - {rt}
+                                                            <h2 style={{fontSize: 14, fontWeight: 700, margin: "0 0 12px", color: "var(--text-secondary)", textTransform: "uppercase", letterSpacing: "0.8px"}}>
+                                                                NOTAMs · {rt}
                                                             </h2>
                                                             <NotamsPanel icao={rt} />
                                                         </div>
