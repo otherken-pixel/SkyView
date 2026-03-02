@@ -1031,7 +1031,8 @@
                             dateStr: dt.toLocaleDateString("en-US", { month: "short", day: "numeric" }),
                             cat, hi: p.temperature,
                             lo: periods[i + 1]?.temperature || (p.temperature - 15),
-                            ws: parseInt(p.windSpeed) || 0, pr: 0
+                            ws: parseInt(p.windSpeed) || 0, pr: 0,
+                            shortForecast: p.shortForecast || ''
                         });
                     }
                 }
@@ -1507,6 +1508,7 @@
                 wspd, cat,
                 vis: catVis[cat] || 'P6SM',
                 sky: catSky[cat] || 'CLR',
+                shortForecast: day.shortForecast || '',
             };
         }
 
@@ -2957,7 +2959,12 @@
                                     if (mosWx) return { ...w, effectiveWx: mosWx, source: 'mos', sourceLabel: 'GFS Fcst' };
                                 }
                             }
-                            // MOS unavailable — fall back to current METAR with note
+                            // MOS unavailable — try NWS 7-day before falling back to METAR
+                            var nwsFb = nwsData[w.icao];
+                            if (nwsFb) {
+                                var nwsFbWx = nwsDayToEffectiveWx(pickNwsDay(nwsFb, tripTargetUtc), w.icao);
+                                if (nwsFbWx) return { ...w, effectiveWx: nwsFbWx, source: 'nws', sourceLabel: 'NWS Fcst' };
+                            }
                             return { ...w, effectiveWx: w.metar, source: 'metar', sourceLabel: 'METAR (no model)' + simSuffix };
                         }
                         // 2–30 h: TAF preferred, GFS MOS fallback (for airports with no TAF), then METAR
@@ -3074,14 +3081,18 @@
 
                 var concerns = [];
 
-                // ── MOS/forecast coverage warnings (very long-range only) ───────────
+                // ── MOS/NWS/forecast coverage warnings ──────────────────────────────
                 if (isFutureFlight) {
                     effectiveWxData.forEach(e => {
                         if (e.source === 'metar' && hoursUntilTrip > 30) {
-                            concerns.push({ level: 'medium', icon: 'update', text: `${e.icao}: GFS MOS forecast unavailable — showing current METAR only (beyond TAF range)` });
+                            concerns.push({ level: 'medium', icon: 'update', text: `${e.icao}: No forecast model available — showing current METAR only. Flight category may not reflect actual departure-day conditions.` });
                         }
                         // "No TAF" is already shown in the weather source label — omit from Key Concerns
                     });
+                }
+                // ── NWS 7-day accuracy disclaimer (shown whenever NWS drives any station) ──
+                if (anyNws) {
+                    concerns.push({ level: 'medium', icon: 'calendar_today', text: `Note: Flight category is based on the NWS 7-day weather forecast. This is a coarse, daytime-only estimate — no ceiling or visibility detail is available at this range. Re-assess with TAF or MOS data 24–48 h before departure for an accurate flight score.` });
                 }
 
                 // ── Simulated-data warning (no ASOS/AWOS at airport) ────────────────
@@ -3093,12 +3104,26 @@
 
                 // ── Per-station weather concerns ─────────────────────────────────────
                 effectiveWxData.forEach(e => {
-                    var src = e.source === 'mos' ? 'GFS' : e.source === 'taf' ? 'TAF' : 'METAR';
+                    var src = e.source === 'mos' ? 'GFS' : e.source === 'taf' ? 'TAF' : e.source === 'nws' ? 'NWS' : 'METAR';
                     if (!e.effectiveWx) {
                         concerns.push({ level: 'medium', icon: 'cloud_off', text: `${e.icao}: No weather data available — verify conditions before flight` });
                         return;
                     }
                     var m = e.effectiveWx;
+
+                    // NWS 7-day specific concerns — use shortForecast text for context
+                    if (e.source === 'nws' && m.shortForecast) {
+                        var sfx = m.shortForecast;
+                        if (/thunder|storm/i.test(sfx)) {
+                            concerns.push({ level: 'high', icon: 'thunderstorm', text: `${e.icao}: NWS forecast: "${sfx}" — thunderstorm activity possible. Check convective SIGMETs before departure.` });
+                        } else if (/fog|freezing/i.test(sfx)) {
+                            concerns.push({ level: 'high', icon: 'visibility_off', text: `${e.icao}: NWS forecast: "${sfx}" — fog or freezing precipitation possible. Verify conditions 2–4 h before departure.` });
+                        } else if (/rain|snow|shower|drizzle/i.test(sfx)) {
+                            concerns.push({ level: 'medium', icon: 'water_drop', text: `${e.icao}: NWS forecast: "${sfx}" — expect precipitation at or near departure time.` });
+                        } else if (/cloud|overcast/i.test(sfx)) {
+                            concerns.push({ level: 'medium', icon: 'cloud', text: `${e.icao}: NWS forecast: "${sfx}" — overcast or cloudy conditions expected.` });
+                        }
+                    }
 
                     // MOS-specific probabilistic concerns
                     if (e.source === 'mos') {
@@ -3161,9 +3186,11 @@
                 concerns.sort((a, b) => (a.level === 'high' ? 0 : 1) - (b.level === 'high' ? 0 : 1));
 
                 var recs = [];
-                // Model forecast disclaimer (highest priority for long-range)
+                // Forecast source disclaimer (highest priority for long-range)
                 if (anyMos) {
                     recs.push(`⚠ Based on GFS model data (${depUtcLabel}) — model accuracy decreases with time. Re-evaluate using TAF data 24h before departure.`);
+                } else if (anyNws) {
+                    recs.push(`⚠ Flight category based on NWS 7-day forecast (${depUtcLabel}) — coarse estimate only. No ceiling/visibility detail available at this range. Re-evaluate using TAF or MOS data 24–48h before departure for an updated flight score.`);
                 } else if (isFutureFlight && anyTaf) {
                     recs.push(`Assessment based on TAF forecast for ${depUtcLabel} — conditions may change. Re-check closer to departure.`);
                 }
