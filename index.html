@@ -1040,9 +1040,6 @@
             } catch(e) { return null; }
         }
 
-        // Calculate Go/No-Go score from live METAR objects
-        function calcGoScoreFromMetars(depMetar, arrMetar) {
-
         // ── MMOPA FRAT — Flight Risk Assessment Tool ──────────────────────────
         var FRAT_QUESTIONS = [
             // ── P: Pilot (35%) ───────────────────────────────────────────────
@@ -1089,10 +1086,10 @@
             { id:'E3', cat:'E', label:'Continuation Bias Check',
               opts:[{l:'I would comfortably cancel this flight if conditions changed',p:0},{l:"I'd probably push through minor issues",p:3},{l:'I feel committed to this flight regardless of new information',p:7}] },
         ];
-        var FRAT_CAT_MAX = { P:45, A:29, V:30, E:21 };
+        var FRAT_CAT_MAX    = { P:45, A:29, V:30, E:21 };
         var FRAT_CAT_WEIGHT = { P:0.35, A:0.25, V:0.25, E:0.15 };
-        var FRAT_CAT_LABEL = { P:'Pilot', A:'Aircraft', V:'Environment', E:'External Pressures' };
-        var FRAT_CAT_ICON  = { P:'person', A:'flight', V:'cloud', E:'schedule' };
+        var FRAT_CAT_LABEL  = { P:'Pilot', A:'Aircraft', V:'Environment', E:'External Pressures' };
+        var FRAT_CAT_ICON   = { P:'person', A:'flight', V:'cloud', E:'schedule' };
         var FRAT_TOTAL = FRAT_QUESTIONS.length; // 19
 
         function calcFratGoScore(answers) {
@@ -1108,7 +1105,8 @@
         }
         // ─────────────────────────────────────────────────────────────────────
 
-
+        // Calculate Go/No-Go score from live METAR objects
+        function calcGoScoreFromMetars(depMetar, arrMetar) {
             if (!depMetar || !arrMetar) return 50;
             var catScores = { VFR: 95, MVFR: 65, IFR: 30, LIFR: 10 };
             var windPen = Math.max(0, (depMetar.wspd - 15) * 3) + Math.max(0, (arrMetar.wspd - 15) * 3);
