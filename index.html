@@ -1198,12 +1198,11 @@
 
             // 5. Data confidence (0-10 pts)
             var noLive = effectiveWxData.some(function(e) { return !e.metarLive; });
-            var isMos  = effectiveWxData.some(function(e) { return e.source === 'mos'; });
             var isNws  = effectiveWxData.some(function(e) { return e.source === 'nws'; });
             var isTaf  = effectiveWxData.some(function(e) { return e.source === 'taf'; });
-            var confPts = noLive ? 4 : isMos ? 5 : isNws ? 6 : isTaf ? 8 : 10;
+            var confPts = noLive ? 4 : isNws ? 6 : isTaf ? 8 : 10;
             var confCol = confPts >= 8 ? 'var(--cat-vfr-color)' : confPts >= 5 ? 'var(--cat-mvfr-color)' : 'var(--cat-ifr-color)';
-            var confTxt = noLive ? 'Simulated stations present' : isMos ? 'GFS model (72h+ horizon)' : isNws ? 'NWS 7-day forecast' : isTaf ? 'TAF forecast' : 'Live METAR';
+            var confTxt = noLive ? 'Simulated stations present' : isNws ? 'NWS 7-day forecast (>30h)' : isTaf ? 'TAF forecast' : 'Live METAR';
             breakdown.push({ label: 'Data Quality', score: confPts, max: 10, icon: 'verified', color: confCol, detail: confTxt });
 
             // 6. Icing / freezing risk (0-10 pts)
@@ -1624,23 +1623,14 @@
                 }).filter(e => e.effectiveWx);
 
             } else if (hoursUntil !== null && hoursUntil > 2) {
-                // Near-future — TAF preferred; NWS 7-day fallback for TAF-less airports.
-                // Round 1: METAR + TAF in parallel (TAF result determines who needs NWS).
+                // Near-future (2–30 h) — TAF at departure time; METAR fallback.
+                // Within 30 h, TAF and METAR are the authoritative sources.
                 var [metarArr, tafArr] = await Promise.all([
                     Promise.all(allPts.map(icao => fetchLiveMetar(icao).catch(() => null))),
                     Promise.all(allPts.map(icao => fetchLiveTaf(icao).catch(() => null)))
                 ]);
-                // Round 2: NWS only for airports whose TAF was unavailable or yielded
-                // no matching period — avoids unnecessary fetches when TAF is present.
-                var nwsArr = await Promise.all(allPts.map((icao, idx) => {
-                    var taf = tafArr[idx];
-                    if (taf && parseTafForTime(taf, targetUtc)) return Promise.resolve(null);
-                    return resolveAptCoords(icao).then(a =>
-                        a ? fetchNwsForecast(a.lat, a.lon).catch(() => null) : null
-                    );
-                }));
                 return allPts.map((icao, idx) => {
-                    var m = metarArr[idx], taf = tafArr[idx], nwsDays = nwsArr[idx];
+                    var m = metarArr[idx], taf = tafArr[idx];
                     var metarLive = !!m, metar = m || makeMetar(icao);
                     if (taf) {
                         var tafWx = parseTafForTime(taf, targetUtc);
@@ -1649,12 +1639,7 @@
                             return { icao, effectiveWx: tafWx, metarLive, source: 'taf', sourceLabel: lbl };
                         }
                     }
-                    // No usable TAF — try NWS 7-day before falling back to live METAR
-                    if (nwsDays) {
-                        var nwsWx = nwsDayToEffectiveWx(pickNwsDay(nwsDays, targetUtc), icao);
-                        if (nwsWx) return { icao, effectiveWx: nwsWx, metarLive, source: 'nws', sourceLabel: 'NWS Fcst' };
-                    }
-                    return { icao, effectiveWx: metar, metarLive, source: 'metar', sourceLabel: metarLive ? 'METAR (no fcst)' : 'No data' };
+                    return { icao, effectiveWx: metar, metarLive, source: 'metar', sourceLabel: metarLive ? 'METAR (no TAF)' : 'No data' };
                 }).filter(e => e.effectiveWx);
 
             } else {
@@ -3022,25 +3007,8 @@
                   .catch(() => setLoadingWx(false));
             }, [allRoutePts.join(',')]);
 
-            // Fetch GFS MOS extended forecast for all route points.
-            // Skipped when the flight is ≤16 h away — TAF/METAR is more accurate then.
-            useEffect(() => {
-                var depApt = getAirport(trip.dep);
-                var tgtUtc = getTripTargetUtc(trip, depApt ? (depApt.tz || lonToIanaTz(depApt.lon)) : 'America/New_York');
-                var hrs = tgtUtc ? (tgtUtc.getTime() - Date.now()) / 3600000 : null;
-                if (hrs !== null && hrs <= 16) { setMosData({}); setLoadingMos(false); return; }
-                setMosData({});
-                setLoadingMos(true);
-                Promise.all(allRoutePts.map(async icao => {
-                    var mos = await fetchLiveMos(icao).catch(() => null);
-                    return [icao, mos];
-                })).then(entries => {
-                    var result = {};
-                    entries.forEach(([icao, mos]) => { if (mos) result[icao] = mos; });
-                    setMosData(result);
-                    setLoadingMos(false);
-                }).catch(() => { setMosData({}); setLoadingMos(false); });
-            }, [allRoutePts.join(','), trip.date, trip.time]);
+            // MOS fetch disabled — within 30h TAF/METAR is used; beyond 30h NWS 7-day is used.
+            useEffect(() => { setMosData({}); setLoadingMos(false); }, []);
 
             // Fetch NWS 7-day forecast — used as fallback when the TAF doesn't
             // cover the departure time, mirroring fetchEffectiveWxForTrip's logic.
@@ -3086,36 +3054,26 @@
             }, [allRoutePts.join(',')]);
 
             // Effective weather per station resolved to the trip departure time:
-            //   • METAR  — trip is now/within 2 h, or no forecast data available
+            //   • METAR  — trip is now/within 2 h, or within 30 h with no TAF available
             //   • TAF    — trip is 2–30 h away; extract the forecast period at departure
-            //   • MOS    — trip is >30 h away; use GFS MOS 6-hourly model forecast
+            //   • NWS    — trip is >30 h away; use NWS 7-day forecast for the trip date
             var effectiveWxData = useMemo(() => {
                 if (!wxData) return null;
                 var hh = tripTargetUtc ? String(tripTargetUtc.getUTCHours()).padStart(2, '0') : '';
                 var mm = tripTargetUtc ? String(tripTargetUtc.getUTCMinutes()).padStart(2, '0') : '';
                 return wxData.map(w => {
-                    // Label suffix when METAR is simulated (no live ASOS/AWOS at this airport)
                     var simSuffix = w.metarLive ? '' : ' (sim)';
                     if (hoursUntilTrip !== null && hoursUntilTrip > 2 && tripTargetUtc) {
                         if (hoursUntilTrip > 30) {
-                            // Try GFS MOS first for extended range
-                            var mosObj = mosData[w.icao];
-                            if (mosObj) {
-                                var mosPeriod = parseMosForTime(mosObj, tripTargetUtc);
-                                if (mosPeriod) {
-                                    var mosWx = buildMosWx(mosPeriod, w.icao);
-                                    if (mosWx) return { ...w, effectiveWx: mosWx, source: 'mos', sourceLabel: 'GFS Fcst' };
-                                }
-                            }
-                            // MOS unavailable — try NWS 7-day before falling back to METAR
+                            // Extended range (>30 h) — NWS 7-day forecast; METAR fallback.
                             var nwsFb = nwsData[w.icao];
                             if (nwsFb) {
                                 var nwsFbWx = nwsDayToEffectiveWx(pickNwsDay(nwsFb, tripTargetUtc), w.icao);
-                                if (nwsFbWx) return { ...w, effectiveWx: nwsFbWx, source: 'nws', sourceLabel: 'NWS Fcst' };
+                                if (nwsFbWx) return { ...w, effectiveWx: nwsFbWx, source: 'nws', sourceLabel: 'NWS 7-Day' };
                             }
-                            return { ...w, effectiveWx: w.metar, source: 'metar', sourceLabel: 'METAR (no model)' + simSuffix };
+                            return { ...w, effectiveWx: w.metar, source: 'metar', sourceLabel: 'METAR (no fcst)' + simSuffix };
                         }
-                        // 2–30 h: TAF preferred, GFS MOS fallback (for airports with no TAF), then METAR
+                        // 2–30 h: TAF at departure time; METAR fallback.
                         if (w.taf) {
                             var tafWx = parseTafForTime(w.taf, tripTargetUtc);
                             if (tafWx) {
@@ -3125,29 +3083,12 @@
                                 return { ...w, effectiveWx: tafWx, source: 'taf', sourceLabel: tafLbl };
                             }
                         }
-                        var mosObj2 = mosData[w.icao];
-                        if (mosObj2) {
-                            var mosPeriod2 = parseMosForTime(mosObj2, tripTargetUtc);
-                            if (mosPeriod2) {
-                                var mosWx2 = buildMosWx(mosPeriod2, w.icao);
-                                if (mosWx2) return { ...w, effectiveWx: mosWx2, source: 'mos', sourceLabel: 'GFS Fcst' };
-                            }
-                        }
-                        // NWS 7-day is the last resort before falling back to the
-                        // current METAR.  This mirrors fetchEffectiveWxForTrip and
-                        // is the key fallback when the TAF doesn't reach the departure
-                        // time (e.g. trip is 22h out but the TAF expires in 20h).
-                        var nwsDays = nwsData[w.icao];
-                        if (nwsDays) {
-                            var nwsWx = nwsDayToEffectiveWx(pickNwsDay(nwsDays, tripTargetUtc), w.icao);
-                            if (nwsWx) return { ...w, effectiveWx: nwsWx, source: 'nws', sourceLabel: 'NWS Fcst' };
-                        }
-                        return { ...w, effectiveWx: w.metar, source: 'metar', sourceLabel: 'METAR (no fcst)' + simSuffix };
+                        return { ...w, effectiveWx: w.metar, source: 'metar', sourceLabel: 'METAR (no TAF)' + simSuffix };
                     }
                     // Trip is current/imminent — live METAR is the best data
                     return { ...w, effectiveWx: w.metar, source: 'metar', sourceLabel: 'METAR' + simSuffix };
                 });
-            }, [wxData, mosData, nwsData, tripTargetUtc, hoursUntilTrip]);
+            }, [wxData, nwsData, tripTargetUtc, hoursUntilTrip]);
 
             // --- Helpers ---
             function parseCeiling(sky) {
@@ -3173,24 +3114,22 @@
                 return { VFR: 'var(--cat-vfr-color)', MVFR: 'var(--cat-mvfr-color)', IFR: 'var(--cat-ifr-color)', LIFR: 'var(--cat-lifr-color)' }[cat] || 'var(--md-sys-color-on-surface-variant)';
             }
 
-            // --- Auto analysis (time-aware: METAR → TAF → GFS MOS as horizon extends) ---
+            // --- Auto analysis (time-aware: METAR/TAF ≤30h, NWS 7-day >30h) ---
             var analysis = useMemo(() => {
                 if (!effectiveWxData) return null;
 
                 var isFutureFlight = hoursUntilTrip !== null && hoursUntilTrip > 2;
                 var anyTaf = effectiveWxData.some(e => e.source === 'taf');
-                var anyMos = effectiveWxData.some(e => e.source === 'mos');
+                var anyMos = false; // MOS removed — TAF/METAR used within 30h, NWS beyond
                 var anyNws = effectiveWxData.some(e => e.source === 'nws');
-                var allMos  = effectiveWxData.every(e => e.source === 'mos');
+                var allMos  = false;
                 var anySim  = effectiveWxData.some(e => !e.metarLive);
                 var depUtcLabel = tripTargetUtc
                     ? `${String(tripTargetUtc.getUTCHours()).padStart(2,'0')}${String(tripTargetUtc.getUTCMinutes()).padStart(2,'0')}Z ${trip.date}`
                     : trip.date;
 
                 // Build a human-readable description of the data sources used
-                var dataContext = allMos   ? `GFS model forecast · ${depUtcLabel}`
-                    : anyMos   ? `GFS/TAF mixed forecast · ${depUtcLabel}`
-                    : anyTaf   ? `TAF forecast · ${depUtcLabel}`
+                var dataContext = anyTaf   ? `TAF forecast · ${depUtcLabel}`
                     : anyNws   ? `NWS 7-day forecast · ${depUtcLabel}`
                     : isFutureFlight ? `current METAR (no forecast available · ${depUtcLabel})`
                     : anySim ? 'current METAR (⚠ some stations simulated — no live ASOS/AWOS)'
@@ -3202,8 +3141,7 @@
                 var hasMVFR = cats.some(c => c === 'MVFR');
 
                 // Source qualifier for verdict text
-                var srcQual = anyMos ? 'GFS model forecasts'
-                    : anyTaf ? 'TAF forecasts'
+                var srcQual = anyTaf ? 'TAF forecasts'
                     : anyNws ? 'NWS forecast shows'
                     : isFutureFlight ? 'METAR shows'
                     : 'METAR reports';
@@ -3240,7 +3178,7 @@
                 }
                 // ── NWS 7-day accuracy disclaimer (shown whenever NWS drives any station) ──
                 if (anyNws) {
-                    concerns.push({ level: 'medium', icon: 'calendar_today', text: `Note: Flight category is based on the NWS 7-day weather forecast. This is a coarse, daytime-only estimate — no ceiling or visibility detail is available at this range. Re-assess with TAF or MOS data 24–48 h before departure for an accurate flight score.` });
+                    concerns.push({ level: 'medium', icon: 'calendar_today', text: `Note: Flight category is based on the NWS 7-day forecast (trip is >30h out). This is a general area outlook — no ceiling or visibility detail is available at this range. Re-assess with TAF and METAR within 24–30 h of departure for an accurate flight score.` });
                 }
 
                 // ── Simulated-data warning (no ASOS/AWOS at airport) ────────────────
@@ -3335,17 +3273,15 @@
 
                 var recs = [];
                 // Forecast source disclaimer (highest priority for long-range)
-                if (anyMos) {
-                    recs.push(`⚠ Based on GFS model data (${depUtcLabel}) — model accuracy decreases with time. Re-evaluate using TAF data 24h before departure.`);
-                } else if (anyNws) {
-                    recs.push(`⚠ Flight category based on NWS 7-day forecast (${depUtcLabel}) — coarse estimate only. No ceiling/visibility detail available at this range. Re-evaluate using TAF or MOS data 24–48h before departure for an updated flight score.`);
+                if (anyNws) {
+                    recs.push(`⚠ Flight category based on NWS 7-day forecast (${depUtcLabel}) — general area outlook only. No ceiling/visibility detail available at this range. Re-evaluate using TAF and METAR data within 30h of departure.`);
                 } else if (isFutureFlight && anyTaf) {
                     recs.push(`Assessment based on TAF forecast for ${depUtcLabel} — conditions may change. Re-check closer to departure.`);
                 }
                 if (hasIFR || hasLIFR) recs.push('IFR rating and current instrument currency required for this flight.');
                 if (hasMVFR && !hasIFR && !hasLIFR) recs.push('Consider filing IFR or delaying departure until conditions improve to VFR.');
                 if (concerns.some(c => c.icon === 'thunderstorm')) recs.push('Check convective SIGMETs and avoid areas with reported thunderstorm activity.');
-                if (concerns.some(c => c.icon === 'water_drop')) recs.push('GFS indicates precipitation — review AIRMETs for IFR/turbulence and check PIREPs.');
+                if (concerns.some(c => c.icon === 'water_drop')) recs.push('Precipitation forecast — review AIRMETs for IFR/turbulence and check PIREPs.');
                 if (concerns.some(c => c.icon === 'ac_unit')) recs.push('Check PIREPs for airframe icing; confirm aircraft icing certification if applicable.');
                 if (concerns.some(c => c.level === 'high' && c.icon === 'air')) recs.push('Verify crosswind does not exceed aircraft published limits; identify an alternate airport.');
                 if (anySim) recs.push('⚠ One or more airports have no automated weather station. Contact FSS (1-800-WX-BRIEF) or check notam.faa.gov for current conditions at those fields.');
@@ -3435,8 +3371,9 @@
                         dataContext: analysis.dataContext,
                         isFutureFlight: analysis.isFutureFlight,
                         anyTaf: analysis.anyTaf,
-                        anyMos: analysis.anyMos,
-                        allMos: analysis.allMos
+                        anyNws: analysis.anyNws,
+                        anyMos: false,
+                        allMos: false
                     };
                 }
                 return analysis;
@@ -4074,11 +4011,11 @@
                         </div>
                     )}
 
-                    {/* Extended forecast loading indicator */}
-                    {!loadingWx && loadingMos && hoursUntilTrip !== null && hoursUntilTrip > 30 && (
+                    {/* NWS 7-day loading indicator (trips >30h out) */}
+                    {!loadingWx && Object.keys(nwsData).length === 0 && hoursUntilTrip !== null && hoursUntilTrip > 30 && (
                         <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px', background: 'var(--md-sys-color-surface-container)', borderRadius: 12, marginBottom: 12, fontSize: 13, color: 'var(--md-sys-color-on-surface-variant)' }}>
                             <MdIcon name="sync" style={{ fontSize: 17, animation: 'spin 1s linear infinite', flexShrink: 0 }} />
-                            <span>Loading GFS model forecast for departure date…</span>
+                            <span>Loading NWS 7-day forecast for departure date…</span>
                         </div>
                     )}
 
@@ -4148,26 +4085,23 @@
                             {/* ---- Data-source context banner — makes live vs forecast explicit ---- */}
                             {(() => {
                                 var isLive = !finalVerdict.isFutureFlight;
-                                var isMos = finalVerdict.anyMos;
-                                var isTaf = finalVerdict.anyTaf && !isMos;
-                                var isNws = finalVerdict.anyNws && !isMos && !isTaf;
+                                var isTaf = finalVerdict.anyTaf;
+                                var isNws = finalVerdict.anyNws && !isTaf;
                                 var depStr = tripTargetUtc
                                     ? `${String(tripTargetUtc.getUTCHours()).padStart(2,'0')}${String(tripTargetUtc.getUTCMinutes()).padStart(2,'0')}Z · ${trip.date}`
                                     : trip.date || '';
-                                var icon = isLive ? 'sensors' : isMos ? 'model_training' : isTaf ? 'event_available' : isNws ? 'calendar_month' : 'warning_amber';
-                                var color = isLive ? 'var(--md-sys-color-primary)' : isMos ? 'var(--md-sys-color-tertiary)' : isTaf ? 'var(--md-sys-color-secondary)' : isNws ? 'var(--md-sys-color-secondary)' : 'var(--md-sys-color-error)';
-                                var bgColor = isLive ? 'var(--md-sys-color-primary-container)' : isMos ? 'var(--md-sys-color-tertiary-container)' : isTaf ? 'var(--md-sys-color-secondary-container)' : isNws ? 'var(--md-sys-color-secondary-container)' : 'var(--md-sys-color-error-container)';
-                                var onBgColor = isLive ? 'var(--md-sys-color-on-primary-container)' : isMos ? 'var(--md-sys-color-on-tertiary-container)' : isTaf ? 'var(--md-sys-color-on-secondary-container)' : isNws ? 'var(--md-sys-color-on-secondary-container)' : 'var(--md-sys-color-on-error-container)';
-                                var label = isLive ? 'Live Data — Current Conditions' : isMos ? 'GFS Model Forecast — Trip Date' : isTaf ? 'TAF Forecast — Trip Departure Time' : isNws ? 'NWS 7-Day Forecast — Trip Date' : 'No Forecast Available';
+                                var icon = isLive ? 'sensors' : isTaf ? 'event_available' : isNws ? 'calendar_month' : 'warning_amber';
+                                var color = isLive ? 'var(--md-sys-color-primary)' : isTaf ? 'var(--md-sys-color-secondary)' : isNws ? 'var(--md-sys-color-tertiary)' : 'var(--md-sys-color-error)';
+                                var bgColor = isLive ? 'var(--md-sys-color-primary-container)' : isTaf ? 'var(--md-sys-color-secondary-container)' : isNws ? 'var(--md-sys-color-tertiary-container)' : 'var(--md-sys-color-error-container)';
+                                var onBgColor = isLive ? 'var(--md-sys-color-on-primary-container)' : isTaf ? 'var(--md-sys-color-on-secondary-container)' : isNws ? 'var(--md-sys-color-on-tertiary-container)' : 'var(--md-sys-color-on-error-container)';
+                                var label = isLive ? 'Live Data — Current Conditions' : isTaf ? 'TAF Forecast — Trip Departure Time' : isNws ? 'NWS 7-Day Forecast — Trip Date' : 'No Forecast Available';
                                 var desc = isLive
                                     ? 'Weather below reflects live METAR observations right now. Your trip departs soon — these are your actual departure conditions.'
-                                    : isMos
-                                        ? `GFS numerical model data projected to your ${depStr} departure. Good for planning; confidence decreases beyond 48 h.`
-                                        : isTaf
+                                    : isTaf
                                             ? `TAF forecast periods extracted for your ${depStr} departure — each airport shows the period valid at your scheduled time.`
                                             : isNws
-                                                ? `NWS 7-day forecast data for your ${depStr} departure — used when TAF coverage does not reach this far out.`
-                                                : `No TAF or model forecast is available for this date — the route weather below shows current METAR as a reference only.`;
+                                                ? `NWS 7-day forecast for your ${depStr} departure — trip is >30h out, beyond TAF and METAR range.`
+                                                : `No forecast available for this date — route weather shows current METAR as a reference only.`;
                                 return (
                                     <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12, padding: '12px 16px', borderRadius: 12, background: bgColor, marginBottom: 12 }}>
                                         <MdIcon name={icon} style={{ fontSize: 20, color: color, flexShrink: 0, marginTop: 2 }} />
@@ -4188,10 +4122,10 @@
                                     </div>
                                     {finalVerdict && finalVerdict.isFutureFlight && (
                                         <span style={{ fontSize: 12, fontWeight: 700,
-                                            color: finalVerdict.anyMos ? 'var(--md-sys-color-on-tertiary-container)' : 'var(--md-sys-color-on-secondary-container)',
-                                            background: finalVerdict.anyMos ? 'var(--md-sys-color-tertiary-container)' : 'var(--md-sys-color-secondary-container)',
+                                            color: finalVerdict.anyNws ? 'var(--md-sys-color-on-tertiary-container)' : 'var(--md-sys-color-on-secondary-container)',
+                                            background: finalVerdict.anyNws ? 'var(--md-sys-color-tertiary-container)' : 'var(--md-sys-color-secondary-container)',
                                             borderRadius: 4, padding: '2px 6px', letterSpacing: '0.5px', textTransform: 'uppercase' }}>
-                                            {finalVerdict.anyMos ? 'GFS MODEL' : finalVerdict.anyTaf ? 'TAF FORECAST' : finalVerdict.anyNws ? 'NWS FORECAST' : 'FUTURE TRIP'}
+                                            {finalVerdict.anyTaf ? 'TAF FORECAST' : finalVerdict.anyNws ? 'NWS FORECAST' : 'FUTURE TRIP'}
                                         </span>
                                     )}
                                 </div>
@@ -4253,8 +4187,8 @@
                                 )}
                             </div>
 
-                            {/* ---- Windy.com visual forecast (shown for GFS model trips >30h) ---- */}
-                            {finalVerdict.anyMos && (
+                            {/* ---- Windy.com visual forecast (shown for NWS 7-day trips >30h) ---- */}
+                            {finalVerdict.anyNws && (
                                 <div style={{ background: 'var(--md-sys-color-surface-container)', borderRadius: 16, padding: '16px', marginBottom: 16 }}>
                                     <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12, flexWrap: 'wrap' }}>
                                         <MdIcon name="air" style={{ color: 'var(--md-sys-color-tertiary)', fontSize: 18 }} />
@@ -4495,8 +4429,8 @@
                             </div>
 
                             <div style={{ fontSize: 12, color: 'var(--md-sys-color-on-surface-variant)', textAlign: 'center', padding: '4px 16px 20px', lineHeight: 1.5 }}>
-                                {finalVerdict.anyMos
-                                    ? <>GFS model forecast from <strong>AviationWeather.gov</strong> · visual from <strong>Windy.com</strong>. Long-range accuracy is limited — <strong>re-check with TAF 24h before departure</strong>.</>
+                                {finalVerdict.anyNws
+                                    ? <>NWS 7-day forecast from <strong>AviationWeather.gov</strong> · visual from <strong>Windy.com</strong>. Trip is beyond TAF range — <strong>re-check with TAF and METAR within 30h of departure</strong>.</>
                                     : finalVerdict.isFutureFlight
                                     ? <>TAF forecast from <strong>AviationWeather.gov</strong> for trip date/time. Conditions may change — <strong>re-check closer to departure</strong>.</>
                                     : <>Live weather from <strong>AviationWeather.gov</strong>. For situational awareness only.</>
