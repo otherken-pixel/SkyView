@@ -2020,10 +2020,12 @@
 
             return (
                 <div>
-                    <div style={{ fontSize: 11, color: "var(--md-sys-color-on-surface-variant)", marginBottom: 6, display: "flex", alignItems: "center", gap: 4 }}>
+                    <div style={{ fontSize: 11, color: "var(--md-sys-color-on-surface-variant)", marginBottom: 6, display: "flex", alignItems: "center", gap: 4, flexWrap: 'wrap' }}>
                         <MdIcon name="calendar_month" style={{ fontSize: 13 }} />
                         7-Day Forecast
                         {isLive && <span style={{ color: "var(--md-sys-color-primary)", fontWeight: 700, fontSize: 10, background: "var(--md-sys-color-primary-container)", borderRadius: 4, padding: "1px 5px", marginLeft: 4 }}>NWS LIVE</span>}
+                        {!isLive && <span style={{ color: "var(--md-sys-color-on-surface-variant)", fontSize: 10, background: "var(--md-sys-color-surface-container-high)", borderRadius: 4, padding: "1px 5px", marginLeft: 4 }}>SIMULATED</span>}
+                        <span style={{ fontSize: 10, color: "var(--md-sys-color-on-surface-variant)", marginLeft: 2 }}>· General area outlook · Trip-specific analysis in Brief tab</span>
                     </div>
                     <div style={{ display: "flex", gap: 8, overflowX: "auto", padding: "4px 0", WebkitOverflowScrolling: "touch" }}>
                         {items.map((f, i) => {
@@ -2129,11 +2131,17 @@
                 <MdCard style={{ marginBottom: '16px' }}>
                     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 16 }}>
                         <div>
-                            <div style={{ fontSize: 12, fontWeight: 600, color: "var(--md-sys-color-primary)", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 4 }}>{label}</div>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4, flexWrap: 'wrap' }}>
+                                <span style={{ fontSize: 12, fontWeight: 600, color: "var(--md-sys-color-primary)", textTransform: "uppercase", letterSpacing: "0.5px" }}>{label}</span>
+                                <span style={{ fontSize: 10, color: "var(--md-sys-color-on-surface-variant)", background: "var(--md-sys-color-surface-container-high)", borderRadius: 4, padding: "1px 6px" }}>
+                                    {liveMetar ? "Current observations · Live ASOS/AWOS" : "Current observations · Simulated"}
+                                </span>
+                            </div>
                             <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                                 <span className="font-mono" style={{ fontSize: 20, fontWeight: 700 }}>{icao}</span>
                                 {apt && <span style={{ fontSize: 14, color: "var(--md-sys-color-on-surface-variant)" }}>{apt.city}, {apt.state}</span>}
-                                {liveMetar && <span style={{ fontSize: 10, color: "var(--md-sys-color-primary)", background: "var(--md-sys-color-primary-container)", borderRadius: 4, padding: "2px 6px", fontWeight: 700, letterSpacing: "0.5px" }}>LIVE</span>}
+                                {liveMetar && <span style={{ fontSize: 10, color: "var(--md-sys-color-primary)", background: "var(--md-sys-color-primary-container)", borderRadius: 4, padding: "2px 6px", fontWeight: 700, letterSpacing: "0.5px" }}>LIVE NOW</span>}
+                                {!liveMetar && !loadingWx && <span style={{ fontSize: 10, color: "var(--md-sys-color-on-surface-variant)", background: "var(--md-sys-color-surface-container-high)", borderRadius: 4, padding: "2px 6px", fontWeight: 700, letterSpacing: "0.5px" }}>SIM</span>}
                                 {loadingWx && <MdIcon name="sync" style={{ fontSize: 14, color: "var(--md-sys-color-on-surface-variant)", animation: "spin 1s linear infinite" }} />}
                             </div>
                         </div>
@@ -3098,6 +3106,37 @@
                                     <div style={{ fontSize: 13, color: finalVerdict.verdictColor, opacity: 0.85, marginTop: 4, lineHeight: 1.4 }}>{finalVerdict.verdictDesc}</div>
                                 </div>
                             </div>
+
+                            {/* ---- Data-source context banner — makes live vs forecast explicit ---- */}
+                            {(() => {
+                                var isLive = !finalVerdict.isFutureFlight;
+                                var isMos = finalVerdict.anyMos;
+                                var isTaf = finalVerdict.anyTaf && !isMos;
+                                var depStr = tripTargetUtc
+                                    ? `${String(tripTargetUtc.getUTCHours()).padStart(2,'0')}${String(tripTargetUtc.getUTCMinutes()).padStart(2,'0')}Z · ${trip.date}`
+                                    : trip.date || '';
+                                var icon = isLive ? 'sensors' : isMos ? 'model_training' : isTaf ? 'event_available' : 'warning_amber';
+                                var color = isLive ? 'var(--md-sys-color-primary)' : isMos ? 'var(--md-sys-color-tertiary)' : isTaf ? 'var(--md-sys-color-secondary)' : 'var(--md-sys-color-error)';
+                                var bgColor = isLive ? 'var(--md-sys-color-primary-container)' : isMos ? 'var(--md-sys-color-tertiary-container)' : isTaf ? 'var(--md-sys-color-secondary-container)' : 'var(--md-sys-color-error-container)';
+                                var onBgColor = isLive ? 'var(--md-sys-color-on-primary-container)' : isMos ? 'var(--md-sys-color-on-tertiary-container)' : isTaf ? 'var(--md-sys-color-on-secondary-container)' : 'var(--md-sys-color-on-error-container)';
+                                var label = isLive ? 'Live Data — Current Conditions' : isMos ? 'GFS Model Forecast — Trip Date' : isTaf ? 'TAF Forecast — Trip Departure Time' : 'No Forecast Available';
+                                var desc = isLive
+                                    ? 'Weather below reflects live METAR observations right now. Your trip departs soon — these are your actual departure conditions.'
+                                    : isMos
+                                        ? `GFS numerical model data projected to your ${depStr} departure. Good for planning; confidence decreases beyond 48 h.`
+                                        : isTaf
+                                            ? `TAF forecast periods extracted for your ${depStr} departure — each airport shows the period valid at your scheduled time.`
+                                            : `No TAF or model forecast is available for this date — the route weather below shows current METAR as a reference only.`;
+                                return (
+                                    <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12, padding: '12px 16px', borderRadius: 12, background: bgColor, marginBottom: 12 }}>
+                                        <MdIcon name={icon} style={{ fontSize: 20, color: color, flexShrink: 0, marginTop: 2 }} />
+                                        <div>
+                                            <div style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px', color: color, marginBottom: 3 }}>{label}</div>
+                                            <div style={{ fontSize: 12, color: onBgColor, lineHeight: 1.55 }}>{desc}</div>
+                                        </div>
+                                    </div>
+                                );
+                            })()}
 
                             {/* Route weather table */}
                             <div style={{ background: 'var(--md-sys-color-surface-container)', borderRadius: 16, padding: '16px', marginBottom: 16 }}>
