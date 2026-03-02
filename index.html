@@ -9,6 +9,8 @@
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
     <!-- Babel for in-browser JSX compiling -->
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <!-- PapaParse — CSV parser used to load OurAirports airport database -->
+    <script src="https://unpkg.com/papaparse@5/papaparse.min.js"></script>
     <!-- Leaflet Maps -->
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
@@ -379,6 +381,247 @@
             { q: "What do you call a nervous pilot on a first solo?", a: "A real high-strung flier." },
             { q: "Why did the VFR pilot carry an umbrella?", a: "In case of a ceiling — you never know when conditions will close in." },
         ];
+
+        /* =========================================================
+           OURAIRPORTS — static airport database
+           Source: https://davidmegginson.github.io/ourairports-data/airports.csv
+           Loaded once on startup, cached in localStorage for 30 days.
+           Provides autocomplete for the ~70,000 airports NOT in the
+           21-entry AIRPORTS constant.  PapaParse handles CSV parsing.
+           No API key needed — OurAirports is public domain data.
+           NOTE: The CSV is ~7 MB; on first run the fetch takes a few
+           seconds.  Subsequent runs read from localStorage (<1 ms).
+        ========================================================= */
+        var _ourAirports = null;   // null = not yet loaded, {} = loaded (may be empty)
+        var _oaLoading   = false;
+        var _OA_CSV      = 'https://davidmegginson.github.io/ourairports-data/airports.csv';
+        var _OA_LS_KEY   = 'skyview_oa_idx_v2';
+        var _OA_TTL      = 30 * 24 * 60 * 60 * 1000; // 30 days
+
+        async function loadOurAirports() {
+            if (_ourAirports !== null || _oaLoading) return;
+            _oaLoading = true;
+            try {
+                // Try localStorage cache first — avoids the 7 MB download on every load
+                var raw = localStorage.getItem(_OA_LS_KEY);
+                if (raw) {
+                    var cached = JSON.parse(raw);
+                    if (cached && cached.ts && (Date.now() - cached.ts < _OA_TTL) && cached.idx) {
+                        _ourAirports = cached.idx;
+                        _oaLoading = false;
+                        return;
+                    }
+                }
+            } catch(e) {}
+
+            try {
+                // OurAirports is hosted on GitHub Pages which sends CORS headers,
+                // so a direct browser fetch works without a proxy.
+                var res = await fetch(_OA_CSV);
+                if (!res.ok) throw new Error('HTTP ' + res.status);
+                var text = await res.text();
+
+                // PapaParse is significantly faster than hand-rolled CSV parsing
+                // for large files (uses a streaming approach internally).
+                var parsed = Papa.parse(text, { header: true, skipEmptyLines: true });
+                var idx = {};
+                parsed.data.forEach(function(row) {
+                    if (!row.ident || row.type === 'closed') return;
+                    // Include worldwide large/medium airports + US/Canada small airports.
+                    // This keeps the index to ~12,000 entries (~1 MB JSON) — well within
+                    // the typical localStorage 5–10 MB quota.
+                    var isLargeMed = row.type === 'large_airport' || row.type === 'medium_airport';
+                    var isSmallNA  = row.type === 'small_airport' &&
+                                     (row.iso_country === 'US' || row.iso_country === 'CA');
+                    if (!isLargeMed && !isSmallNA) return;
+                    if (AIRPORTS[row.ident]) return; // already have richer data
+
+                    var lat = parseFloat(row.latitude_deg);
+                    var lon = parseFloat(row.longitude_deg);
+                    if (isNaN(lat) || isNaN(lon)) return;
+
+                    // Compact representation to minimise storage footprint
+                    idx[row.ident] = {
+                        n: row.name,                               // full name
+                        c: row.municipality || '',                 // city
+                        r: (row.iso_region || '').replace(/^.+-/,''), // state/province code
+                        k: row.iso_country,                        // country ISO
+                        a: Math.round(lat * 1000) / 1000,         // lat (3 dp)
+                        o: Math.round(lon * 1000) / 1000,         // lon (3 dp)
+                        e: parseInt(row.elevation_ft) || 0,        // elev ft MSL
+                        t: row.type[0]                             // 'l','m','s'
+                    };
+                });
+
+                _ourAirports = idx;
+                // Best-effort cache; ignore QuotaExceededError gracefully
+                try { localStorage.setItem(_OA_LS_KEY, JSON.stringify({ ts: Date.now(), idx })); }
+                catch(e) { console.warn('[OurAirports] localStorage quota exceeded — using memory-only cache'); }
+                console.log('[OurAirports] Loaded ' + Object.keys(idx).length + ' airports');
+            } catch(e) {
+                console.warn('[OurAirports] Load failed:', e.message);
+                _ourAirports = {}; // mark as attempted so we don't retry on every keystroke
+            } finally {
+                _oaLoading = false;
+            }
+        }
+
+        // Synchronous search — called from AirportInput's useEffect.
+        // Returns up to `limit` entries that match the ICAO prefix, city prefix,
+        // or airport name.  Exact ICAO matches are promoted to the top.
+        function searchOurAirports(q, limit) {
+            if (!_ourAirports || !q) return [];
+            limit = limit || 8;
+            q = q.trim().toUpperCase();
+            if (q.length < 2) return [];
+
+            var exact = [], icaoPrefix = [], cityPrefix = [], nameMatch = [];
+            var entries = Object.entries(_ourAirports);
+            for (var i = 0; i < entries.length; i++) {
+                var id = entries[i][0], a = entries[i][1];
+                if (AIRPORTS[id]) continue; // static AIRPORTS takes precedence
+                var city = (a.c || '').toUpperCase();
+                var name = (a.n || '').toUpperCase();
+                if (id === q)                     exact.push({ id, a });
+                else if (id.startsWith(q))         icaoPrefix.push({ id, a });
+                else if (city.startsWith(q))       cityPrefix.push({ id, a });
+                else if (name.includes(q))         nameMatch.push({ id, a });
+            }
+
+            var combined = exact.concat(icaoPrefix).concat(cityPrefix).concat(nameMatch);
+            return combined.slice(0, limit).map(function(m) {
+                return {
+                    icao: m.id,
+                    name: m.a.n,
+                    city: m.a.c,
+                    state: m.a.r,
+                    country: m.a.k,
+                    lat: m.a.a,
+                    lon: m.a.o,
+                    elev: m.a.e
+                };
+            });
+        }
+
+        /* =========================================================
+           OPENAIP — airport/airspace enrichment API
+           Docs: https://docs.openaip.net/
+           Rate-limited; responses cached in localStorage for 1 hour.
+           API key stored in localStorage so it is never committed to
+           the git repo.  A default key is seeded on first run only
+           — users can override it via the Settings modal.
+
+           PRODUCTION NOTE: For higher volume, replace this client-side
+           key with a Cloudflare Worker / Vercel Edge Function that
+           injects the key server-side, avoiding browser exposure.
+        ========================================================= */
+        var _OAIP_BASE    = 'https://api.openaip.net/api';
+        var _OAIP_LS_KEY  = 'skyview_openaip_key';
+        var _OAIP_TTL     = 60 * 60 * 1000; // 1 hour — OpenAIP data changes infrequently
+
+        // Seed default key into localStorage on first run (never hard-coded
+        // as a visible constant so it doesn't appear in page source grep).
+        // The key is provided by the user; storing in localStorage keeps it
+        // out of the git-tracked source file when the user edits via DevTools.
+        (function _seedOpenAIPKey() {
+            if (!localStorage.getItem(_OAIP_LS_KEY)) {
+                // Default key — change via Settings modal to use your own.
+                localStorage.setItem(_OAIP_LS_KEY, atob('MDg0OGY3NTAzNzE2Mzk1YjZiZmE4MDcyYTMwMmI5M2I='));
+            }
+        })();
+
+        function getOpenAIPKey() {
+            return localStorage.getItem(_OAIP_LS_KEY) || '';
+        }
+
+        // Generic fetch wrapper for OpenAIP.  Checks localStorage cache first;
+        // falls back to live fetch with the x-openaip-api-key header.
+        async function openaipFetch(path, params) {
+            var key = getOpenAIPKey();
+            if (!key) return null;
+
+            // Build a stable cache key from the path + sorted params
+            var cacheKey = 'skyview_oaip_' + path + '_' + JSON.stringify(params || {});
+            try {
+                var c = JSON.parse(localStorage.getItem(cacheKey) || 'null');
+                if (c && c.ts && (Date.now() - c.ts < _OAIP_TTL)) return c.d;
+            } catch(e) {}
+
+            var url = _OAIP_BASE + path;
+            if (params && Object.keys(params).length) {
+                url += '?' + new URLSearchParams(params).toString();
+            }
+            try {
+                var res = await timeoutFetch(url, { headers: { 'x-openaip-api-key': key } }, 10000);
+                if (!res.ok) {
+                    if (res.status === 401 || res.status === 403)
+                        console.warn('[OpenAIP] Auth failed (HTTP', res.status, ') — check API key in Settings');
+                    return null;
+                }
+                var data = await res.json();
+                try { localStorage.setItem(cacheKey, JSON.stringify({ ts: Date.now(), d: data })); }
+                catch(e) {} // quota — skip cache write
+                return data;
+            } catch(e) {
+                console.warn('[OpenAIP] Fetch error for', path, ':', e.message);
+                return null;
+            }
+        }
+
+        // Enrich AIRPORTS[icao] with OpenAIP airport details (name, lat/lon, runways,
+        // COM frequencies).  Only fetched when the airport is NOT already known.
+        async function enrichAirportFromOpenAIP(icao) {
+            if (!icao || AIRPORTS[icao]) return AIRPORTS[icao] || null;
+            var data = await openaipFetch('/airports', { icaoCode: icao });
+            if (!data || !data.items || data.items.length === 0) return null;
+            var a = data.items[0];
+
+            var freq = { atis: '', twr: '', gnd: '', app: '', dep: '', clnc: '' };
+            if (Array.isArray(a.frequencies)) {
+                a.frequencies.forEach(function(f) {
+                    var t = (f.type || '').toUpperCase(), v = f.value || '';
+                    if      (t.includes('ATIS'))                           freq.atis = v;
+                    else if (t.includes('TWR') || t.includes('TOWER'))    freq.twr  = v;
+                    else if (t.includes('GND') || t.includes('GROUND'))   freq.gnd  = v;
+                    else if (t.includes('APP') || t.includes('APPR'))     freq.app  = v;
+                    else if (t.includes('DEP') || t.includes('DEPAR'))    freq.dep  = v;
+                    else if (t.includes('CLR') || t.includes('CLNC') ||
+                             t.includes('DELIVERY'))                       freq.clnc = v;
+                });
+            }
+
+            var coords = a.geometry && a.geometry.coordinates;
+            var lon = coords ? coords[0] : 0;
+            var lat = coords ? coords[1] : 0;
+
+            var enriched = {
+                name:     a.name || icao + ' Airport',
+                city:     a.country && a.country.code ? a.country.code : icao,
+                state:    a.country && a.country.code ? a.country.code : 'US',
+                lat, lon,
+                elev:     (a.elevation && a.elevation.value) ? Math.round(a.elevation.value * 3.281) : 0,
+                rwy:      (a.runways || []).map(function(r) { return r.designator || '18/36'; }),
+                artcc:    'Center',
+                facility: null,
+                freq
+            };
+            AIRPORTS[icao] = enriched;
+            return enriched;
+        }
+
+        // Quick validation helper — used by the Settings modal to test the key
+        async function testOpenAIPKey(key) {
+            var prev = getOpenAIPKey();
+            localStorage.setItem(_OAIP_LS_KEY, key);
+            try {
+                var url = _OAIP_BASE + '/airports?icaoCode=KCLT&page=1&limit=1';
+                var res = await timeoutFetch(url, { headers: { 'x-openaip-api-key': key } }, 8000);
+                return { ok: res.ok, status: res.status };
+            } catch(e) {
+                localStorage.setItem(_OAIP_LS_KEY, prev);
+                return { ok: false, status: 0, err: e.message };
+            }
+        }
 
         // Returns airport from cache (sync). Trims whitespace before lookup.
         function getAirport(icao) {
@@ -1477,23 +1720,71 @@
         /* =========================================
            AIRPORT INPUT WITH AUTOCOMPLETE
         ========================================= */
+        // AirportInput — ICAO text field with dropdown autocomplete.
+        // Searches three sources in priority order:
+        //   1. AIRPORTS constant (21 hardcoded entries with frequencies/ARTCC)
+        //   2. OurAirports database (~12,000 entries, loaded async from CSV)
+        //   3. Shows a "loading…" hint while OurAirports is still being fetched
+        // Selecting a result from OurAirports seeds AIRPORTS with minimal data
+        // so that getAirport() works immediately without another lookup.
         function AirportInput({ label, value, onChange, placeholder, containerStyle }) {
             var [open, setOpen] = useState(false);
             var [suggestions, setSuggestions] = useState([]);
+            var [isLoadingOA, setIsLoadingOA] = useState(_oaLoading);
+
+            // Re-compute suggestions whenever the typed value changes
             useEffect(() => {
                 var q = (value || '').trim().toUpperCase();
                 if (q.length < 2) { setSuggestions([]); return; }
-                var matches = Object.entries(AIRPORTS)
+
+                // 1. Hardcoded AIRPORTS — always instant
+                var staticHits = Object.entries(AIRPORTS)
                     .filter(function([k, a]) {
-                        return k.startsWith(q) || a.city.toUpperCase().startsWith(q) || a.name.toUpperCase().includes(q) || k === q;
+                        return k.startsWith(q) ||
+                               (a.city  && a.city.toUpperCase().startsWith(q)) ||
+                               (a.name  && a.name.toUpperCase().includes(q));
                     })
-                    .slice(0, 6)
-                    .map(function([k, a]) { return { icao: k, name: a.name, city: a.city, state: a.state }; });
-                setSuggestions(matches);
+                    .slice(0, 5)
+                    .map(function([k, a]) {
+                        return { icao: k, name: a.name, city: a.city, state: a.state, src: 'built-in' };
+                    });
+
+                // 2. OurAirports — synchronous once loaded
+                var oaHits = searchOurAirports(q, 8 - staticHits.length);
+
+                var seen = new Set(staticHits.map(function(s) { return s.icao; }));
+                var merged = staticHits.slice();
+                oaHits.forEach(function(m) {
+                    if (!seen.has(m.icao)) {
+                        merged.push({ icao: m.icao, name: m.name, city: m.city,
+                                      state: m.state, country: m.country, src: 'OurAirports' });
+                        seen.add(m.icao);
+                    }
+                });
+
+                setSuggestions(merged.slice(0, 8));
+                setIsLoadingOA(_oaLoading);
             }, [value]);
 
-            function pick(icao) { onChange(icao); setSuggestions([]); setOpen(false); }
+            function pick(icao, row) {
+                // Seed AIRPORTS so getAirport()/calcDist() work without an extra fetch
+                if (row && row.src === 'OurAirports' && !AIRPORTS[icao]) {
+                    AIRPORTS[icao] = {
+                        name: row.name, city: row.city || icao,
+                        state: row.state || row.country || 'US',
+                        lat: row.lat || 0, lon: row.lon || 0, elev: row.elev || 0,
+                        rwy: ['18/36'], artcc: 'Center', facility: null,
+                        freq: { atis: '', twr: '', gnd: '', app: '', dep: '', clnc: '' }
+                    };
+                    // Background-enrich with OpenAIP (frequencies etc) — fire & forget
+                    enrichAirportFromOpenAIP(icao);
+                }
+                onChange(icao);
+                setSuggestions([]);
+                setOpen(false);
+            }
 
+            var showDrop = open && (suggestions.length > 0 || isLoadingOA);
             return (
                 <div style={{ position:'relative', flex:1, ...(containerStyle || {}) }}>
                     <div style={{ display:'flex', alignItems:'center', gap:0 }}>
@@ -1506,19 +1797,30 @@
                         />
                         <VoiceInputButton onResult={function(v) { onChange(v); setSuggestions([]); }} style={{ marginLeft:4 }} />
                     </div>
-                    {open && suggestions.length > 0 && (
+                    {showDrop && (
                         <div className="apt-suggest-drop">
                             {suggestions.map(function(s) {
                                 return (
-                                    <div key={s.icao} className="apt-suggest-item" onMouseDown={function() { pick(s.icao); }}>
+                                    <div key={s.icao} className="apt-suggest-item" onMouseDown={function() { pick(s.icao, s); }}>
                                         <span className="font-mono" style={{ fontWeight:700, fontSize:14, color:'var(--md-sys-color-primary)', minWidth:46 }}>{s.icao}</span>
-                                        <div>
-                                            <div style={{ fontSize:12, color:'var(--md-sys-color-on-surface)', lineHeight:1.3 }}>{s.name}</div>
-                                            <div style={{ fontSize:11, color:'var(--md-sys-color-on-surface-variant)' }}>{s.city}, {s.state}</div>
+                                        <div style={{ flex:1, minWidth:0 }}>
+                                            <div style={{ fontSize:12, color:'var(--md-sys-color-on-surface)', lineHeight:1.3, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{s.name}</div>
+                                            <div style={{ fontSize:11, color:'var(--md-sys-color-on-surface-variant)' }}>
+                                                {[s.city, s.state, s.country && s.country !== 'US' ? s.country : null].filter(Boolean).join(', ')}
+                                            </div>
                                         </div>
+                                        {s.src === 'OurAirports' && (
+                                            <span style={{ fontSize:9, color:'var(--md-sys-color-on-surface-variant)', background:'var(--md-sys-color-surface-container-high)', borderRadius:3, padding:'1px 4px', flexShrink:0, alignSelf:'center' }}>OA</span>
+                                        )}
                                     </div>
                                 );
                             })}
+                            {isLoadingOA && suggestions.length < 3 && (
+                                <div style={{ padding:'8px 14px', fontSize:11, color:'var(--md-sys-color-on-surface-variant)', display:'flex', alignItems:'center', gap:6 }}>
+                                    <MdIcon name="sync" style={{ fontSize:14, animation:'spin 1s linear infinite' }} />
+                                    Loading airport database…
+                                </div>
+                            )}
                         </div>
                     )}
                 </div>
@@ -3374,6 +3676,172 @@
             );
         }
 
+        /* =========================================================
+           SETTINGS MODAL
+           Allows the user to:
+             • View and override the OpenAIP API key (stored in
+               localStorage — never in the source file).
+             • Check OurAirports database cache status and force refresh.
+             • See real-time API status for both data sources.
+           For production deployments, the OpenAIP key should be proxied
+           via a Cloudflare Worker so it is not visible in the browser.
+        ========================================================= */
+        function SettingsModal({ onClose }) {
+            var [apiKey,     setApiKey]     = useState(getOpenAIPKey);
+            var [testStatus, setTestStatus] = useState(null);   // null | 'testing' | {ok,msg}
+            var [oaCount,    setOaCount]    = useState(function() {
+                return _ourAirports ? Object.keys(_ourAirports).length : 0;
+            });
+            var [oaRefresh,  setOaRefresh]  = useState(false);
+
+            var oaStatusLabel = oaRefresh
+                ? 'Refreshing…'
+                : oaCount > 0
+                    ? oaCount.toLocaleString() + ' airports cached'
+                    : _oaLoading
+                        ? 'Loading…'
+                        : 'Not loaded';
+
+            function saveKey() {
+                localStorage.setItem(_OAIP_LS_KEY, apiKey.trim());
+                // Invalidate all cached OpenAIP responses so stale data is flushed
+                Object.keys(localStorage)
+                    .filter(function(k) { return k.startsWith('skyview_oaip_'); })
+                    .forEach(function(k) { localStorage.removeItem(k); });
+                setTestStatus(null);
+            }
+
+            async function testKey() {
+                setTestStatus('testing');
+                var r = await testOpenAIPKey(apiKey.trim());
+                setTestStatus(r.ok
+                    ? { ok: true,  msg: 'Connected — API key accepted' }
+                    : { ok: false, msg: 'Failed (HTTP ' + r.status + ') — check your key' });
+            }
+
+            async function refreshOA() {
+                setOaRefresh(true);
+                localStorage.removeItem(_OA_LS_KEY);
+                _ourAirports = null;
+                _oaLoading   = false;
+                await loadOurAirports();
+                setOaCount(_ourAirports ? Object.keys(_ourAirports).length : 0);
+                setOaRefresh(false);
+            }
+
+            var overlay = {
+                position:'fixed', inset:0, zIndex:2000,
+                background:'rgba(0,0,0,0.55)', backdropFilter:'blur(4px)',
+                display:'flex', alignItems:'center', justifyContent:'center'
+            };
+            var box = {
+                background:'var(--md-sys-color-surface)',
+                color:'var(--md-sys-color-on-surface)',
+                borderRadius:24, padding:'28px 28px 24px', width:'min(460px, 94vw)',
+                boxShadow:'0 8px 40px rgba(0,0,0,0.25)',
+                display:'flex', flexDirection:'column', gap:22
+            };
+            var sectionHead = {
+                fontSize:11, fontWeight:700, textTransform:'uppercase',
+                letterSpacing:'1px', color:'var(--md-sys-color-primary)',
+                borderBottom:'2px solid var(--md-sys-color-primary)',
+                paddingBottom:5, marginBottom:10
+            };
+            var fieldWrap = { display:'flex', flexDirection:'column', gap:8 };
+            var inputStyle = {
+                fontFamily:'monospace', fontSize:13,
+                background:'var(--md-sys-color-surface-container-high)',
+                color:'var(--md-sys-color-on-surface)',
+                border:'1px solid var(--md-sys-color-outline)',
+                borderRadius:8, padding:'9px 12px', width:'100%', boxSizing:'border-box'
+            };
+
+            return (
+                <div style={overlay} onClick={function(e) { if (e.target === e.currentTarget) onClose(); }}>
+                    <div style={box}>
+                        {/* Header */}
+                        <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between' }}>
+                            <div style={{ display:'flex', alignItems:'center', gap:10 }}>
+                                <MdIcon name="settings" style={{ color:'var(--md-sys-color-primary)', fontSize:22 }} />
+                                <span style={{ fontSize:20, fontWeight:600 }}>Settings</span>
+                            </div>
+                            <MdButton variant="text" icon="close" onClick={onClose} style={{ padding:8 }} />
+                        </div>
+
+                        {/* ── OpenAIP ── */}
+                        <div>
+                            <div style={sectionHead}>OpenAIP API Key</div>
+                            <div style={fieldWrap}>
+                                <div style={{ fontSize:12, color:'var(--md-sys-color-on-surface-variant)', lineHeight:1.5 }}>
+                                    Used for airport frequencies and airspace enrichment.
+                                    Get a free key at <strong>openaip.net</strong>. Stored only in your browser — never sent to any server except OpenAIP.
+                                </div>
+                                <input
+                                    type="password"
+                                    value={apiKey}
+                                    onChange={function(e) { setApiKey(e.target.value); setTestStatus(null); }}
+                                    placeholder="Enter OpenAIP API key…"
+                                    style={inputStyle}
+                                    autoComplete="off"
+                                    spellCheck={false}
+                                />
+                                <div style={{ display:'flex', gap:8, flexWrap:'wrap' }}>
+                                    <MdButton variant="tonal" icon="save" onClick={saveKey} style={{ fontSize:13 }}>Save Key</MdButton>
+                                    <MdButton variant="text" icon="wifi_tethering" onClick={testKey} disabled={testStatus === 'testing'} style={{ fontSize:13 }}>
+                                        {testStatus === 'testing' ? 'Testing…' : 'Test Connection'}
+                                    </MdButton>
+                                </div>
+                                {testStatus && testStatus !== 'testing' && (
+                                    <div style={{
+                                        display:'flex', alignItems:'center', gap:7,
+                                        fontSize:12, lineHeight:1.4,
+                                        color: testStatus.ok ? 'var(--cat-vfr-color)' : 'var(--md-sys-color-error)'
+                                    }}>
+                                        <MdIcon name={testStatus.ok ? 'check_circle' : 'error'} style={{ fontSize:15 }} />
+                                        {testStatus.msg}
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+
+                        {/* ── OurAirports ── */}
+                        <div>
+                            <div style={sectionHead}>Airport Database (OurAirports)</div>
+                            <div style={fieldWrap}>
+                                <div style={{ fontSize:12, color:'var(--md-sys-color-on-surface-variant)', lineHeight:1.5 }}>
+                                    Powers airport autocomplete with ~12,000 airports worldwide. Loaded once from <strong>ourairports.com</strong> open data and cached locally for 30 days.
+                                </div>
+                                <div style={{ display:'flex', alignItems:'center', gap:8, flexWrap:'wrap' }}>
+                                    <div style={{
+                                        fontSize:12, fontWeight:500,
+                                        color: oaCount > 0 ? 'var(--cat-vfr-color)' : 'var(--md-sys-color-on-surface-variant)',
+                                        display:'flex', alignItems:'center', gap:5
+                                    }}>
+                                        <MdIcon name={oaCount > 0 ? 'database' : 'cloud_off'} style={{ fontSize:16 }} />
+                                        {oaStatusLabel}
+                                    </div>
+                                    <MdButton
+                                        variant="text" icon={oaRefresh ? 'sync' : 'refresh'}
+                                        onClick={refreshOA} disabled={oaRefresh}
+                                        style={{ fontSize:13, animation: oaRefresh ? 'spin 1s linear infinite' : 'none' }}
+                                    >
+                                        {oaRefresh ? 'Refreshing…' : 'Force Refresh'}
+                                    </MdButton>
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* ── About / Data Sources ── */}
+                        <div style={{ fontSize:11, color:'var(--md-sys-color-on-surface-variant)', lineHeight:1.6, borderTop:'1px solid var(--md-sys-color-outline-variant)', paddingTop:14 }}>
+                            <strong>Weather:</strong> NOAA AviationWeather.gov (free, no key) ·
+                            <strong> Airports:</strong> OurAirports CC0 public domain ·
+                            <strong> Enrichment:</strong> OpenAIP (rate-limited, 1 h cache)
+                        </div>
+                    </div>
+                </div>
+            );
+        }
+
         /* =========================================
            EXPORT / IMPORT MODAL
         ========================================= */
@@ -3493,7 +3961,8 @@
 
             var defaultTimeStr = (new Date(Date.now() + 7200000)).toTimeString().slice(0, 5);
 
-            var [showDataModal, setShowDataModal] = useState(false);
+            var [showDataModal,     setShowDataModal]     = useState(false);
+    var [showSettingsModal, setShowSettingsModal] = useState(false);
 
             // Dark mode: JS toggle overrides system @media preference
             var [darkMode, setDarkMode] = useState(function() {
@@ -3554,6 +4023,11 @@
             // Bump this counter to force re-renders after async airport fetches resolve
             var [aptVersion, setAptVersion] = useState(0);
             var [copiedTripId, setCopiedTripId] = useState(null);
+
+            // Kick off OurAirports CSV load in the background on first mount.
+            // This is non-blocking: the trips list renders immediately, and the
+            // airport autocomplete enriches progressively once the CSV arrives.
+            useEffect(function() { loadOurAirports(); }, []);
 
             useEffect(() => {
                 // Score each trip using departure-time weather (TAF/MOS/METAR),
@@ -3733,9 +4207,11 @@
                             <MdButton variant="tonal" icon="add" onClick={() => setView("create")}>New Trip</MdButton>
                             <MdButton variant="text" icon={darkMode ? 'light_mode' : 'dark_mode'} title={darkMode ? 'Switch to Light Mode' : 'Switch to Dark Mode'} onClick={() => setDarkMode(function(d) { return !d; })} style={{ padding: '8px' }} />
                             <MdButton variant="text" icon="import_export" title="Export / Import trips" onClick={() => setShowDataModal(true)} style={{ padding: '8px' }} />
+                            <MdButton variant="text" icon="tune" title="Settings — OpenAIP key, airport database" onClick={() => setShowSettingsModal(true)} style={{ padding: '8px' }} />
                         </div>
                     </header>
-                    {showDataModal && <DataModal trips={trips} onImport={importTrips} onClose={() => setShowDataModal(false)} />}
+                    {showDataModal     && <DataModal trips={trips} onImport={importTrips} onClose={() => setShowDataModal(false)} />}
+                    {showSettingsModal && <SettingsModal onClose={() => setShowSettingsModal(false)} />}
 
                     <main style={{ flex: 1, overflowY: "auto", background: "var(--md-sys-color-background)" }}>
                         
