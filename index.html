@@ -2369,7 +2369,7 @@
 
         // ── HazardAdvisories component ───────────────────────────────────────────
         // Shows active SIGMETs, G-AIRMETs, and CWAs along the route corridor
-        function HazardAdvisories({ sigmets, gairmets, cwas, loading }) {
+        function HazardAdvisories({ sigmets, gairmets, cwas, loading, onAskAI }) {
             if (loading) return (
                 <div style={{ display:'flex', alignItems:'center', gap:8, padding:'10px 14px', background:'var(--md-sys-color-surface-container)', borderRadius:12, marginBottom:12, fontSize:13, color:'var(--md-sys-color-on-surface-variant)' }}>
                     <MdIcon name="sync" style={{ fontSize:16, animation:'spin 1s linear infinite', flexShrink:0 }} />
@@ -2406,9 +2406,15 @@
                 <div style={{ background:'var(--md-sys-color-surface-container)', borderRadius:16, padding:16, marginBottom:16 }}>
                     <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:12 }}>
                         <MdIcon name="notifications_active" style={{ color:'var(--md-sys-color-error)', fontSize:18 }} />
-                        <span style={{ fontWeight:700, fontSize:13, textTransform:'uppercase', letterSpacing:'0.5px', color:'var(--md-sys-color-error)' }}>
+                        <span style={{ fontWeight:700, fontSize:13, textTransform:'uppercase', letterSpacing:'0.5px', color:'var(--md-sys-color-error)', flex:1 }}>
                             Active Hazard Advisories ({items.length})
                         </span>
+                        {onAskAI && (
+                            <MdButton variant="text" icon="psychology" style={{ padding:'2px 8px', marginRight:-8 }}
+                                onClick={() => onAskAI('Explain the pilot impact and required precautions for these active hazard advisories:\n\n' + items.map(function(it) { return '[' + it.label + '] ' + it.text; }).join('\n'))}>
+                                Ask AI
+                            </MdButton>
+                        )}
                     </div>
                     <div style={{ display:'flex', flexDirection:'column', gap:10 }}>
                         {items.map(function(item, i) {
@@ -3073,9 +3079,17 @@
                             })()}
 
                             <div style={{ marginTop: 16, paddingTop: 16, borderTop: "1px solid var(--md-sys-color-outline-variant)" }}>
-                                <MdButton variant="text" onClick={() => setExpanded(!expanded)} icon={expanded ? "expand_less" : "expand_more"} style={{ padding: '4px 8px', margin: '-4px -8px' }}>
-                                    {expanded ? "Hide TAF" : "View TAF"}
-                                </MdButton>
+                                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                                    <MdButton variant="text" onClick={() => setExpanded(!expanded)} icon={expanded ? "expand_less" : "expand_more"} style={{ padding: '4px 8px', margin: '-4px -8px' }}>
+                                        {expanded ? "Hide TAF" : "View TAF"}
+                                    </MdButton>
+                                    {onAskAI && (
+                                        <MdButton variant="text" icon="psychology" style={{ padding: '4px 10px' }}
+                                            onClick={() => onAskAI('Explain the specific weather hazards in this METAR for a VFR pilot:\n' + metar.raw)}>
+                                            Ask AI
+                                        </MdButton>
+                                    )}
+                                </div>
                                 {expanded && <div className="font-mono" style={{ background: "var(--md-sys-color-surface-container-lowest)", borderRadius: "8px", padding: "12px", fontSize: 12, color: "var(--md-sys-color-on-surface)", lineHeight: 1.8, marginTop: 12 }}>{taf}</div>}
                             </div>
                         </>
@@ -3336,7 +3350,7 @@
             else { URL.revokeObjectURL(url); }
         }
 
-        function BriefingPanel({ trip, onScoreUpdate, onFratUpdate, tab }) {
+        function BriefingPanel({ trip, onScoreUpdate, onFratUpdate, tab, pendingAiPrompt, onClearPendingPrompt }) {
             // --- Auto-briefing state ---
             var [wxData, setWxData] = useState(null);
             var [loadingWx, setLoadingWx] = useState(true);
@@ -3382,7 +3396,23 @@
             var [chatMessages, setChatMessages] = useState([]);
             var [chatInput, setChatInput] = useState('');
             var [chatLoading, setChatLoading] = useState(false);
-            var chatEndRef = React.useRef(null);
+            var chatEndRef   = React.useRef(null);
+            var chatInputRef = React.useRef(null);
+
+            // Inject a pre-loaded prompt from an external "Ask AI" button
+            // (e.g. from WeatherDetail or HazardAdvisories on a different tab)
+            React.useEffect(function() {
+                if (!pendingAiPrompt) return;
+                setShowAI(true);
+                setChatInput(pendingAiPrompt);
+                if (onClearPendingPrompt) onClearPendingPrompt();
+                setTimeout(function() {
+                    if (chatInputRef.current) {
+                        chatInputRef.current.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                        chatInputRef.current.focus();
+                    }
+                }, 200);
+            }, [pendingAiPrompt]);
 
             // --- Voice output ---
             var [speaking, setSpeaking] = useState(false);
@@ -4754,7 +4784,17 @@
                             })()}
 
                             {/* Active Hazard Advisories (SIGMETs / AIRMETs / CWAs) */}
-                            <HazardAdvisories sigmets={sigmets} gairmets={gairmets} cwas={cwas} loading={loadingAdvisory} />
+                            <HazardAdvisories sigmets={sigmets} gairmets={gairmets} cwas={cwas} loading={loadingAdvisory}
+                                onAskAI={function(prompt) {
+                                    setShowAI(true);
+                                    setChatInput(prompt);
+                                    setTimeout(function() {
+                                        if (chatInputRef.current) {
+                                            chatInputRef.current.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                                            chatInputRef.current.focus();
+                                        }
+                                    }, 200);
+                                }} />
 
                             {/* Winds Aloft card */}
                             <WindsAloftCard allRoutePts={allRoutePts} stations={windsAloft} cruiseAlt={ac.alt || 6000} />
@@ -5028,6 +5068,7 @@
                                         )}
                                         <div style={{ display: 'flex', gap: 8, padding: '10px 14px', borderTop: chatMessages.length ? '1px solid var(--md-sys-color-outline-variant)' : 'none', alignItems: 'flex-end', background: 'var(--md-sys-color-surface-container)' }}>
                                             <textarea
+                                                ref={chatInputRef}
                                                 value={chatInput}
                                                 onChange={e => setChatInput(e.target.value)}
                                                 onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendChat(); } }}
@@ -5556,6 +5597,7 @@
             var [showLoginModal,    setShowLoginModal]    = useState(false);
             var [showHamburger,    setShowHamburger]     = useState(false);
             var [isDecodedWx,      setIsDecodedWx]       = useState(false);
+            var [pendingAiPrompt,  setPendingAiPrompt]   = useState(null);
 
             // Auto-close the login modal when auth resolves to a signed-in user
             useEffect(function() {
@@ -6413,6 +6455,8 @@
                                             {(tab === "brief" || tab === "export") && (
                                                 <WxErrorBoundary label="Flight Briefing">
                                                     <BriefingPanel trip={activeTrip} tab={tab}
+                                                    pendingAiPrompt={pendingAiPrompt}
+                                                    onClearPendingPrompt={() => setPendingAiPrompt(null)}
                                                     onScoreUpdate={score => {
                                                         setActiveTrip(prev => prev ? { ...prev, goScore: score } : prev);
                                                         setTrips(prev => prev.map(t => t.id === activeTrip.id ? { ...t, goScore: score } : t));
@@ -6433,7 +6477,7 @@
                                                                 <h2 style={{fontSize: 14, fontWeight: 700, margin: "0 0 12px", color: "var(--text-secondary)", textTransform: "uppercase", letterSpacing: "0.8px"}}>
                                                                     {label} · {getAirport(rt)?.city || rt}
                                                                 </h2>
-                                                                <WeatherDetail icao={rt} label={label} isDecodedWx={isDecodedWx} />
+                                                                <WeatherDetail icao={rt} label={label} isDecodedWx={isDecodedWx} onAskAI={function(prompt) { setTab('brief'); setPendingAiPrompt(prompt); }} />
                                                                 <WxErrorBoundary label={`Forecast Strip (${rt})`} compact>
                                                                     <ForecastStrip icao={rt} selectedDay={forecastDay} onSelect={setForecastDay} />
                                                                 </WxErrorBoundary>
