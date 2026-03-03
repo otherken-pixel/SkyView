@@ -5833,7 +5833,9 @@
                     try {
                         var raw = localStorage.getItem('flightscore_trips');
                         var saved = raw ? JSON.parse(raw) : null;
-                        var initial = (Array.isArray(saved) && saved.length > 0) ? saved : DEFAULT_TRIPS;
+                        // Use DEFAULT_TRIPS only on a true first visit (no key in localStorage).
+                        // If localStorage has [] the user intentionally deleted all trips — keep it empty.
+                        var initial = Array.isArray(saved) ? saved : DEFAULT_TRIPS;
                         skipNextFirestoreWrite.current = true;
                         setTrips(initial);
                         setTripsLoaded(true);
@@ -5864,10 +5866,19 @@
                             }
                         } catch(e) {}
                     } else {
-                        // First sign-in: try to migrate localStorage trips to the cloud
+                        // Firestore has no trips — either first sign-in or user deleted everything.
+                        // If localStorage has been set before (even as []), the user has used the
+                        // app before and intentionally has no trips; keep it empty.
+                        // Only show DEFAULT_TRIPS for a genuine first-time sign-in.
                         migrateLocalStorageTrips(user.uid).then(function(migrated) {
                             skipNextFirestoreWrite.current = true;
-                            var initial = migrated.length > 0 ? migrated : DEFAULT_TRIPS;
+                            var hasLocalData = (function() {
+                                try { return localStorage.getItem('flightscore_trips') !== null; }
+                                catch(e) { return false; }
+                            })();
+                            var initial = migrated.length > 0 ? migrated
+                                        : hasLocalData    ? []
+                                        :                   DEFAULT_TRIPS;
                             setTrips(initial);
                             setTripsLoaded(true);
                             prevTripIds.current = new Set(initial.map(function(t) { return String(t.id); }));
@@ -6039,6 +6050,7 @@
                 var label = trip ? (trip.name || (trip.dep + ' → ' + trip.arr)) : 'this trip';
                 if (!window.confirm('Delete "' + label + '"? This cannot be undone.')) return;
                 setTrips(prev => prev.filter(t => t.id !== id));
+                scoredTripSigs.current.delete(String(id));
                 try { localStorage.removeItem('flightscore_frat_' + id); } catch(e) {}
                 if (activeTrip && activeTrip.id === id) { setActiveTrip(null); setView("trips"); }
             }
