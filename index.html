@@ -5082,7 +5082,7 @@
            Supports Google OAuth and email/password
            sign-in + account creation in one view.
         ========================================= */
-        function LoginScreen() {
+        function LoginScreen({ onClose }) {
             var [mode,            setMode]            = useState('signin'); // 'signin' | 'signup'
             var [email,           setEmail]           = useState('');
             var [password,        setPassword]        = useState('');
@@ -5149,12 +5149,26 @@
             return (
                 <div style={{
                     position: 'fixed', inset: 0, zIndex: 9999,
-                    background: 'var(--bg-elevated)',
+                    background: 'rgba(0,0,0,0.6)',
+                    backdropFilter: 'blur(4px)',
                     display: 'flex', flexDirection: 'column',
                     alignItems: 'center', justifyContent: 'center',
                     padding: '24px 16px', overflowY: 'auto'
                 }}>
-                    <div style={{ width: '100%', maxWidth: 360 }}>
+                    <div style={{ width: '100%', maxWidth: 360, background: 'var(--bg-elevated)', borderRadius: 20, padding: '32px 28px', position: 'relative', boxShadow: '0 24px 80px rgba(0,0,0,0.5)' }}>
+
+                        {/* ── Close button ───────────────────────────────── */}
+                        {onClose && (
+                            <button onClick={onClose} style={{
+                                position: 'absolute', top: 14, right: 14,
+                                background: 'var(--card-high)', border: 'none', borderRadius: 8,
+                                width: 32, height: 32, cursor: 'pointer',
+                                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                color: 'var(--text-secondary)'
+                            }}>
+                                <MdIcon name="close" style={{ fontSize: 18 }} />
+                            </button>
+                        )}
 
                         {/* ── Branding ───────────────────────────────────── */}
                         <div style={{ display:'flex', flexDirection:'column', alignItems:'center', marginBottom: 28 }}>
@@ -5267,8 +5281,22 @@
                         </button>
 
                         <p style={{ marginTop:22, fontSize:12, color:'var(--text-tertiary)', textAlign:'center', lineHeight:1.5 }}>
-                            Your flight data is private and only accessible to your account.
+                            Sign in to sync your flights across devices.
                         </p>
+
+                        {/* ── Continue as Guest ──────────────────────────── */}
+                        {onClose && (
+                            <button onClick={onClose} style={{
+                                display: 'block', width: '100%', marginTop: 10,
+                                background: 'none', border: 'none',
+                                color: 'var(--text-tertiary)', fontSize: 13,
+                                cursor: 'pointer', padding: '6px 0',
+                                fontFamily: 'var(--font-sans)',
+                                textDecoration: 'underline'
+                            }}>
+                                Continue without an account
+                            </button>
+                        )}
                     </div>
                 </div>
             );
@@ -5296,6 +5324,12 @@
 
             var [showDataModal,     setShowDataModal]     = useState(false);
     var [showSettingsModal, setShowSettingsModal] = useState(false);
+            var [showLoginModal,    setShowLoginModal]    = useState(false);
+
+            // Auto-close the login modal when auth resolves to a signed-in user
+            useEffect(function() {
+                if (user && user !== undefined) setShowLoginModal(false);
+            }, [user]);
 
             // Dark mode: follows system preference by default; manual toggle saves an explicit override.
             // Uses a separate 'flightscore_theme_manual' key so an explicit choice is
@@ -5410,9 +5444,27 @@
                 });
             }, []);
 
-            // ── Load trips from Firestore when user logs in ─────────────────────
+            // ── Load trips from Firestore when user logs in (or localStorage for guests) ─
             useEffect(function() {
-                if (!user) { setTrips([]); setTripsLoaded(false); prevTripIds.current = null; return; }
+                if (user === undefined) return; // still resolving auth
+                if (!user) {
+                    // Guest mode: load from localStorage
+                    try {
+                        var raw = localStorage.getItem('flightscore_trips');
+                        var saved = raw ? JSON.parse(raw) : null;
+                        var initial = (Array.isArray(saved) && saved.length > 0) ? saved : DEFAULT_TRIPS;
+                        skipNextFirestoreWrite.current = true;
+                        setTrips(initial);
+                        setTripsLoaded(true);
+                        prevTripIds.current = new Set(initial.map(function(t) { return String(t.id); }));
+                    } catch(e) {
+                        skipNextFirestoreWrite.current = true;
+                        setTrips(DEFAULT_TRIPS);
+                        setTripsLoaded(true);
+                        prevTripIds.current = new Set(DEFAULT_TRIPS.map(function(t) { return String(t.id); }));
+                    }
+                    return;
+                }
                 var { collection, getDocs } = _fbFns();
                 getDocs(collection(_fbDb(), 'users', user.uid, 'trips')).then(function(snap) {
                     var loaded = snap.docs.map(function(d) { return d.data(); });
@@ -5449,11 +5501,15 @@
                 });
             }, [user]);
 
-            // ── Persist trips to Firestore on every state change ────────────────
-            // Skips the echo-back after a Firestore-triggered setTrips() call.
+            // ── Persist trips on every state change (Firestore for auth, localStorage for guest) ─
             useEffect(function() {
-                if (!user || !tripsLoaded) return;
+                if (!tripsLoaded) return;
                 if (skipNextFirestoreWrite.current) { skipNextFirestoreWrite.current = false; return; }
+                if (!user) {
+                    // Guest mode: persist to localStorage
+                    try { localStorage.setItem('flightscore_trips', JSON.stringify(trips)); } catch(e) {}
+                    return;
+                }
                 var { collection: col, doc: fbDoc, setDoc, deleteDoc } = _fbFns();
                 var db = _fbDb();
                 var newIds = new Set(trips.map(function(t) { return String(t.id); }));
@@ -5590,7 +5646,14 @@
 
             function deleteTrip(id) {
                 setTrips(prev => prev.filter(t => t.id !== id));
+                try { localStorage.removeItem('flightscore_frat_' + id); } catch(e) {}
                 if (activeTrip && activeTrip.id === id) { setActiveTrip(null); setView("trips"); }
+            }
+
+            function duplicateTrip(trip, e) {
+                e && e.stopPropagation();
+                var tripCopy = { ...trip, id: Date.now(), name: trip.name + ' (Copy)' };
+                setTrips(function(prev) { return [tripCopy].concat(prev); });
             }
 
             var tabList = [
@@ -5626,7 +5689,7 @@
                     <div style={{ color:'var(--text-tertiary)', fontSize:14 }}>Loading…</div>
                 </div>
             );
-            if (user === null) return <LoginScreen />;
+            // user === null means guest mode — app is fully usable without login
 
             return (
                 <div style={{ display: "flex", flexDirection: "column", height: "100vh", overflow: "hidden", background: 'var(--bg-elevated)' }}>
@@ -5676,30 +5739,42 @@
                             <IconBtn icon="import_export" title="Export / Import trips" onClick={() => setShowDataModal(true)} />
                             <IconBtn icon="tune" title="Settings" onClick={() => setShowSettingsModal(true)} />
 
-                            {/* ── User avatar + Sign Out ───────────────────────── */}
+                            {/* ── User avatar + Sign Out / Login ─────────────── */}
                             <div style={{ display:'flex', alignItems:'center', gap:7, marginLeft:4, paddingLeft:10, borderLeft:'1px solid var(--card-border)' }}>
-                                {user.photoURL && (
-                                    <img
-                                        src={user.photoURL}
-                                        alt={user.displayName || 'User'}
-                                        referrerPolicy="no-referrer"
-                                        style={{ width:28, height:28, borderRadius:'50%', objectFit:'cover', border:'1.5px solid var(--card-border)', flexShrink:0 }}
-                                    />
+                                {user ? (
+                                    <>
+                                        {user.photoURL && (
+                                            <img
+                                                src={user.photoURL}
+                                                alt={user.displayName || 'User'}
+                                                referrerPolicy="no-referrer"
+                                                style={{ width:28, height:28, borderRadius:'50%', objectFit:'cover', border:'1.5px solid var(--card-border)', flexShrink:0 }}
+                                            />
+                                        )}
+                                        <span style={{ fontSize:13, fontWeight:600, color:'var(--text-secondary)', maxWidth:72, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>
+                                            {(user.displayName || 'Pilot').split(' ')[0]}
+                                        </span>
+                                        <button
+                                            onClick={() => { var { auth, signOut } = window.firebaseAuth; signOut(auth); }}
+                                            style={{ background:'var(--card-high)', border:'none', borderRadius:8, padding:'5px 10px', fontSize:12, fontWeight:600, color:'var(--text-secondary)', cursor:'pointer', whiteSpace:'nowrap' }}
+                                        >
+                                            Sign Out
+                                        </button>
+                                    </>
+                                ) : (
+                                    <button
+                                        onClick={() => setShowLoginModal(true)}
+                                        style={{ background:'var(--accent)', color:'#fff', border:'none', borderRadius:8, padding:'6px 14px', fontSize:13, fontWeight:600, cursor:'pointer', whiteSpace:'nowrap' }}
+                                    >
+                                        Login
+                                    </button>
                                 )}
-                                <span style={{ fontSize:13, fontWeight:600, color:'var(--text-secondary)', maxWidth:72, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>
-                                    {(user.displayName || 'Pilot').split(' ')[0]}
-                                </span>
-                                <button
-                                    onClick={() => { var { auth, signOut } = window.firebaseAuth; signOut(auth); }}
-                                    style={{ background:'var(--card-high)', border:'none', borderRadius:8, padding:'5px 10px', fontSize:12, fontWeight:600, color:'var(--text-secondary)', cursor:'pointer', whiteSpace:'nowrap' }}
-                                >
-                                    Sign Out
-                                </button>
                             </div>
                         </div>
                     </header>
                     {showDataModal     && <DataModal trips={trips} onImport={importTrips} onClose={() => setShowDataModal(false)} />}
                     {showSettingsModal && <SettingsModal onClose={() => setShowSettingsModal(false)} />}
+                    {showLoginModal    && <LoginScreen onClose={() => setShowLoginModal(false)} />}
 
                     <main style={{ flex: 1, overflowY: "auto", background: "var(--bg-elevated)" }}>
                         
@@ -5824,6 +5899,7 @@
                                                     {/* Action icons */}
                                                     <div style={{ display: 'flex', flexDirection: 'column', gap: 4, flexShrink: 0 }} onClick={e => e.stopPropagation()}>
                                                         <IconBtn icon={copiedTripId === trip.id ? "check" : "share"} title="Copy link" onClick={e => copyTripLink(trip, e)} active={copiedTripId === trip.id} />
+                                                        <IconBtn icon="content_copy" title="Duplicate" onClick={e => duplicateTrip(trip, e)} />
                                                         <IconBtn icon="edit" title="Edit" onClick={e => editTrip(trip, e)} />
                                                         <IconBtn icon="delete" title="Delete" onClick={() => deleteTrip(trip.id)} />
                                                     </div>
