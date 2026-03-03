@@ -351,12 +351,134 @@
 
         /* Print styles live in the standalone tab opened by handlePrint(). */
     </style>
+    <!-- ═══════════════════════════════════════════════════════════════════
+         FIREBASE v10 — Authentication + Firestore
+         Loaded as an ES module so the v9+ tree-shakeable CDN build works.
+         All exports are pinned to window globals so the Babel/JSX block below
+         can access them without its own import statements.
+    ═══════════════════════════════════════════════════════════════════════ -->
+    <script type="module">
+        import { initializeApp }
+            from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js';
+        import {
+            getAuth, GoogleAuthProvider,
+            signInWithPopup, signOut, onAuthStateChanged
+        } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js';
+        import {
+            getFirestore, collection, doc,
+            getDocs, setDoc, deleteDoc
+        } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
+
+        // ── Paste your Firebase project config here ───────────────────────
+        const firebaseConfig = {
+            apiKey:            "YOUR_API_KEY",
+            authDomain:        "YOUR_PROJECT_ID.firebaseapp.com",
+            projectId:         "YOUR_PROJECT_ID",
+            storageBucket:     "YOUR_PROJECT_ID.appspot.com",
+            messagingSenderId: "YOUR_MESSAGING_SENDER_ID",
+            appId:             "YOUR_APP_ID"
+        };
+        // ──────────────────────────────────────────────────────────────────
+
+        const app  = initializeApp(firebaseConfig);
+        const auth = getAuth(app);
+        const db   = getFirestore(app);
+
+        // Expose instances + functions as window globals so the Babel
+        // <script type="text/babel"> block can access them without imports.
+        window._fbAuth = auth;
+        window._fbDb   = db;
+        window._fbFns  = {
+            GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged,
+            collection, doc, getDocs, setDoc, deleteDoc
+        };
+    </script>
 </head>
 <body>
     <div id="root"></div>
 
     <script type="text/babel">
-        const { useState, useEffect, useCallback, useMemo } = React;
+        const { useState, useEffect, useCallback, useMemo, useRef } = React;
+
+        /* =========================================
+           FIREBASE HELPERS
+           Thin wrappers so JSX code never touches
+           window globals directly.
+        ========================================= */
+        function _fbAuth() { return window._fbAuth; }
+        function _fbDb()   { return window._fbDb;   }
+        function _fbFns()  { return window._fbFns || {}; }
+
+        /* ─────────────────────────────────────────
+           useAuth — tracks Firebase auth state
+           Returns:
+             undefined  → still resolving (show spinner)
+             null       → logged out (show LoginScreen)
+             object     → Firebase user (show app)
+        ───────────────────────────────────────── */
+        function useAuth() {
+            var [user, setUser] = useState(undefined);
+            useEffect(function() {
+                var auth = _fbAuth();
+                var { onAuthStateChanged } = _fbFns();
+                if (!auth || !onAuthStateChanged) { setUser(null); return; }
+                return onAuthStateChanged(auth, function(u) { setUser(u || null); });
+            }, []);
+            return user;
+        }
+
+        /* ─────────────────────────────────────────
+           DEFAULT_TRIPS — shown on a brand-new account
+           (no localStorage and no Firestore data)
+        ───────────────────────────────────────── */
+        var DEFAULT_TRIPS = [
+            { id: 1, dep: "KCLT", arr: "KATL", aircraft: "c172",  date: "2026-02-28", time: "09:00", wps: [], name: "Charlotte to Atlanta",  goScore: null },
+            { id: 2, dep: "KJFK", arr: "KBOS", aircraft: "sr22",  date: "2026-03-01", time: "14:30", wps: ["KORH"], name: "New York to Boston", goScore: null },
+        ];
+
+        /* ─────────────────────────────────────────
+           migrateLocalStorageTrips
+           Called once on first Firestore sign-in when
+           the user's cloud collection is empty.
+           Reads flightscore_trips + per-trip FRAT keys
+           from localStorage, writes them all to
+           users/{uid}/trips in Firestore, then clears
+           the localStorage entry so migration only runs
+           once.  Returns the migrated array (may be []).
+        ───────────────────────────────────────── */
+        async function migrateLocalStorageTrips(uid) {
+            try {
+                var raw = localStorage.getItem('flightscore_trips');
+                if (!raw) return [];
+                var trips = JSON.parse(raw);
+                if (!Array.isArray(trips) || trips.length === 0) return [];
+
+                // Merge per-trip FRAT data that was stored under separate keys
+                trips = trips.map(function(t) {
+                    try {
+                        var frat = JSON.parse(localStorage.getItem('flightscore_frat_' + t.id) || 'null');
+                        if (frat && frat.answers) {
+                            return Object.assign({}, t, { fratAnswers: frat.answers, fratSkipped: !!frat.skipped });
+                        }
+                    } catch(e) {}
+                    return t;
+                });
+
+                var { collection, doc, setDoc } = _fbFns();
+                var db = _fbDb();
+                await Promise.all(trips.map(function(t) {
+                    return setDoc(doc(db, 'users', uid, 'trips', String(t.id)), t);
+                }));
+
+                // Remove localStorage copy so we never migrate twice
+                localStorage.removeItem('flightscore_trips');
+                console.log('[FlightScore] Migrated', trips.length, 'local trip(s) to Firestore for', uid);
+                return trips;
+            } catch(e) {
+                console.warn('[FlightScore] Local-to-cloud migration failed:', e);
+                return [];
+            }
+        }
 
         /* =========================================
            DATA & UTILITIES
@@ -4925,22 +5047,117 @@
         }
 
         /* =========================================
+           LOGIN SCREEN
+           Shown when the user is not authenticated.
+           Features a prominent "Sign in with Google"
+           button using Firebase signInWithPopup.
+        ========================================= */
+        function LoginScreen() {
+            var [loading, setLoading] = useState(false);
+            var [error,   setError]   = useState(null);
+
+            async function handleGoogleSignIn() {
+                setLoading(true); setError(null);
+                try {
+                    var { GoogleAuthProvider, signInWithPopup } = _fbFns();
+                    var provider = new GoogleAuthProvider();
+                    await signInWithPopup(_fbAuth(), provider);
+                } catch(e) {
+                    if (e.code !== 'auth/popup-closed-by-user') {
+                        setError('Sign-in failed: ' + (e.message || 'Unknown error'));
+                    }
+                } finally { setLoading(false); }
+            }
+
+            return (
+                <div style={{
+                    position: 'fixed', inset: 0, zIndex: 9999,
+                    background: 'var(--bg-elevated)',
+                    display: 'flex', flexDirection: 'column',
+                    alignItems: 'center', justifyContent: 'center',
+                    padding: 24
+                }}>
+                    {/* App icon */}
+                    <div style={{
+                        width: 76, height: 76, borderRadius: 22,
+                        background: 'var(--accent)', marginBottom: 28,
+                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        boxShadow: 'var(--accent-glow)'
+                    }}>
+                        <MdIcon name="flight" style={{ fontSize: 42, color: '#fff' }} />
+                    </div>
+
+                    <h1 style={{ fontSize: 30, fontWeight: 800, letterSpacing: '-0.5px', margin: '0 0 8px', color: 'var(--text-primary)' }}>
+                        FlightScore
+                    </h1>
+                    <p style={{ fontSize: 15, color: 'var(--text-secondary)', margin: '0 0 40px', textAlign: 'center', maxWidth: 300, lineHeight: 1.5 }}>
+                        Your personal aviation dashboard.<br/>Sign in to sync flights across all your devices.
+                    </p>
+
+                    {/* Google Sign-In button */}
+                    <button
+                        onClick={handleGoogleSignIn}
+                        disabled={loading}
+                        style={{
+                            display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 12,
+                            background: loading ? 'var(--card-mid)' : '#ffffff',
+                            color: '#3c4043',
+                            border: '1px solid rgba(0,0,0,0.15)',
+                            borderRadius: 12,
+                            padding: '13px 24px',
+                            fontSize: 15, fontWeight: 600,
+                            cursor: loading ? 'default' : 'pointer',
+                            width: '100%', maxWidth: 300,
+                            boxShadow: '0 2px 10px rgba(0,0,0,0.18)',
+                            transition: 'opacity 0.15s, box-shadow 0.15s',
+                            opacity: loading ? 0.7 : 1
+                        }}
+                    >
+                        {loading ? (
+                            <span style={{ color: 'var(--text-secondary)' }}>Signing in…</span>
+                        ) : (
+                            <>
+                                {/* Google "G" logo */}
+                                <svg width="20" height="20" viewBox="0 0 48 48" style={{ flexShrink: 0 }}>
+                                    <path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/>
+                                    <path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/>
+                                    <path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/>
+                                    <path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.18 1.48-4.97 2.31-8.16 2.31-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/>
+                                    <path fill="none" d="M0 0h48v48H0z"/>
+                                </svg>
+                                Sign in with Google
+                            </>
+                        )}
+                    </button>
+
+                    {error && (
+                        <div style={{
+                            marginTop: 20, padding: '10px 16px', borderRadius: 10,
+                            background: 'var(--nogo-bg)', color: 'var(--nogo)',
+                            fontSize: 13, maxWidth: 300, textAlign: 'center', lineHeight: 1.4
+                        }}>
+                            {error}
+                        </div>
+                    )}
+
+                    <p style={{ marginTop: 36, fontSize: 12, color: 'var(--text-tertiary)', textAlign: 'center', maxWidth: 260, lineHeight: 1.5 }}>
+                        Your flight data is private and only accessible to your account.
+                    </p>
+                </div>
+            );
+        }
+
+        /* =========================================
            MAIN APPLICATION COMPONENT
         ========================================= */
         function App() {
-            // Restore the last active view from sessionStorage so that a
-            // pull-to-refresh (which reloads the page but keeps the session)
-            // lands back on the briefing panel rather than the trips list.
-            // We validate that the target trip still exists before restoring.
-            var [view, setView] = useState(() => {
-                try {
-                    if (sessionStorage.getItem('sc_view') !== 'briefing') return 'trips';
-                    var id = sessionStorage.getItem('sc_active_trip_id');
-                    if (!id) return 'trips';
-                    var saved = JSON.parse(localStorage.getItem('flightscore_trips') || '[]');
-                    return saved.some(t => String(t.id) === id) ? 'briefing' : 'trips';
-                } catch(e) { return 'trips'; }
-            });
+            // ── Auth state ──────────────────────────────────────────────────────
+            // undefined = resolving, null = logged out, object = authenticated
+            var user = useAuth();
+            // Start at the trips list; active-trip / briefing-view is restored
+            // after the Firestore load completes (inside the load useEffect below)
+            // so we always have valid trip objects before navigating to 'briefing'.
+            var [view, setView] = useState('trips');
             // Pick a random joke once per page load (useMemo with no deps = computed
             // once on mount; a hard refresh reloads the page giving a new pick).
             var dadJoke = useMemo(
@@ -4996,25 +5213,17 @@
                 } catch(e) {}
             }, [view, activeTrip, tab]);
 
-            // Trips — initialized from localStorage, falling back to sample trips
-            var [trips, setTrips] = useState(() => {
-                try {
-                    var saved = localStorage.getItem('flightscore_trips');
-                    if (saved) return JSON.parse(saved);
-                } catch(e) {}
-                return [
-                    { id: 1, dep: "KCLT", arr: "KATL", aircraft: "c172", date: "2026-02-28", time: "09:00", wps: [], name: "Charlotte to Atlanta", goScore: null },
-                    { id: 2, dep: "KJFK", arr: "KBOS", aircraft: "sr22", date: "2026-03-01", time: "14:30", wps: ["KORH"], name: "New York to Boston", goScore: null },
-                ];
-            });
-            var [activeTrip, setActiveTrip] = useState(() => {
-                try {
-                    var id = sessionStorage.getItem('sc_active_trip_id');
-                    if (!id) return null;
-                    var saved = JSON.parse(localStorage.getItem('flightscore_trips') || '[]');
-                    return saved.find(t => String(t.id) === id) || null;
-                } catch(e) { return null; }
-            });
+            // ── Trips — loaded from Firestore after auth ────────────────────────
+            var [trips, setTrips]           = useState([]);
+            var [tripsLoaded, setTripsLoaded] = useState(false);
+            // skipNextFirestoreWrite: set to true before setTrips() calls that come
+            // FROM Firestore so we don't echo them back (avoids a write-loop).
+            var skipNextFirestoreWrite = useRef(false);
+            // prevTripIds: used to detect deletions between renders so we can issue
+            // deleteDoc for removed trips instead of re-reading the whole collection.
+            var prevTripIds = useRef(null);
+
+            var [activeTrip, setActiveTrip] = useState(null);
             var [tab, setTab] = useState(() => {
                 try { return sessionStorage.getItem('sc_tab') || 'brief'; }
                 catch(e) { return 'brief'; }
@@ -5074,9 +5283,66 @@
                 });
             }, []);
 
-            // Persist trips to localStorage on every change
-            useEffect(() => {
-                try { localStorage.setItem('flightscore_trips', JSON.stringify(trips)); } catch(e) {}
+            // ── Load trips from Firestore when user logs in ─────────────────────
+            useEffect(function() {
+                if (!user) { setTrips([]); setTripsLoaded(false); prevTripIds.current = null; return; }
+                var { collection, getDocs } = _fbFns();
+                getDocs(collection(_fbDb(), 'users', user.uid, 'trips')).then(function(snap) {
+                    var loaded = snap.docs.map(function(d) { return d.data(); });
+                    if (loaded.length > 0) {
+                        // Data exists in Firestore — load it directly
+                        skipNextFirestoreWrite.current = true;
+                        setTrips(loaded);
+                        setTripsLoaded(true);
+                        prevTripIds.current = new Set(loaded.map(function(t) { return String(t.id); }));
+                        // Restore briefing view if sessionStorage remembers it
+                        try {
+                            if (sessionStorage.getItem('sc_view') === 'briefing') {
+                                var sid = sessionStorage.getItem('sc_active_trip_id');
+                                var restored = loaded.find(function(t) { return String(t.id) === sid; });
+                                if (restored) { setActiveTrip(restored); setView('briefing'); }
+                            }
+                        } catch(e) {}
+                    } else {
+                        // First sign-in: try to migrate localStorage trips to the cloud
+                        migrateLocalStorageTrips(user.uid).then(function(migrated) {
+                            skipNextFirestoreWrite.current = true;
+                            var initial = migrated.length > 0 ? migrated : DEFAULT_TRIPS;
+                            setTrips(initial);
+                            setTripsLoaded(true);
+                            prevTripIds.current = new Set(initial.map(function(t) { return String(t.id); }));
+                        });
+                    }
+                }).catch(function(e) {
+                    console.warn('[FlightScore] Firestore load failed:', e);
+                    skipNextFirestoreWrite.current = true;
+                    setTrips(DEFAULT_TRIPS);
+                    setTripsLoaded(true);
+                    prevTripIds.current = new Set(DEFAULT_TRIPS.map(function(t) { return String(t.id); }));
+                });
+            }, [user]);
+
+            // ── Persist trips to Firestore on every state change ────────────────
+            // Skips the echo-back after a Firestore-triggered setTrips() call.
+            useEffect(function() {
+                if (!user || !tripsLoaded) return;
+                if (skipNextFirestoreWrite.current) { skipNextFirestoreWrite.current = false; return; }
+                var { collection: col, doc: fbDoc, setDoc, deleteDoc } = _fbFns();
+                var db = _fbDb();
+                var newIds = new Set(trips.map(function(t) { return String(t.id); }));
+                // Write / update every current trip
+                trips.forEach(function(t) {
+                    setDoc(fbDoc(db, 'users', user.uid, 'trips', String(t.id)), t).catch(console.warn);
+                });
+                // Delete trips that were removed since the last render
+                if (prevTripIds.current) {
+                    prevTripIds.current.forEach(function(id) {
+                        if (!newIds.has(id)) {
+                            deleteDoc(fbDoc(db, 'users', user.uid, 'trips', id)).catch(console.warn);
+                        }
+                    });
+                }
+                prevTripIds.current = newIds;
             }, [trips]);
 
             // Handle #share= URL hash — offer to import a shared trip on load
@@ -5223,6 +5489,18 @@
                 </button>
             );
 
+            // ── Auth guards (must come after all hooks) ─────────────────────────
+            if (user === undefined) return (
+                // Firebase is still resolving the auth state — show a minimal splash
+                <div style={{ display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', height:'100vh', background:'var(--bg-elevated)', gap:16 }}>
+                    <div style={{ width:52, height:52, borderRadius:16, background:'var(--accent)', display:'flex', alignItems:'center', justifyContent:'center', boxShadow:'var(--accent-glow)' }}>
+                        <MdIcon name="flight" style={{ fontSize:30, color:'#fff' }} />
+                    </div>
+                    <div style={{ color:'var(--text-tertiary)', fontSize:14 }}>Loading…</div>
+                </div>
+            );
+            if (user === null) return <LoginScreen />;
+
             return (
                 <div style={{ display: "flex", flexDirection: "column", height: "100vh", overflow: "hidden", background: 'var(--bg-elevated)' }}>
 
@@ -5270,6 +5548,27 @@
                             }} />
                             <IconBtn icon="import_export" title="Export / Import trips" onClick={() => setShowDataModal(true)} />
                             <IconBtn icon="tune" title="Settings" onClick={() => setShowSettingsModal(true)} />
+
+                            {/* ── User avatar + Sign Out ───────────────────────── */}
+                            <div style={{ display:'flex', alignItems:'center', gap:7, marginLeft:4, paddingLeft:10, borderLeft:'1px solid var(--card-border)' }}>
+                                {user.photoURL && (
+                                    <img
+                                        src={user.photoURL}
+                                        alt={user.displayName || 'User'}
+                                        referrerPolicy="no-referrer"
+                                        style={{ width:28, height:28, borderRadius:'50%', objectFit:'cover', border:'1.5px solid var(--card-border)', flexShrink:0 }}
+                                    />
+                                )}
+                                <span style={{ fontSize:13, fontWeight:600, color:'var(--text-secondary)', maxWidth:72, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>
+                                    {(user.displayName || 'Pilot').split(' ')[0]}
+                                </span>
+                                <button
+                                    onClick={() => { var { signOut } = _fbFns(); signOut(_fbAuth()); }}
+                                    style={{ background:'var(--card-high)', border:'none', borderRadius:8, padding:'5px 10px', fontSize:12, fontWeight:600, color:'var(--text-secondary)', cursor:'pointer', whiteSpace:'nowrap' }}
+                                >
+                                    Sign Out
+                                </button>
+                            </div>
                         </div>
                     </header>
                     {showDataModal     && <DataModal trips={trips} onImport={importTrips} onClose={() => setShowDataModal(false)} />}
