@@ -2919,6 +2919,7 @@
             return dirs[Math.round(deg / 22.5) % 16];
         }
         function _decodeMetarWind(metar) {
+            if (!metar.wind) return 'N/A';
             var m = metar.wind.match(/^(VRB|\d{3})(\d{2,3})(G(\d{2,3}))?KT$/);
             if (!m) return metar.wind;
             var dir = m[1], spd = parseInt(m[2]), gst = m[4] ? parseInt(m[4]) : null;
@@ -2926,6 +2927,7 @@
             return dirStr + ' at ' + spd + ' kts' + (gst ? ', gusting ' + gst + ' kts' : '');
         }
         function _decodeMetarVis(vis) {
+            if (!vis) return 'N/A';
             if (vis === 'P6SM') return 'Greater than 6 miles';
             var m = vis.match(/^([\d\/ ]+)SM$/);
             if (m) { var v = m[1].trim(); return v + ' statute mile' + (v === '1' ? '' : 's'); }
@@ -2940,9 +2942,11 @@
             return name;
         }
         function _decodeMetarSky(sky) {
+            if (!sky) return 'N/A';
             return sky.split(' ').map(_decodeMetarSkyLayer).join(', ');
         }
         function _decodeMetarTemp(temp) {
+            if (!temp) return 'N/A';
             var parts = temp.split('/');
             function parseC(s) { var neg = s.startsWith('M'); return neg ? -parseInt(s.slice(1)) : parseInt(s); }
             var tc = parseC(parts[0]), dc = parseC(parts[1] || '0');
@@ -2950,12 +2954,13 @@
             return tc + '\u00b0C (' + tf + '\u00b0F)\u2002\u00b7\u2002Dewpt ' + dc + '\u00b0C (' + df + '\u00b0F)';
         }
         function _decodeMetarAlt(alt) {
+            if (!alt) return 'N/A';
             var m = alt.match(/^A(\d{4})$/);
             if (!m) return alt;
             return (parseInt(m[1]) / 100).toFixed(2) + ' inHg';
         }
 
-        function WeatherDetail({ icao, label, isDecodedWx }) {
+        function WeatherDetail({ icao, label, isDecodedWx, onAskAI }) {
             const [expanded, setExpanded] = useState(false);
             const [aptReady, setAptReady] = useState(!!AIRPORTS[icao]);
             const [liveMetar, setLiveMetar] = useState(null);
@@ -6391,7 +6396,7 @@
                                         <div style={{ textAlign: 'center', padding: '60px 24px', color: 'var(--text-tertiary)' }}>
                                             <MdIcon name="flight_takeoff" style={{ fontSize: 48, marginBottom: 12, display: 'block', opacity: 0.4 }} />
                                             <div style={{ fontSize: 16, fontWeight: 600, marginBottom: 6, color: 'var(--text-secondary)' }}>No flights yet</div>
-                                            <div style={{ fontSize: 13 }}>Tap <strong style={{ color: 'var(--accent)' }}>New</strong> to plan your first flight.</div>
+                                            <div style={{ fontSize: 13 }}>Use the <strong style={{ color: 'var(--accent)' }}>New Flight</strong> button above to plan your first flight.</div>
                                         </div>
                                     )}
 
