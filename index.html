@@ -359,39 +359,39 @@
     ═══════════════════════════════════════════════════════════════════════ -->
     <script type="module">
         import { initializeApp }
-            from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js';
+            from 'https://www.gstatic.com/firebasejs/10.8.1/firebase-app.js';
         import {
             getAuth, GoogleAuthProvider,
             signInWithPopup, signOut, onAuthStateChanged,
             createUserWithEmailAndPassword, signInWithEmailAndPassword
-        } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js';
+        } from 'https://www.gstatic.com/firebasejs/10.8.1/firebase-auth.js';
         import {
             getFirestore, collection, doc,
             getDocs, setDoc, deleteDoc
-        } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
+        } from 'https://www.gstatic.com/firebasejs/10.8.1/firebase-firestore.js';
 
         // ── Paste your Firebase project config here ───────────────────────
         const firebaseConfig = {
-            apiKey:            "YOUR_API_KEY",
-            authDomain:        "YOUR_PROJECT_ID.firebaseapp.com",
-            projectId:         "YOUR_PROJECT_ID",
-            storageBucket:     "YOUR_PROJECT_ID.appspot.com",
-            messagingSenderId: "YOUR_MESSAGING_SENDER_ID",
-            appId:             "YOUR_APP_ID"
+            apiKey:            "PASTE_API_KEY_HERE",
+            authDomain:        "flightscore-ca7e0.firebaseapp.com",
+            projectId:         "flightscore-ca7e0",
+            storageBucket:     "flightscore-ca7e0.appspot.com",
+            messagingSenderId: "41035538367",
+            appId:             "PASTE_APP_ID_HERE"
         };
         // ──────────────────────────────────────────────────────────────────
 
-        const app  = initializeApp(firebaseConfig);
-        const auth = getAuth(app);
-        const db   = getFirestore(app);
+        const app            = initializeApp(firebaseConfig);
+        const auth           = getAuth(app);
+        const db             = getFirestore(app);
+        const googleProvider = new GoogleAuthProvider();
 
-        // Expose instances + functions as window globals so the Babel
-        // <script type="text/babel"> block can access them without imports.
-        window._fbAuth = auth;
-        window._fbDb   = db;
-        window._fbFns  = {
-            GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged,
-            createUserWithEmailAndPassword, signInWithEmailAndPassword,
+        // Expose all instances + functions via window.firebaseAuth so the
+        // Babel/JSX block can access them without its own import statements.
+        window.firebaseAuth = {
+            auth, db, googleProvider,
+            signInWithPopup, signInWithEmailAndPassword,
+            createUserWithEmailAndPassword, onAuthStateChanged, signOut,
             collection, doc, getDocs, setDoc, deleteDoc
         };
     </script>
@@ -407,9 +407,9 @@
            Thin wrappers so JSX code never touches
            window globals directly.
         ========================================= */
-        function _fbAuth() { return window._fbAuth; }
-        function _fbDb()   { return window._fbDb;   }
-        function _fbFns()  { return window._fbFns || {}; }
+        function _fbAuth() { return window.firebaseAuth && window.firebaseAuth.auth; }
+        function _fbDb()   { return window.firebaseAuth && window.firebaseAuth.db;   }
+        function _fbFns()  { return window.firebaseAuth || {}; }
 
         /* ─────────────────────────────────────────
            useAuth — tracks Firebase auth state
@@ -423,7 +423,7 @@
             useEffect(function() {
                 // The Firebase <script type="module"> is deferred and may not have
                 // run yet when Babel processes this block.  Poll every 50 ms until
-                // window._fbAuth is populated before subscribing to auth state.
+                // window.firebaseAuth is populated before subscribing to auth state.
                 // This prevents the "GoogleAuthProvider is not a constructor" race.
                 var unsubscribe = null;
                 var tid = null;
@@ -5104,11 +5104,11 @@
                 }
                 setLoading(true); setError(null);
                 try {
-                    var { createUserWithEmailAndPassword, signInWithEmailAndPassword } = _fbFns();
+                    var { auth, createUserWithEmailAndPassword, signInWithEmailAndPassword } = window.firebaseAuth;
                     if (mode === 'signup') {
-                        await createUserWithEmailAndPassword(_fbAuth(), email.trim(), password);
+                        await createUserWithEmailAndPassword(auth, email.trim(), password);
                     } else {
-                        await signInWithEmailAndPassword(_fbAuth(), email.trim(), password);
+                        await signInWithEmailAndPassword(auth, email.trim(), password);
                     }
                 } catch(err) {
                     setError(friendlyError(err));
@@ -5119,9 +5119,8 @@
             async function handleGoogleSignIn() {
                 setLoading(true); setError(null);
                 try {
-                    var { GoogleAuthProvider, signInWithPopup } = _fbFns();
-                    var provider = new GoogleAuthProvider();
-                    await signInWithPopup(_fbAuth(), provider);
+                    var { auth, googleProvider, signInWithPopup } = window.firebaseAuth;
+                    await signInWithPopup(auth, googleProvider);
                 } catch(err) {
                     if (err.code !== 'auth/popup-closed-by-user') {
                         setError(friendlyError(err));
@@ -5681,7 +5680,7 @@
                                     {(user.displayName || 'Pilot').split(' ')[0]}
                                 </span>
                                 <button
-                                    onClick={() => { var { signOut } = _fbFns(); signOut(_fbAuth()); }}
+                                    onClick={() => { var { auth, signOut } = window.firebaseAuth; signOut(auth); }}
                                     style={{ background:'var(--card-high)', border:'none', borderRadius:8, padding:'5px 10px', fontSize:12, fontWeight:600, color:'var(--text-secondary)', cursor:'pointer', whiteSpace:'nowrap' }}
                                 >
                                     Sign Out
