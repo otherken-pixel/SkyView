@@ -462,8 +462,8 @@
            (no localStorage and no Firestore data)
         ───────────────────────────────────────── */
         var DEFAULT_TRIPS = [
-            { id: 1, dep: "KCLT", arr: "KATL", aircraft: "c172",  date: "2026-02-28", time: "09:00", wps: [], name: "Charlotte to Atlanta",  goScore: null },
-            { id: 2, dep: "KJFK", arr: "KBOS", aircraft: "sr22",  date: "2026-03-01", time: "14:30", wps: ["KORH"], name: "New York to Boston", goScore: null },
+            { id: 1, dep: "KCLT", arr: "KATL", aircraft: "c172",  date: "2026-03-06", time: "09:00", wps: [], name: "Charlotte to Atlanta",  goScore: null },
+            { id: 2, dep: "KJFK", arr: "KBOS", aircraft: "sr22",  date: "2026-03-08", time: "14:30", wps: ["KORH"], name: "New York to Boston", goScore: null },
         ];
 
         /* ─────────────────────────────────────────
@@ -971,16 +971,6 @@
                     return { type: kw, severity: sev, text };
                 }).filter(function(n) { return n.text; });
             } catch(e) { return []; }
-        }
-
-        function calcGoScore(dep, arr) {
-            var dm = makeMetar(dep);
-            var am = makeMetar(arr);
-            if (!dm || !am) { return 50; }
-            var catScores = { VFR: 95, MVFR: 65, IFR: 30, LIFR: 10 };
-            var windPen = Math.max(0, (dm.wspd - 15) * 3) + Math.max(0, (am.wspd - 15) * 3);
-            var score = Math.round((catScores[dm.cat] || 50) * 0.45 + (catScores[am.cat] || 50) * 0.45 - windPen + randInt(-5, 5));
-            return Math.max(5, Math.min(99, score));
         }
 
         function getGoColor(s) { return s >= 75 ? "var(--md-sys-color-primary)" : s >= 50 ? "var(--md-sys-color-warning)" : "var(--md-sys-color-error)"; }
@@ -5539,7 +5529,7 @@
                     if (sharedTrip && sharedTrip.dep && sharedTrip.arr) {
                         var label = sharedTrip.name || (sharedTrip.dep + ' → ' + sharedTrip.arr);
                         if (window.confirm('Add shared trip "' + label + '" to your list?')) {
-                            setTrips(prev => [{ ...sharedTrip, id: Date.now() }, ...prev]);
+                            setTrips(prev => [{ ...sharedTrip, id: crypto.randomUUID() }, ...prev]);
                         }
                     }
                 } catch(e) {}
@@ -5645,6 +5635,9 @@
             }
 
             function deleteTrip(id) {
+                var trip = trips.find(t => t.id === id);
+                var label = trip ? (trip.name || (trip.dep + ' → ' + trip.arr)) : 'this trip';
+                if (!window.confirm('Delete "' + label + '"? This cannot be undone.')) return;
                 setTrips(prev => prev.filter(t => t.id !== id));
                 try { localStorage.removeItem('flightscore_frat_' + id); } catch(e) {}
                 if (activeTrip && activeTrip.id === id) { setActiveTrip(null); setView("trips"); }
@@ -5652,7 +5645,7 @@
 
             function duplicateTrip(trip, e) {
                 e && e.stopPropagation();
-                var tripCopy = { ...trip, id: Date.now(), name: trip.name + ' (Copy)' };
+                var tripCopy = { ...trip, id: crypto.randomUUID(), name: trip.name + ' (Copy)' };
                 setTrips(function(prev) { return [tripCopy].concat(prev); });
             }
 
