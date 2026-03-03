@@ -358,6 +358,58 @@
             .briefing-content { padding: 16px 12px 80px !important; }
         }
 
+        /* ── Header responsive: hide icon btns on mobile, show hamburger ── */
+        .header-icon-btns { display: flex; align-items: center; gap: 6px; }
+        .hamburger-btn { display: none !important; }
+        @media (max-width: 640px) {
+            .header-icon-btns { display: none !important; }
+            .hamburger-btn { display: inline-flex !important; }
+        }
+
+        /* ── Hamburger dropdown menu ── */
+        .hamburger-dropdown {
+            position: absolute;
+            top: calc(100% + 8px);
+            right: 0;
+            background: var(--card);
+            border: 1px solid var(--card-border);
+            border-radius: 16px;
+            padding: 8px;
+            min-width: 210px;
+            box-shadow: 0 8px 32px rgba(0,0,0,0.45);
+            z-index: 300;
+            display: flex;
+            flex-direction: column;
+            gap: 2px;
+        }
+        body.light-theme .hamburger-dropdown { box-shadow: 0 8px 32px rgba(0,0,0,0.15); }
+        .hamburger-dropdown-item {
+            display: flex; align-items: center; gap: 12px;
+            padding: 11px 14px; border-radius: 10px;
+            background: none; border: none; cursor: pointer;
+            color: var(--text-primary); font-size: 14px; font-weight: 500;
+            font-family: var(--font-sans); width: 100%; text-align: left;
+            transition: background 0.15s;
+        }
+        .hamburger-dropdown-item:hover { background: var(--card-high); }
+        .hamburger-dropdown-sep {
+            height: 1px; background: var(--card-border); margin: 4px 6px;
+        }
+
+        /* ── FAB: New Flight ── */
+        .fab-new-flight {
+            position: fixed; bottom: 28px; right: 24px;
+            background: var(--accent); color: #fff;
+            border: none; border-radius: 16px; padding: 15px 22px;
+            font-size: 15px; font-weight: 600; cursor: pointer;
+            display: flex; align-items: center; gap: 8px;
+            box-shadow: 0 4px 18px rgba(10,132,255,0.4);
+            z-index: 50; font-family: var(--font-sans);
+            transition: transform 0.15s, box-shadow 0.15s;
+        }
+        .fab-new-flight:hover { transform: translateY(-2px); box-shadow: 0 6px 26px rgba(10,132,255,0.55); }
+        body.light-theme .fab-new-flight { box-shadow: 0 4px 18px rgba(0,122,255,0.35); }
+
         /* Print styles live in the standalone tab opened by handlePrint(). */
     </style>
     <!-- ═══════════════════════════════════════════════════════════════════
@@ -5381,6 +5433,7 @@
             var [showDataModal,     setShowDataModal]     = useState(false);
     var [showSettingsModal, setShowSettingsModal] = useState(false);
             var [showLoginModal,    setShowLoginModal]    = useState(false);
+            var [showHamburger,    setShowHamburger]     = useState(false);
 
             // Auto-close the login modal when auth resolves to a signed-in user
             useEffect(function() {
@@ -5808,22 +5861,16 @@
                             )}
                         </div>
                         <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                            {view !== "briefing" && (
-                                <button onClick={() => setView("create")} style={{
-                                    background: 'var(--accent)', color: '#fff', border: 'none', borderRadius: 20,
-                                    padding: '7px 16px', fontSize: 14, fontWeight: 600, cursor: 'pointer',
-                                    display: 'flex', alignItems: 'center', gap: 6
-                                }}>
-                                    <MdIcon name="add" style={{ fontSize: 18 }} /> New
-                                </button>
-                            )}
-                            <IconBtn icon={darkMode ? 'light_mode' : 'dark_mode'} title={darkMode ? 'Light Mode' : 'Dark Mode'} onClick={() => {
-                                var next = !darkMode;
-                                setDarkMode(next);
-                                localStorage.setItem('flightscore_theme_manual', next ? 'dark' : 'light');
-                            }} />
-                            <IconBtn icon="import_export" title="Export / Import trips" onClick={() => setShowDataModal(true)} />
-                            <IconBtn icon="tune" title="Settings" onClick={() => setShowSettingsModal(true)} />
+                            {/* Desktop icon buttons — hidden on mobile via CSS */}
+                            <div className="header-icon-btns">
+                                <IconBtn icon={darkMode ? 'light_mode' : 'dark_mode'} title={darkMode ? 'Light Mode' : 'Dark Mode'} onClick={() => {
+                                    var next = !darkMode;
+                                    setDarkMode(next);
+                                    localStorage.setItem('flightscore_theme_manual', next ? 'dark' : 'light');
+                                }} />
+                                <IconBtn icon="import_export" title="Export / Import trips" onClick={() => setShowDataModal(true)} />
+                                <IconBtn icon="tune" title="Settings" onClick={() => setShowSettingsModal(true)} />
+                            </div>
 
                             {/* ── User avatar + Sign Out / Login ─────────────── */}
                             <div style={{ display:'flex', alignItems:'center', gap:7, marginLeft:4, paddingLeft:10, borderLeft:'1px solid var(--card-border)' }}>
@@ -5837,10 +5884,10 @@
                                                 style={{ width:28, height:28, borderRadius:'50%', objectFit:'cover', border:'1.5px solid var(--card-border)', flexShrink:0 }}
                                             />
                                         )}
-                                        <span style={{ fontSize:13, fontWeight:600, color:'var(--text-secondary)', maxWidth:72, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>
+                                        <span className="header-icon-btns" style={{ fontSize:13, fontWeight:600, color:'var(--text-secondary)', maxWidth:72, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>
                                             {(user.displayName || 'Pilot').split(' ')[0]}
                                         </span>
-                                        <button
+                                        <button className="header-icon-btns"
                                             onClick={() => { var { auth, signOut } = window.firebaseAuth; signOut(auth); }}
                                             style={{ background:'var(--card-high)', border:'none', borderRadius:8, padding:'5px 10px', fontSize:12, fontWeight:600, color:'var(--text-secondary)', cursor:'pointer', whiteSpace:'nowrap' }}
                                         >
@@ -5854,6 +5901,43 @@
                                     >
                                         Login
                                     </button>
+                                )}
+                            </div>
+
+                            {/* Hamburger button — only visible on mobile via CSS */}
+                            <div style={{ position: 'relative' }}>
+                                <button className="hamburger-btn" onClick={() => setShowHamburger(function(v){ return !v; })}
+                                    style={{ background: showHamburger ? 'var(--card-high)' : 'none', border: 'none', borderRadius: 12, padding: 9, cursor: 'pointer', color: 'var(--text-secondary)', alignItems: 'center', justifyContent: 'center', lineHeight: 1 }}>
+                                    <MdIcon name="menu" style={{ fontSize: 22 }} />
+                                </button>
+                                {showHamburger && (
+                                    <div className="hamburger-dropdown">
+                                        <button className="hamburger-dropdown-item" onClick={() => {
+                                            var next = !darkMode; setDarkMode(next);
+                                            localStorage.setItem('flightscore_theme_manual', next ? 'dark' : 'light');
+                                            setShowHamburger(false);
+                                        }}>
+                                            <MdIcon name={darkMode ? 'light_mode' : 'dark_mode'} style={{ fontSize: 20, color: 'var(--text-secondary)' }} />
+                                            {darkMode ? 'Light Mode' : 'Dark Mode'}
+                                        </button>
+                                        <button className="hamburger-dropdown-item" onClick={() => { setShowDataModal(true); setShowHamburger(false); }}>
+                                            <MdIcon name="import_export" style={{ fontSize: 20, color: 'var(--text-secondary)' }} />
+                                            Export / Import
+                                        </button>
+                                        <button className="hamburger-dropdown-item" onClick={() => { setShowSettingsModal(true); setShowHamburger(false); }}>
+                                            <MdIcon name="tune" style={{ fontSize: 20, color: 'var(--text-secondary)' }} />
+                                            Settings
+                                        </button>
+                                        {user && (
+                                            <>
+                                                <div className="hamburger-dropdown-sep" />
+                                                <button className="hamburger-dropdown-item" onClick={() => { var { auth, signOut } = window.firebaseAuth; signOut(auth); setShowHamburger(false); }}>
+                                                    <MdIcon name="logout" style={{ fontSize: 20, color: 'var(--text-secondary)' }} />
+                                                    Sign Out
+                                                </button>
+                                            </>
+                                        )}
+                                    </div>
                                 )}
                             </div>
                         </div>
@@ -6274,6 +6358,14 @@
                             );
                         })()}
                     </main>
+
+                    {/* ── FAB: New Flight (shown when not in briefing view) ── */}
+                    {view !== "briefing" && (
+                        <button className="fab-new-flight" onClick={() => setView("create")}>
+                            <MdIcon name="add" style={{ fontSize: 22 }} />
+                            New Flight
+                        </button>
+                    )}
                 </div>
             );
         }
