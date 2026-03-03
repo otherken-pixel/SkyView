@@ -5573,6 +5573,61 @@
         }
 
         /* =========================================
+           NATURAL-LANGUAGE TRIP PARSER
+        ========================================= */
+        async function parseTripWithAi(inputText, apiKey) {
+            var now   = new Date();
+            var pad2  = function(n) { return String(n).padStart(2, '0'); };
+            var today = now.getFullYear() + '-' + pad2(now.getMonth() + 1) + '-' + pad2(now.getDate());
+            var acList = AIRCRAFT.map(function(a) { return '"' + a.id + '" (' + a.name + ')'; }).join(', ');
+
+            var system = [
+                'You are an aviation flight parser. Today\'s date is ' + today + ' (YYYY-MM-DD). Current UTC time: ' + pad2(now.getUTCHours()) + ':' + pad2(now.getUTCMinutes()) + 'Z.',
+                'Extract flight details from the user input and respond with ONLY a single raw JSON object — no markdown fences, no backticks, no explanation, no extra text.',
+                'Required JSON fields:',
+                '  "dep"      — 4-letter ICAO departure code (prepend K for US airports given without the K, e.g. JFK → KJFK)',
+                '  "arr"      — 4-letter ICAO arrival code (same K-prefix rule)',
+                '  "wps"      — array of intermediate ICAO waypoint codes (empty array [] if none mentioned)',
+                '  "aircraft" — one of these exact IDs: ' + acList + '. Pick closest match; default "c172".',
+                '  "date"     — departure date as YYYY-MM-DD. Resolve relative words: "today"=' + today + ', "tomorrow"=next calendar day.',
+                '  "time"     — departure local time as HH:MM (24-hour). Default "09:00" if not stated.',
+                '  "name"     — concise human-readable trip label, e.g. "New York to Chicago".',
+                'Output ONLY the JSON object. No other text.'
+            ].join('\n');
+
+            var res = await fetch('https://api.anthropic.com/v1/messages', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'x-api-key': apiKey,
+                    'anthropic-version': '2023-06-01',
+                    'anthropic-dangerous-direct-browser-access': 'true'
+                },
+                body: JSON.stringify({
+                    model: 'claude-3-5-sonnet-20241022',
+                    max_tokens: 300,
+                    system: system,
+                    messages: [{ role: 'user', content: inputText }]
+                })
+            });
+            if (!res.ok) {
+                var errBody = await res.json().catch(function() { return {}; });
+                throw new Error((errBody.error && errBody.error.message) || 'API error ' + res.status);
+            }
+            var data = await res.json();
+            var raw = (data.content && data.content[0] && data.content[0].text) || '';
+            if (!raw.trim()) throw new Error('Empty response from Claude');
+            // Strip any accidental markdown fences
+            var cleaned = raw.trim().replace(/^```(?:json)?\s*/i, '').replace(/\s*```\s*$/, '');
+            var parsed = JSON.parse(cleaned);
+            if (!parsed.dep || !parsed.arr) throw new Error('Could not identify departure or arrival airport — please be more specific');
+            parsed.dep = parsed.dep.toUpperCase();
+            parsed.arr = parsed.arr.toUpperCase();
+            parsed.wps = (parsed.wps || []).map(function(w) { return w.toUpperCase(); });
+            return parsed;
+        }
+
+        /* =========================================
            MAIN APPLICATION COMPONENT
         ========================================= */
         function App() {
@@ -5598,6 +5653,36 @@
             var [showHamburger,    setShowHamburger]     = useState(false);
             var [isDecodedWx,      setIsDecodedWx]       = useState(false);
             var [pendingAiPrompt,  setPendingAiPrompt]   = useState(null);
+
+            // ── Natural-Language Quick Add state ────────────────────────────────
+            var [nlInput,   setNlInput]   = useState('');
+            var [nlApiKey,  setNlApiKey]  = useState(function() {
+                try { return localStorage.getItem('flightscore_anthropic_key') || ''; } catch(e) { return ''; }
+            });
+            var [nlLoading, setNlLoading] = useState(false);
+            var [nlError,   setNlError]   = useState(null);
+
+            var handleNlGenerate = useCallback(async function() {
+                if (!nlInput.trim() || !nlApiKey.trim() || nlLoading) return;
+                setNlLoading(true); setNlError(null);
+                try {
+                    try { localStorage.setItem('flightscore_anthropic_key', nlApiKey.trim()); } catch(e) {}
+                    var parsed = await parseTripWithAi(nlInput.trim(), nlApiKey.trim());
+                    var trip = {
+                        id: Date.now(), goScore: null,
+                        dep: parsed.dep, arr: parsed.arr, wps: parsed.wps || [],
+                        aircraft: AIRCRAFT.some(function(a) { return a.id === parsed.aircraft; }) ? parsed.aircraft : 'c172',
+                        date: parsed.date || '', time: parsed.time || '09:00',
+                        name: parsed.name || (parsed.dep + ' to ' + parsed.arr)
+                    };
+                    setTrips(function(prev) { return [trip].concat(prev); });
+                    setNlInput('');
+                } catch(e) {
+                    setNlError(e.message || 'Failed to parse trip — please try again or rephrase.');
+                } finally {
+                    setNlLoading(false);
+                }
+            }, [nlInput, nlApiKey, nlLoading]);
 
             // Auto-close the login modal when auth resolves to a signed-in user
             useEffect(function() {
@@ -6119,6 +6204,59 @@
 
                                 {/* Section label */}
                                 <div style={{ fontSize: 12, fontWeight: 700, letterSpacing: '1px', textTransform: 'uppercase', color: 'var(--text-tertiary)', marginBottom: 16 }}>My Flights</div>
+
+                                {/* ── Natural-Language Quick Add ────────────────────────────── */}
+                                <div style={{ marginBottom: 20, background: 'var(--card-mid)', borderRadius: 16, padding: '16px 18px', border: '1px solid var(--card-border)' }}>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: 7, marginBottom: 12 }}>
+                                        <MdIcon name="auto_awesome" style={{ fontSize: 16, color: 'var(--accent)' }} />
+                                        <span style={{ fontSize: 12, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.8px', color: 'var(--text-secondary)' }}>Quick Add with AI</span>
+                                    </div>
+                                    <div style={{ display: 'flex', gap: 10, alignItems: 'flex-end' }}>
+                                        <MdInput
+                                            value={nlInput}
+                                            placeholder='e.g., Flying from KCLT to KATL tomorrow at 9am in a 172'
+                                            onChange={function(e) { setNlInput(e.target.value); setNlError(null); }}
+                                            containerStyle={{ flex: 1 }}
+                                        />
+                                        <MdButton
+                                            variant={nlLoading ? 'tonal' : 'sparkle'}
+                                            icon={nlLoading ? 'sync' : 'auto_awesome'}
+                                            disabled={nlLoading || !nlInput.trim() || !nlApiKey.trim()}
+                                            onClick={handleNlGenerate}
+                                            style={{ flexShrink: 0, padding: '13px 20px', whiteSpace: 'nowrap' }}
+                                        >
+                                            {nlLoading ? 'Parsing\u2026' : 'Generate'}
+                                        </MdButton>
+                                    </div>
+                                    {!nlApiKey.trim() && (
+                                        <div style={{ marginTop: 10 }}>
+                                            <MdInput
+                                                label="Anthropic API Key"
+                                                value={nlApiKey}
+                                                onChange={function(e) { setNlApiKey(e.target.value); setNlError(null); }}
+                                                type="password"
+                                                placeholder="sk-ant-..."
+                                            />
+                                            <div style={{ marginTop: 5, fontSize: 11, color: 'var(--text-tertiary)', display: 'flex', alignItems: 'center', gap: 4 }}>
+                                                <MdIcon name="lock" style={{ fontSize: 12 }} />
+                                                Sent directly from your browser to Anthropic. Saved locally for convenience.
+                                            </div>
+                                        </div>
+                                    )}
+                                    {nlApiKey.trim() && (
+                                        <div style={{ marginTop: 8, display: 'flex', alignItems: 'center', gap: 5, fontSize: 11, color: 'var(--text-tertiary)' }}>
+                                            <MdIcon name="lock" style={{ fontSize: 12 }} />
+                                            API key saved
+                                            <button onClick={function() { setNlApiKey(''); try { localStorage.removeItem('flightscore_anthropic_key'); } catch(e) {} }} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 11, color: 'var(--accent)', padding: '0 0 0 4px', textDecoration: 'underline' }}>Change</button>
+                                        </div>
+                                    )}
+                                    {nlError && (
+                                        <div style={{ marginTop: 10, padding: '8px 12px', background: 'var(--md-sys-color-error-container)', color: 'var(--md-sys-color-on-error-container)', borderRadius: 8, fontSize: 13, display: 'flex', alignItems: 'center', gap: 6 }}>
+                                            <MdIcon name="error_outline" style={{ fontSize: 16, flexShrink: 0 }} />
+                                            {nlError}
+                                        </div>
+                                    )}
+                                </div>
 
                                 <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
                                     {trips.slice().sort(function(a, b) {
