@@ -2855,7 +2855,49 @@
             return best;
         }
 
-        function WeatherDetail({ icao, label }) {
+        // ── METAR human-readable decoder helpers ────────────────────────────────
+        function _metarCompassDir(deg) {
+            var dirs = ['N','NNE','NE','ENE','E','ESE','SE','SSE','S','SSW','SW','WSW','W','WNW','NW','NNW'];
+            return dirs[Math.round(deg / 22.5) % 16];
+        }
+        function _decodeMetarWind(metar) {
+            var m = metar.wind.match(/^(VRB|\d{3})(\d{2,3})(G(\d{2,3}))?KT$/);
+            if (!m) return metar.wind;
+            var dir = m[1], spd = parseInt(m[2]), gst = m[4] ? parseInt(m[4]) : null;
+            var dirStr = dir === 'VRB' ? 'Variable' : _metarCompassDir(parseInt(dir)) + ' (' + parseInt(dir) + '\u00b0)';
+            return dirStr + ' at ' + spd + ' kts' + (gst ? ', gusting ' + gst + ' kts' : '');
+        }
+        function _decodeMetarVis(vis) {
+            if (vis === 'P6SM') return 'Greater than 6 miles';
+            var m = vis.match(/^([\d\/ ]+)SM$/);
+            if (m) { var v = m[1].trim(); return v + ' statute mile' + (v === '1' ? '' : 's'); }
+            return vis;
+        }
+        function _decodeMetarSkyLayer(layer) {
+            var codes = { CLR:'Clear', SKC:'Sky Clear', FEW:'Few Clouds', SCT:'Scattered Clouds', BKN:'Broken Clouds', OVC:'Overcast', VV:'Vertical Visibility' };
+            var m = layer.match(/^(CLR|SKC|FEW|SCT|BKN|OVC|VV)(\d{3})?$/);
+            if (!m) return layer;
+            var name = codes[m[1]] || m[1];
+            if (m[2]) { var ft = parseInt(m[2]) * 100; return name + ' at ' + ft.toLocaleString() + ' ft'; }
+            return name;
+        }
+        function _decodeMetarSky(sky) {
+            return sky.split(' ').map(_decodeMetarSkyLayer).join(', ');
+        }
+        function _decodeMetarTemp(temp) {
+            var parts = temp.split('/');
+            function parseC(s) { var neg = s.startsWith('M'); return neg ? -parseInt(s.slice(1)) : parseInt(s); }
+            var tc = parseC(parts[0]), dc = parseC(parts[1] || '0');
+            var tf = Math.round(tc * 9 / 5 + 32), df = Math.round(dc * 9 / 5 + 32);
+            return tc + '\u00b0C (' + tf + '\u00b0F)\u2002\u00b7\u2002Dewpt ' + dc + '\u00b0C (' + df + '\u00b0F)';
+        }
+        function _decodeMetarAlt(alt) {
+            var m = alt.match(/^A(\d{4})$/);
+            if (!m) return alt;
+            return (parseInt(m[1]) / 100).toFixed(2) + ' inHg';
+        }
+
+        function WeatherDetail({ icao, label, isDecodedWx }) {
             const [expanded, setExpanded] = useState(false);
             const [aptReady, setAptReady] = useState(!!AIRPORTS[icao]);
             const [liveMetar, setLiveMetar] = useState(null);
@@ -2912,15 +2954,42 @@
 
                     {metar && (
                         <>
-                            <div className="font-mono" style={{ background: "var(--md-sys-color-surface-container-lowest)", borderRadius: "8px", padding: "12px", fontSize: 13, color: "var(--md-sys-color-on-surface)", lineHeight: 1.6, wordBreak: "break-all", marginBottom: 16, border: "1px solid var(--md-sys-color-outline-variant)" }}>{metar.raw}</div>
+                            {!isDecodedWx && (
+                                <div className="font-mono" style={{ background: "var(--md-sys-color-surface-container-lowest)", borderRadius: "8px", padding: "12px", fontSize: 13, color: "var(--md-sys-color-on-surface)", lineHeight: 1.6, wordBreak: "break-all", marginBottom: 16, border: "1px solid var(--md-sys-color-outline-variant)" }}>{metar.raw}</div>
+                            )}
 
-                            <div className="font-mono" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(100px, 1fr))", gap: "12px 16px", fontSize: 13 }}>
-                                <div><span style={{ color: "var(--md-sys-color-on-surface-variant)", fontSize: 12, fontWeight: 700, display: 'block' }}>WIND</span><span style={{ fontWeight: 600 }}>{metar.wind}</span></div>
-                                <div><span style={{ color: "var(--md-sys-color-on-surface-variant)", fontSize: 12, fontWeight: 700, display: 'block' }}>VIS</span><span style={{ fontWeight: 600 }}>{metar.vis}</span></div>
-                                <div><span style={{ color: "var(--md-sys-color-on-surface-variant)", fontSize: 12, fontWeight: 700, display: 'block' }}>SKY</span><span style={{ fontWeight: 600 }}>{metar.sky}</span></div>
-                                <div><span style={{ color: "var(--md-sys-color-on-surface-variant)", fontSize: 12, fontWeight: 700, display: 'block' }}>TEMP</span><span style={{ fontWeight: 600 }}>{metar.temp}</span></div>
-                                <div><span style={{ color: "var(--md-sys-color-on-surface-variant)", fontSize: 12, fontWeight: 700, display: 'block' }}>ALTM</span><span style={{ fontWeight: 600 }}>{metar.alt}</span></div>
-                            </div>
+                            {isDecodedWx ? (
+                                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "14px 20px", fontSize: 13, marginBottom: 4 }}>
+                                    <div style={{ gridColumn: '1 / -1' }}>
+                                        <span style={{ color: "var(--md-sys-color-on-surface-variant)", fontSize: 11, fontWeight: 700, display: 'block', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: 2 }}>Sky Conditions</span>
+                                        <span style={{ fontWeight: 600 }}>{_decodeMetarSky(metar.sky)}</span>
+                                    </div>
+                                    <div>
+                                        <span style={{ color: "var(--md-sys-color-on-surface-variant)", fontSize: 11, fontWeight: 700, display: 'block', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: 2 }}>Wind</span>
+                                        <span style={{ fontWeight: 600 }}>{_decodeMetarWind(metar)}</span>
+                                    </div>
+                                    <div>
+                                        <span style={{ color: "var(--md-sys-color-on-surface-variant)", fontSize: 11, fontWeight: 700, display: 'block', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: 2 }}>Visibility</span>
+                                        <span style={{ fontWeight: 600 }}>{_decodeMetarVis(metar.vis)}</span>
+                                    </div>
+                                    <div style={{ gridColumn: '1 / -1' }}>
+                                        <span style={{ color: "var(--md-sys-color-on-surface-variant)", fontSize: 11, fontWeight: 700, display: 'block', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: 2 }}>Temperature / Dewpoint</span>
+                                        <span style={{ fontWeight: 600 }}>{_decodeMetarTemp(metar.temp)}</span>
+                                    </div>
+                                    <div>
+                                        <span style={{ color: "var(--md-sys-color-on-surface-variant)", fontSize: 11, fontWeight: 700, display: 'block', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: 2 }}>Altimeter</span>
+                                        <span style={{ fontWeight: 600 }}>{_decodeMetarAlt(metar.alt)}</span>
+                                    </div>
+                                </div>
+                            ) : (
+                                <div className="font-mono" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(100px, 1fr))", gap: "12px 16px", fontSize: 13 }}>
+                                    <div><span style={{ color: "var(--md-sys-color-on-surface-variant)", fontSize: 12, fontWeight: 700, display: 'block' }}>WIND</span><span style={{ fontWeight: 600 }}>{metar.wind}</span></div>
+                                    <div><span style={{ color: "var(--md-sys-color-on-surface-variant)", fontSize: 12, fontWeight: 700, display: 'block' }}>VIS</span><span style={{ fontWeight: 600 }}>{metar.vis}</span></div>
+                                    <div><span style={{ color: "var(--md-sys-color-on-surface-variant)", fontSize: 12, fontWeight: 700, display: 'block' }}>SKY</span><span style={{ fontWeight: 600 }}>{metar.sky}</span></div>
+                                    <div><span style={{ color: "var(--md-sys-color-on-surface-variant)", fontSize: 12, fontWeight: 700, display: 'block' }}>TEMP</span><span style={{ fontWeight: 600 }}>{metar.temp}</span></div>
+                                    <div><span style={{ color: "var(--md-sys-color-on-surface-variant)", fontSize: 12, fontWeight: 700, display: 'block' }}>ALTM</span><span style={{ fontWeight: 600 }}>{metar.alt}</span></div>
+                                </div>
+                            )}
 
                             {(() => {
                                 var rec = getRunwayRecommendation(metar, apt);
@@ -3791,7 +3860,7 @@
 
                 const url = "https://api.anthropic.com/v1/messages";
                 const payload = {
-                    model: "claude-sonnet-4-6",
+                    model: "claude-3-5-sonnet-20241022",
                     max_tokens: 1800,
                     system: "You are an expert aviation weather analyst (CFI-I level) providing a detailed pre-flight briefing. Be specific with numbers — cite thresholds (e.g., 'ceiling 1200ft OVC = MVFR', 'winds 18G25KT = moderate crosswind risk'). For high-elevation airports, estimate density altitude (DA ≈ Elevation + 120 × (OAT_°C − ISA_°C)). Flag icing risk, convective activity, TFRs, and airspace concerns. Use concise bullet points. Provide the briefing using EXACTLY these headers on their own lines (with ** markers): **GO/NO-GO RECOMMENDATION**, **WEATHER SYNOPSIS**, **DEPARTURE WINDOW**, **EN ROUTE HAZARDS**, **RUNWAY ANALYSIS**, **NOTAM IMPACT**, **ALTERNATE RECOMMENDATIONS**, **FREQUENCY GUIDE**",
                     messages: [{ role: "user", content: prompt }]
@@ -3856,7 +3925,7 @@
                     var res = await fetch('https://api.anthropic.com/v1/messages', {
                         method: 'POST',
                         headers: { 'Content-Type':'application/json', 'x-api-key':apiKey, 'anthropic-version':'2023-06-01', 'anthropic-dangerous-direct-browser-access':'true' },
-                        body: JSON.stringify({ model:'claude-sonnet-4-6', max_tokens:600, system:systemCtx, messages: updated.map(function(m) { return { role:m.role, content:m.content }; }) })
+                        body: JSON.stringify({ model:'claude-3-5-sonnet-20241022', max_tokens:600, system:systemCtx, messages: updated.map(function(m) { return { role:m.role, content:m.content }; }) })
                     });
                     var data = await res.json();
                     var reply = data.content?.[0]?.text || 'No response.';
@@ -5434,6 +5503,7 @@
     var [showSettingsModal, setShowSettingsModal] = useState(false);
             var [showLoginModal,    setShowLoginModal]    = useState(false);
             var [showHamburger,    setShowHamburger]     = useState(false);
+            var [isDecodedWx,      setIsDecodedWx]       = useState(false);
 
             // Auto-close the login modal when auth resolves to a signed-in user
             useEffect(function() {
@@ -5868,6 +5938,7 @@
                                     setDarkMode(next);
                                     localStorage.setItem('flightscore_theme_manual', next ? 'dark' : 'light');
                                 }} />
+                                <IconBtn icon="translate" title={isDecodedWx ? 'Show Raw METAR' : 'Decoded Weather'} active={isDecodedWx} onClick={() => setIsDecodedWx(function(v) { return !v; })} />
                                 <IconBtn icon="import_export" title="Export / Import trips" onClick={() => setShowDataModal(true)} />
                                 <IconBtn icon="tune" title="Settings" onClick={() => setShowSettingsModal(true)} />
                             </div>
@@ -6310,7 +6381,7 @@
                                                                 <h2 style={{fontSize: 14, fontWeight: 700, margin: "0 0 12px", color: "var(--text-secondary)", textTransform: "uppercase", letterSpacing: "0.8px"}}>
                                                                     {label} · {getAirport(rt)?.city || rt}
                                                                 </h2>
-                                                                <WeatherDetail icao={rt} label={label} />
+                                                                <WeatherDetail icao={rt} label={label} isDecodedWx={isDecodedWx} />
                                                                 <WxErrorBoundary label={`Forecast Strip (${rt})`} compact>
                                                                     <ForecastStrip icao={rt} selectedDay={forecastDay} onSelect={setForecastDay} />
                                                                 </WxErrorBoundary>
