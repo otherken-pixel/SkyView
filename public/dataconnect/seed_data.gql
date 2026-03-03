@@ -1,0 +1,86 @@
+mutation SeedData @transaction @auth(level: USER, insecureReason: "Seed data can only be inserted by authenticated users.") {
+  user1: user_insert(data: {
+    id: "a1b2c3d4-e5f6-7890-1234-567890abcdef",
+    displayName: "Pilot Pete",
+    email: "pilot.pete@example.com",
+    createdAt: "2023-01-01T10:00:00Z",
+    pilotLicenseNumber: "P123456789"
+  })
+  user2: user_insert(data: {
+    id: "f6e5d4c3-b2a1-0987-6543-210fedcba987",
+    displayName: "Aviator Alice",
+    email: "aviator.alice@example.com",
+    createdAt: "2023-01-02T11:00:00Z",
+    pilotLicenseNumber: "A987654321"
+  })
+  aircraft1: aircraft_insert(data: {
+    id: "11111111-2222-3333-4444-555555555555",
+    userId: "a1b2c3d4-e5f6-7890-1234-567890abcdef",
+    make: "Cessna",
+    model: "172 Skyhawk",
+    tailNumber: "N12345",
+    createdAt: "2023-01-01T10:30:00Z",
+    engineType: "Piston",
+    maxEnduranceHours: 5.0,
+    maxPayloadKg: 400.0,
+    imageUrl: "https://example.com/cessna172.jpg"
+  })
+  aircraft2: aircraft_insert(data: {
+    id: "22222222-3333-4444-5555-666666666666",
+    userId: "f6e5d4c3-b2a1-0987-6543-210fedcba987",
+    make: "Piper",
+    model: "PA-28 Cherokee",
+    tailNumber: "N67890",
+    createdAt: "2023-01-02T11:30:00Z",
+    engineType: "Piston",
+    maxEnduranceHours: 4.5,
+    maxPayloadKg: 450.0,
+    imageUrl: "https://example.com/piperpa28.jpg"
+  })
+  flightPlan1: flightPlan_insert(data: {
+    id: "33333333-4444-5555-6666-777777777777",
+    userId: "a1b2c3d4-e5f6-7890-1234-567890abcdef",
+    aircraftId: "11111111-2222-3333-4444-555555555555",
+    name: "Cross-Country to ABC",
+    departureAirport: "KXYZ",
+    destinationAirport: "KABC",
+    flightDate: "2023-01-10",
+    plannedDurationHours: 2.5,
+    createdAt: "2023-01-05T14:00:00Z",
+    routeDescription: "Direct",
+    weatherConditions: "VFR",
+    pilotExperienceLevel: "Private Pilot",
+    calculatedFlightScore: 90
+  })
+  flightLog1: flightLog_insert(data: {
+    id: "44444444-5555-6666-7777-888888888888",
+    userId: "a1b2c3d4-e5f6-7890-1234-567890abcdef",
+    aircraftId: "11111111-2222-3333-4444-555555555555",
+    flightPlanId: "33333333-4444-5555-6666-777777777777",
+    actualDepartureTime: "2023-01-10T15:00:00Z",
+    actualArrivalTime: "2023-01-10T17:35:00Z",
+    actualDurationHours: 2.58,
+    createdAt: "2023-01-10T18:00:00Z",
+    deviationsFromPlan: "Minor routing adjustment due to ATC",
+    actualWeatherConditions: "VFR clear",
+    actualFlightScore: 88
+  })
+  scoreParam1: scoreParameter_insert(data: {
+    id: "55555555-6666-7777-8888-999999999999",
+    name: "Departure On-Time",
+    category: "Flight Performance",
+    defaultValue: "True",
+    weightingFactor: 0.2,
+    createdAt: "2023-01-01T09:00:00Z",
+    description: "Score based on deviation from planned departure time.",
+    minValidValue: "False",
+    maxValidValue: "True"
+  })
+  scoreDetail1: flightLogScoreDetail_insert(data: {
+    flightLogId: "44444444-5555-6666-7777-888888888888",
+    parameterName: "Departure On-Time",
+    parameterValue: "True",
+    scoreContribution: 18.0,
+    notes: "Departed 5 minutes late."
+  })
+}

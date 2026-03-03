@@ -1,0 +1,68 @@
+query GetMyFlightPlans @auth(level: USER) {
+  flightPlans(where: {userId: {eq_expr: "auth.uid"}}, orderBy: [{flightDate: DESC}]) {
+    id
+    name
+    flightDate
+    departureAirport
+    destinationAirport
+    aircraft {
+      make
+      model
+      tailNumber
+    }
+  }
+}
+
+query GetMyAircraftById($id: UUID!) @auth(level: USER) {
+  aircraft(id: $id, where: {userId: {eq_expr: "auth.uid"}}) {
+    id
+    make
+    model
+    tailNumber
+    engineType
+    maxEnduranceHours
+    maxPayloadKg
+    imageUrl
+  }
+}
+
+mutation CreateMyFlightLog(
+  $aircraftId: UUID,
+  $flightPlanId: UUID,
+  $actualDepartureTime: Timestamp!,
+  $actualArrivalTime: Timestamp!,
+  $actualDurationHours: Float!,
+  $deviationsFromPlan: String,
+  $incidentsReported: String,
+  $actualWeatherConditions: String,
+  $postFlightNotes: String,
+  $actualFlightScore: Int
+) @auth(level: USER) {
+  flightLog_insert(data: {
+    userId_expr: "auth.uid",
+    aircraftId: $aircraftId,
+    flightPlanId: $flightPlanId,
+    actualDepartureTime: $actualDepartureTime,
+    actualArrivalTime: $actualArrivalTime,
+    actualDurationHours: $actualDurationHours,
+    createdAt_expr: "request.time",
+    deviationsFromPlan: $deviationsFromPlan,
+    incidentsReported: $incidentsReported,
+    actualWeatherConditions: $actualWeatherConditions,
+    postFlightNotes: $postFlightNotes,
+    actualFlightScore: $actualFlightScore
+  })
+}
+
+query ListAllScoreParameters @auth(level: PUBLIC, insecureReason: "This operation provides general information about scoring parameters and is safe to expose to the public.") {
+  scoreParameters(orderBy: [{category: ASC}, {name: ASC}]) {
+    id
+    name
+    category
+    defaultValue
+    weightingFactor
+    description
+    minValidValue
+    maxValidValue
+  }
+}

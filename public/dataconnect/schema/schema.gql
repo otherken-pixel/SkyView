@@ -1,0 +1,77 @@
+type User @table {
+  displayName: String!
+  createdAt: Timestamp!
+  email: String
+  photoUrl: String
+  pilotLicenseNumber: String
+}
+
+type Aircraft @table {
+  user: User!
+  make: String!
+  model: String!
+  tailNumber: String!
+  createdAt: Timestamp!
+  engineType: String
+  maxEnduranceHours: Float
+  maxPayloadKg: Float
+  imageUrl: String
+}
+
+type FlightPlan @table {
+  user: User!
+  aircraft: Aircraft
+  name: String!
+  departureAirport: String!
+  destinationAirport: String!
+  flightDate: Date!
+  plannedDurationHours: Float!
+  createdAt: Timestamp!
+  routeDescription: String
+  weatherConditions: String
+  pilotExperienceLevel: String
+  notes: String
+  calculatedFlightScore: Int
+}
+
+type FlightLog @table {
+  user: User!
+  aircraft: Aircraft
+  flightPlan: FlightPlan
+  actualDepartureTime: Timestamp!
+  actualArrivalTime: Timestamp!
+  actualDurationHours: Float!
+  createdAt: Timestamp!
+  deviationsFromPlan: String
+  incidentsReported: String
+  actualWeatherConditions: String
+  postFlightNotes: String
+  actualFlightScore: Int
+}
+
+type ScoreParameter @table {
+  name: String!
+  category: String!
+  defaultValue: String!
+  weightingFactor: Float!
+  createdAt: Timestamp!
+  description: String
+  minValidValue: String
+  maxValidValue: String
+}
+
+type FlightPlanScoreDetail @table {
+  flightPlan: FlightPlan!
+  parameterName: String!
+  parameterValue: String!
+  scoreContribution: Float!
+  notes: String
+}
+
+type FlightLogScoreDetail @table {
+  flightLog: FlightLog!
+  parameterName: String!
+  parameterValue: String!
+  scoreContribution: Float!
+  notes: String
+}
