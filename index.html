@@ -5662,28 +5662,6 @@
             var [nlLoading, setNlLoading] = useState(false);
             var [nlError,   setNlError]   = useState(null);
 
-            var handleNlGenerate = useCallback(async function() {
-                if (!nlInput.trim() || !nlApiKey.trim() || nlLoading) return;
-                setNlLoading(true); setNlError(null);
-                try {
-                    try { localStorage.setItem('flightscore_anthropic_key', nlApiKey.trim()); } catch(e) {}
-                    var parsed = await parseTripWithAi(nlInput.trim(), nlApiKey.trim());
-                    var trip = {
-                        id: Date.now(), goScore: null,
-                        dep: parsed.dep, arr: parsed.arr, wps: parsed.wps || [],
-                        aircraft: AIRCRAFT.some(function(a) { return a.id === parsed.aircraft; }) ? parsed.aircraft : 'c172',
-                        date: parsed.date || '', time: parsed.time || '09:00',
-                        name: parsed.name || (parsed.dep + ' to ' + parsed.arr)
-                    };
-                    setTrips(function(prev) { return [trip].concat(prev); });
-                    setNlInput('');
-                } catch(e) {
-                    setNlError(e.message || 'Failed to parse trip — please try again or rephrase.');
-                } finally {
-                    setNlLoading(false);
-                }
-            }, [nlInput, nlApiKey, nlLoading]);
-
             // Auto-close the login modal when auth resolves to a signed-in user
             useEffect(function() {
                 if (user && user !== undefined) setShowLoginModal(false);
@@ -5762,6 +5740,28 @@
             // Bump this counter to force re-renders after async airport fetches resolve
             var [aptVersion, setAptVersion] = useState(0);
             var [copiedTripId, setCopiedTripId] = useState(null);
+
+            var handleNlGenerate = useCallback(async function() {
+                if (!nlInput.trim() || !nlApiKey.trim() || nlLoading) return;
+                setNlLoading(true); setNlError(null);
+                try {
+                    try { localStorage.setItem('flightscore_anthropic_key', nlApiKey.trim()); } catch(e) {}
+                    var parsed = await parseTripWithAi(nlInput.trim(), nlApiKey.trim());
+                    var trip = {
+                        id: Date.now(), goScore: null,
+                        dep: parsed.dep, arr: parsed.arr, wps: parsed.wps || [],
+                        aircraft: AIRCRAFT.some(function(a) { return a.id === parsed.aircraft; }) ? parsed.aircraft : 'c172',
+                        date: parsed.date || '', time: parsed.time || '09:00',
+                        name: parsed.name || (parsed.dep + ' to ' + parsed.arr)
+                    };
+                    setTrips(function(prev) { return [trip].concat(prev); });
+                    setNlInput('');
+                } catch(e) {
+                    setNlError(e.message || 'Failed to parse trip — please try again or rephrase.');
+                } finally {
+                    setNlLoading(false);
+                }
+            }, [nlInput, nlApiKey, nlLoading]);
 
             // Kick off OurAirports CSV load in the background on first mount.
             // This is non-blocking: the trips list renders immediately, and the
@@ -6202,8 +6202,14 @@
                         {view === "trips" && (
                             <div style={{ maxWidth: 680, margin: "0 auto", padding: "28px 16px 40px" }}>
 
-                                {/* Section label */}
-                                <div style={{ fontSize: 12, fontWeight: 700, letterSpacing: '1px', textTransform: 'uppercase', color: 'var(--text-tertiary)', marginBottom: 16 }}>My Flights</div>
+                                {/* Section label + New Flight button */}
+                                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
+                                    <div style={{ fontSize: 12, fontWeight: 700, letterSpacing: '1px', textTransform: 'uppercase', color: 'var(--text-tertiary)' }}>My Flights</div>
+                                    <button onClick={() => setView("create")} style={{ display: 'flex', alignItems: 'center', gap: 6, background: 'var(--accent)', color: '#fff', border: 'none', borderRadius: 10, padding: '8px 16px', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'var(--font-sans)' }}>
+                                        <MdIcon name="add" style={{ fontSize: 18 }} />
+                                        New Flight
+                                    </button>
+                                </div>
 
                                 {/* ── Natural-Language Quick Add ────────────────────────────── */}
                                 <div style={{ marginBottom: 20, background: 'var(--card-mid)', borderRadius: 16, padding: '16px 18px', border: '1px solid var(--card-border)' }}>
@@ -6664,8 +6670,8 @@
                         })()}
                     </main>
 
-                    {/* ── FAB: New Flight (shown when not in briefing view) ── */}
-                    {view !== "briefing" && (
+                    {/* ── FAB: New Flight (shown on create/wx views only) ── */}
+                    {view !== "briefing" && view !== "trips" && (
                         <button className="fab-new-flight" onClick={() => setView("create")}>
                             <MdIcon name="add" style={{ fontSize: 22 }} />
                             New Flight
