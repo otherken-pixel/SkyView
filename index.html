@@ -1125,13 +1125,14 @@
         // Calculate Go/No-Go score from live METAR objects
         function calcGoScoreFromMetars(depMetar, arrMetar) {
             if (!depMetar || !arrMetar) return 50;
-            var catScores = { VFR: 95, MVFR: 65, IFR: 30, LIFR: 10 };
+            // Use worst-case category (no averaging) — Math.min of conditions, not average
+            var worstRank = Math.max(CAT_RANK[depMetar.cat] || 0, CAT_RANK[arrMetar.cat] || 0);
+            var worstCat = ['VFR', 'MVFR', 'IFR', 'LIFR'][worstRank] || 'VFR';
+            // IFR or LIFR → instant fail
+            if (worstCat === 'IFR' || worstCat === 'LIFR') return 0;
+            var catScores = { VFR: 95, MVFR: 60 };
             var windPen = Math.max(0, (depMetar.wspd - 15) * 3) + Math.max(0, (arrMetar.wspd - 15) * 3);
-            var score = Math.round(
-                (catScores[depMetar.cat] || 50) * 0.45 +
-                (catScores[arrMetar.cat] || 50) * 0.45 - windPen
-            );
-            return Math.max(5, Math.min(99, score));
+            return Math.max(5, Math.min(99, Math.round((catScores[worstCat] || 50) - windPen)));
         }
 
         /* =========================================
@@ -1150,8 +1151,10 @@
         }
 
         // ── Composite Safety Score (0-100) with per-factor breakdown ────────────
-        function calcDetailedScore(effectiveWxData, routeDist) {
-            if (!effectiveWxData || effectiveWxData.length === 0) return { total: 50, breakdown: [] };
+        // isIfrRated: when true, uses forgiving deductions instead of the strict Hard Veto.
+        function calcDetailedScore(effectiveWxData, routeDist, isIfrRated) {
+            isIfrRated = isIfrRated || false;
+            if (!effectiveWxData || effectiveWxData.length === 0) return { total: 50, breakdown: [], scoreCap: null };
             function parseT(ts) {
                 if (!ts) return null;
                 var m = ts.match(/^(M?)(\d+)\//);
@@ -1164,9 +1167,37 @@
                 if (!e.effectiveWx) return w;
                 return (CAT_RANK[e.effectiveWx.cat] || 0) > (CAT_RANK[w] || 0) ? e.effectiveWx.cat : w;
             }, 'VFR');
-            var catPts = { VFR: 25, MVFR: 16, IFR: 7, LIFR: 0 }[worstCat] || 25;
             var catCol = { VFR: 'var(--cat-vfr-color)', MVFR: 'var(--cat-mvfr-color)', IFR: 'var(--cat-ifr-color)', LIFR: 'var(--cat-lifr-color)' }[worstCat] || 'var(--cat-vfr-color)';
-            breakdown.push({ label: 'Flight Category', score: catPts, max: 25, icon: 'cloud', color: catCol, detail: 'Worst case: ' + worstCat });
+            var hasIFRorLIFR = worstCat === 'IFR' || worstCat === 'LIFR';
+            var scoreCap = null;
+            var catPts, catDetail;
+            if (!isIfrRated) {
+                // Strict VFR Hard Veto system
+                if (hasIFRorLIFR) {
+                    catPts   = 0;
+                    scoreCap = 30;
+                    catDetail = 'Worst: ' + worstCat + ' — Hard Veto (total capped at 30)';
+                } else if (worstCat === 'MVFR') {
+                    // Strict MVFR penalty: category score capped at 40 % of max (10/25)
+                    catPts   = 10;
+                    scoreCap = 70;
+                    catDetail = 'Worst: MVFR — Strict penalty (total capped at 70)';
+                } else {
+                    catPts   = 25;
+                    catDetail = 'Worst case: VFR';
+                }
+            } else {
+                // IFR-rated fallback: point deductions, no hard veto; LIFR still penalised heavily
+                if (worstCat === 'LIFR') {
+                    catPts   = 3;
+                    scoreCap = 40;
+                    catDetail = 'Worst: LIFR — Heavy penalty (IFR rated, capped at 40)';
+                } else {
+                    catPts   = { VFR: 25, MVFR: 16, IFR: 8 }[worstCat] || 25;
+                    catDetail = 'Worst case: ' + worstCat + (worstCat === 'IFR' ? ' (IFR rated)' : '');
+                }
+            }
+            breakdown.push({ label: 'Flight Category', score: catPts, max: 25, icon: 'cloud', color: catCol, detail: catDetail });
 
             // 2. Visibility (0-20 pts)
             // vis strings can be "10SM", "P6SM" (>6SM), "1 1/2SM", etc.
@@ -1227,8 +1258,11 @@
             var icTxt = icingRisk === 0 ? 'No indicators' : icingRisk === 1 ? 'Precip type — check PIREPs' : 'Near-freezing temps + moisture';
             breakdown.push({ label: 'Icing Risk', score: icPts, max: 10, icon: 'ac_unit', color: icCol, detail: icTxt });
 
-            var total = Math.round(Math.min(100, breakdown.reduce(function(s, f) { return s + f.score; }, 0)));
-            return { total: total, breakdown: breakdown };
+            var rawTotal = breakdown.reduce(function(s, f) { return s + f.score; }, 0);
+            var total = scoreCap !== null
+                ? Math.round(Math.min(scoreCap, rawTotal))
+                : Math.round(Math.min(100, rawTotal));
+            return { total: total, breakdown: breakdown, scoreCap: scoreCap };
         }
 
         // ── Live PIREPs from AviationWeather.gov ─────────────────────────────────
@@ -2960,6 +2994,7 @@
                 return trip.fratSkipped || false;
             });
             var [fratExpanded, setFratExpanded]   = useState(false);  // panel open/closed
+            var [isIfrRated, setIsIfrRated]        = useState(false);  // IFR-rated pilot toggle
 
             // --- AI Enhanced section state ---
             var [aiResult, setAiResult] = useState(null);
@@ -3322,8 +3357,8 @@
             // --- Composite Safety Score breakdown ---
             var detailedScore = useMemo(function() {
                 if (!effectiveWxData) return null;
-                return calcDetailedScore(effectiveWxData, routeDist);
-            }, [effectiveWxData, routeDist]);
+                return calcDetailedScore(effectiveWxData, routeDist, isIfrRated);
+            }, [effectiveWxData, routeDist, isIfrRated]);
 
             // --- FRAT auto-populate V1/V2/V3 from live weather data ---
             useEffect(function() {
@@ -3363,11 +3398,18 @@
             var combinedScore = useMemo(function() {
                 if (!detailedScore) return null;
                 var base = detailedScore.total;
+                var raw;
                 if (fratComplete) {
                     var fratScore = calcFratGoScore(fratAnswers);
-                    return Math.max(0, Math.min(100, Math.round(base * 0.70 + fratScore * 0.30)));
+                    raw = Math.max(0, Math.min(100, Math.round(base * 0.70 + fratScore * 0.30)));
+                } else {
+                    raw = Math.max(0, base - 20); // penalty when FRAT skipped/incomplete
                 }
-                return Math.max(0, base - 20); // penalty when FRAT skipped/incomplete
+                // Hard veto cap: FRAT cannot override a weather-driven score ceiling
+                if (detailedScore.scoreCap !== null && detailedScore.scoreCap !== undefined) {
+                    return Math.min(detailedScore.scoreCap, raw);
+                }
+                return raw;
             }, [detailedScore, fratComplete, fratAnswers, fratSkipped]);
 
             // Propagate the authoritative score up to the trip header ring
@@ -5002,7 +5044,8 @@
                     var routeDist = Math.round(dist);
                     fetchEffectiveWxForTrip(t, allPts).then(wxData => {
                         if (wxData.length > 0) {
-                            var weatherScore = calcDetailedScore(wxData, routeDist).total;
+                            var ds = calcDetailedScore(wxData, routeDist);
+                            var weatherScore = ds.total;
                             // Mirror BriefingPanel combinedScore logic:
                             // — FRAT complete → 70/30 blend; otherwise → weather − 20 penalty
                             // Read from the dedicated per-trip FRAT key (same source BriefingPanel uses)
@@ -5020,6 +5063,10 @@
                                 score = Math.max(0, Math.min(100, Math.round(weatherScore * 0.70 + fratScore * 0.30)));
                             } else {
                                 score = Math.max(0, weatherScore - 20);
+                            }
+                            // Hard veto cap: FRAT cannot override a weather-driven ceiling
+                            if (ds.scoreCap !== null && ds.scoreCap !== undefined) {
+                                score = Math.min(ds.scoreCap, score);
                             }
                             setTrips(prev => prev.map(x => x.id === t.id ? { ...x, goScore: score } : x));
                         }
