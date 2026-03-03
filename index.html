@@ -986,6 +986,34 @@
             );
         }
 
+        /* ─────────────────────────────────────────────────────────────────────
+           IN-MEMORY WEATHER CACHE
+           Prevents duplicate API round-trips when BriefingPanel mounts, the
+           auto-score loop runs, and fetchEffectiveWxForTrip is called for the
+           same airports within the same session.
+
+           All cache entries expire after a type-specific TTL so the data stays
+           fresh without manual invalidation.  Null results (airport has no TAF,
+           station offline, etc.) are cached too so we don't hammer a 404 endpoint.
+        ───────────────────────────────────────────────────────────────────── */
+        var _wxCache = new Map();
+        var WX_TTL_METAR    =  5 * 60 * 1000;  //  5 min — hourly METARs
+        var WX_TTL_TAF      = 15 * 60 * 1000;  // 15 min — TAFs update every ~6 h
+        var WX_TTL_NWS      = 60 * 60 * 1000;  //  1 hr  — NWS 7-day changes slowly
+        var WX_TTL_ADVISORY = 10 * 60 * 1000;  // 10 min — SIGMETs/AIRMETs/CWAs
+
+        // Returns the cached value for key if it exists and is within TTL.
+        // Distinguishes between "not in cache" (undefined) and "cached null" (null).
+        function _cacheGet(key, ttl) {
+            var e = _wxCache.get(key);
+            if (!e) return undefined;
+            return (Date.now() - e.ts) < ttl ? e.data : undefined;
+        }
+        function _cacheSet(key, data) {
+            _wxCache.set(key, { ts: Date.now(), data });
+            return data;
+        }
+
         // Derive VFR/MVFR/IFR/LIFR from raw ceiling array and visibility miles
         // Derive VFR/MVFR/IFR/LIFR from ceiling (feet, or null = clear) and visibility (statute miles)
         function deriveCat(ceilingFt, visMi) {
@@ -1002,6 +1030,9 @@
         async function fetchLiveMetar(icao) {
             if (!icao) return null;
             icao = icao.trim().toUpperCase();
+            var _ck = 'metar:' + icao;
+            var _cv = _cacheGet(_ck, WX_TTL_METAR);
+            if (_cv !== undefined) return _cv;
             try {
                 // NWS requires Accept header but NOT a custom User-Agent (that triggers CORS preflight failure)
                 const res = await timeoutFetch(
@@ -1063,13 +1094,13 @@
                     ? p.barometricPressure.value : 101325;
                 const altStr = `A${String(Math.round(pressurePa / 3386.39 * 100)).padStart(4,'0')}`;
 
-                return {
+                return _cacheSet(_ck, {
                     raw:  p.rawMessage || `${icao} METAR`,
                     wind, vis: visStr, sky: skyStr, temp: tempStr, alt: altStr,
                     cat:  deriveCat(ceilingFt, visMi),
                     wspd, wdir: (!isVrb && wdirRaw > 0) ? wdirRaw : null
-                };
-            } catch(e) { console.warn('[METAR] Exception for', icao, e); return null; }
+                });
+            } catch(e) { return _cacheSet(_ck, null); }
         }
 
         // Fetch live TAF from Aviation Weather Center API
@@ -1077,6 +1108,10 @@
         async function fetchLiveTaf(icao) {
             if (!icao) return null;
             icao = icao.trim().toUpperCase();
+            var _ck = 'taf:' + icao;
+            var _cv = _cacheGet(_ck, WX_TTL_TAF);
+            if (_cv !== undefined) return _cv;
+
             async function fetchTafById(id) {
                 try {
                     const res = await timeoutFetch(
@@ -1090,18 +1125,24 @@
                     return (obj && (obj.fcsts || obj.forecast || obj.rawTAF)) ? obj : null;
                 } catch(e) { return null; }
             }
+
+            var apt = getAirport(icao);
+            // When the airport has a known tafRef, fetch both in parallel to avoid
+            // the sequential 2-request waterfall (first always 404s for small airports).
+            if (apt && apt.tafRef) {
+                var [primary, fallback] = await Promise.all([
+                    fetchTafById(icao),
+                    fetchTafById(apt.tafRef)
+                ]);
+                if (primary) return _cacheSet(_ck, primary);
+                if (fallback) return _cacheSet(_ck, { ...fallback, _nearbyStation: fallback.stationId });
+                return _cacheSet(_ck, null);
+            }
+
             // Try the exact station first
             var taf = await fetchTafById(icao);
-            if (taf) return taf;
-            // No TAF for this station (common for small GA airports like KUZA).
-            // Use the explicit tafRef from the airport record when present — this is
-            // the same approach ForeFlight uses (e.g. it shows "KCLT TAF 14 nm NE"
-            // for KUZA because KCLT is the nearest TAF-issuing station).
-            var apt = getAirport(icao);
-            if (apt && apt.tafRef) {
-                var refTaf = await fetchTafById(apt.tafRef);
-                if (refTaf) return { ...refTaf, _nearbyStation: refTaf.stationId };
-            }
+            if (taf) return _cacheSet(_ck, taf);
+
             // Last resort: check the nearest airport in the static AIRPORTS dict
             // that differs from the queried ICAO and lies within ~25 nm.
             if (apt) {
@@ -1109,14 +1150,14 @@
                     .filter(([id]) => id !== icao)
                     .map(([id, a]) => ({ id, d: Math.hypot(a.lat - apt.lat, a.lon - apt.lon) }))
                     .sort((a, b) => a.d - b.d)
-                    .slice(0, 3); // only try the 3 nearest to avoid excess API calls
+                    .slice(0, 3);
                 for (var nb of nearby) {
                     if (nb.d > 0.5) break; // > ~30 nm — not useful
                     var nbTaf = await fetchTafById(nb.id);
-                    if (nbTaf) return { ...nbTaf, _nearbyStation: nbTaf.stationId };
+                    if (nbTaf) return _cacheSet(_ck, { ...nbTaf, _nearbyStation: nbTaf.stationId });
                 }
             }
-            return null;
+            return _cacheSet(_ck, null);
         }
 
         // Fetch GFS MOS data from Aviation Weather Center (extended forecast, up to ~72h)
@@ -1144,9 +1185,15 @@
         // the double round-trip on every refresh.
         async function fetchNwsForecast(lat, lon) {
             if (lat == null || lon == null) return null;
+            // In-memory cache check (1 hr TTL) — avoids repeated 2-step round-trips
+            // for the same airport when BriefingPanel and auto-score both call this.
+            var _nck = 'nws:' + lat.toFixed(3) + ':' + lon.toFixed(3);
+            var _ncv = _cacheGet(_nck, WX_TTL_NWS);
+            if (_ncv !== undefined) return _ncv;
+
             var ptsKey = 'skyview_nws_pts_' + lat.toFixed(3) + '_' + lon.toFixed(3);
             try {
-                // Step 1: resolve forecast grid URL (cached for 24 h)
+                // Step 1: resolve forecast grid URL (localStorage-cached for 24 h)
                 var forecastUrl;
                 try {
                     var cached = JSON.parse(localStorage.getItem(ptsKey) || 'null');
@@ -1160,19 +1207,19 @@
                         `https://api.weather.gov/points/${lat.toFixed(4)},${lon.toFixed(4)}`,
                         { headers: { "Accept": "application/geo+json" } }, 8000
                     );
-                    if (!pointsRes.ok) return null;
+                    if (!pointsRes.ok) return _cacheSet(_nck, null);
                     const pointsData = await pointsRes.json();
                     forecastUrl = pointsData?.properties?.forecast;
-                    if (!forecastUrl) return null;
+                    if (!forecastUrl) return _cacheSet(_nck, null);
                     try { localStorage.setItem(ptsKey, JSON.stringify({ ts: Date.now(), url: forecastUrl })); } catch(e) {}
                 }
 
-                // Step 2: fetch the actual forecast
+                // Step 2: fetch the actual forecast (NWS grid data, ~7 days)
                 const forecastRes = await timeoutFetch(forecastUrl, { headers: { "Accept": "application/geo+json" } }, 8000);
-                if (!forecastRes.ok) return null;
+                if (!forecastRes.ok) return _cacheSet(_nck, null);
                 const forecastData = await forecastRes.json();
                 const periods = forecastData?.properties?.periods;
-                if (!periods || periods.length === 0) return null;
+                if (!periods || periods.length === 0) return _cacheSet(_nck, null);
                 var days = [];
                 for (var i = 0; i < periods.length && days.length < 7; i++) {
                     var p = periods[i];
@@ -1195,8 +1242,8 @@
                         });
                     }
                 }
-                return days.length > 0 ? days : null;
-            } catch(e) { return null; }
+                return _cacheSet(_nck, days.length > 0 ? days : null);
+            } catch(e) { return _cacheSet(_nck, null); }
         }
 
         // ── MMOPA FRAT — Flight Risk Assessment Tool ──────────────────────────
@@ -1409,55 +1456,67 @@
 
         // ── Live PIREPs from AviationWeather.gov ─────────────────────────────────
         async function fetchLivePireps(lat, lon, radiusNm) {
+            var _pk = 'pirep:' + lat.toFixed(2) + ':' + lon.toFixed(2) + ':' + (radiusNm || 150);
+            var _pv = _cacheGet(_pk, WX_TTL_ADVISORY);
+            if (_pv !== undefined) return _pv;
             try {
                 var url = 'https://aviationweather.gov/api/data/pirep?format=json&distance=' + (radiusNm || 150) + '&lat=' + lat.toFixed(3) + '&lon=' + lon.toFixed(3) + '&age=3';
                 var res = await timeoutFetch(url, {}, 8000);
-                if (!res.ok) return null;
+                if (!res.ok) return _cacheSet(_pk, null);
                 var data = await res.json();
-                return Array.isArray(data) ? data : null;
-            } catch(e) { return null; }
+                return _cacheSet(_pk, Array.isArray(data) ? data : null);
+            } catch(e) { return _cacheSet(_pk, null); }
         }
 
         // ── SIGMETs (airsigmet) ──────────────────────────────────────────────────
+        // SIGMETs are global — cache a single entry for the whole session window.
         async function fetchSigmets() {
+            var _sv = _cacheGet('sigmet', WX_TTL_ADVISORY);
+            if (_sv !== undefined) return _sv;
             try {
                 var res = await timeoutFetch('https://aviationweather.gov/api/data/airsigmet?format=json', {}, 10000);
-                if (!res.ok) return [];
+                if (!res.ok) return _cacheSet('sigmet', []);
                 var data = await res.json();
-                // Returns GeoJSON FeatureCollection
-                return (data && data.features) ? data.features : [];
-            } catch(e) { return []; }
+                return _cacheSet('sigmet', (data && data.features) ? data.features : []);
+            } catch(e) { return _cacheSet('sigmet', []); }
         }
 
         // ── G-AIRMETs ────────────────────────────────────────────────────────────
         async function fetchGairmets() {
+            var _gv = _cacheGet('gairmet', WX_TTL_ADVISORY);
+            if (_gv !== undefined) return _gv;
             try {
                 var res = await timeoutFetch('https://aviationweather.gov/api/data/gairmet?format=json', {}, 10000);
-                if (!res.ok) return [];
+                if (!res.ok) return _cacheSet('gairmet', []);
                 var data = await res.json();
-                return Array.isArray(data) ? data : [];
-            } catch(e) { return []; }
+                return _cacheSet('gairmet', Array.isArray(data) ? data : []);
+            } catch(e) { return _cacheSet('gairmet', []); }
         }
 
         // ── Center Weather Advisories ────────────────────────────────────────────
         async function fetchCwas() {
+            var _cv = _cacheGet('cwa', WX_TTL_ADVISORY);
+            if (_cv !== undefined) return _cv;
             try {
                 var res = await timeoutFetch('https://aviationweather.gov/api/data/cwa?format=json', {}, 10000);
-                if (!res.ok) return [];
+                if (!res.ok) return _cacheSet('cwa', []);
                 var data = await res.json();
-                return Array.isArray(data) ? data : [];
-            } catch(e) { return []; }
+                return _cacheSet('cwa', Array.isArray(data) ? data : []);
+            } catch(e) { return _cacheSet('cwa', []); }
         }
 
         // ── Winds & Temperatures Aloft ───────────────────────────────────────────
         async function fetchWindsAloft(region) {
+            var _wk = 'winds:' + (region || 'us');
+            var _wv = _cacheGet(_wk, WX_TTL_ADVISORY);
+            if (_wv !== undefined) return _wv;
             try {
                 var url = 'https://aviationweather.gov/api/data/windtemp?format=json&region=' + (region||'us') + '&level=low&fcst=06';
                 var res = await timeoutFetch(url, {}, 10000);
-                if (!res.ok) return [];
+                if (!res.ok) return _cacheSet(_wk, []);
                 var data = await res.json();
-                return Array.isArray(data) ? data : [];
-            } catch(e) { return []; }
+                return _cacheSet(_wk, Array.isArray(data) ? data : []);
+            } catch(e) { return _cacheSet(_wk, []); }
         }
 
         // ── Geographic helpers for route corridor filtering ───────────────────────
@@ -3554,9 +3613,16 @@
                 return raw;
             }, [detailedScore, fratComplete, fratAnswers, fratSkipped]);
 
+            // Store callbacks in refs so effects never capture a stale closure when
+            // the parent re-creates these functions on each render.
+            var onScoreUpdateRef = useRef(onScoreUpdate);
+            var onFratUpdateRef  = useRef(onFratUpdate);
+            useEffect(function() { onScoreUpdateRef.current = onScoreUpdate; }, [onScoreUpdate]);
+            useEffect(function() { onFratUpdateRef.current  = onFratUpdate;  }, [onFratUpdate]);
+
             // Propagate the authoritative score up to the trip header ring
             useEffect(function() {
-                if (combinedScore !== null && onScoreUpdate) onScoreUpdate(combinedScore);
+                if (combinedScore !== null && onScoreUpdateRef.current) onScoreUpdateRef.current(combinedScore);
             }, [combinedScore]);
 
             // Persist FRAT directly to localStorage (per-trip key) on every change.
@@ -3566,7 +3632,7 @@
                     localStorage.setItem(fratKey, JSON.stringify({ answers: fratAnswers, skipped: fratSkipped }));
                 } catch(e) {}
                 // Also notify parent so the trip object and score ring stay in sync
-                if (onFratUpdate) onFratUpdate(fratAnswers, fratSkipped);
+                if (onFratUpdateRef.current) onFratUpdateRef.current(fratAnswers, fratSkipped);
             }, [fratAnswers, fratSkipped]);
 
             // finalVerdict: convective SIGMET or CWA thunderstorm overrides weather-based verdict
@@ -5373,6 +5439,15 @@
             // prevTripIds: used to detect deletions between renders so we can issue
             // deleteDoc for removed trips instead of re-reading the whole collection.
             var prevTripIds = useRef(null);
+            // scoredTripSigs: Maps tripId → "dep|arr|wps|date|time" fingerprint.
+            // The auto-score effect uses this to skip trips whose route and departure
+            // time haven't changed since they were last scored, preventing a cascade
+            // where setTrips(goScore) re-triggers scoring for every trip on each render.
+            var scoredTripSigs = useRef(new Map());
+            // prevTripJsons: Maps tripId → JSON.stringify(trip) for Firestore writes.
+            // Only trips whose content actually changed are written, reducing Firestore
+            // writes from N-per-update to at-most-1-per-update in the steady state.
+            var prevTripJsons = useRef(new Map());
 
             var [activeTrip, setActiveTrip] = useState(null);
             var [tab, setTab] = useState(() => {
@@ -5392,9 +5467,20 @@
             useEffect(function() { loadOurAirports(); }, []);
 
             useEffect(() => {
-                // Score each trip using departure-time weather (TAF/MOS/METAR),
+                // Score each trip using departure-time weather (TAF/METAR/NWS),
                 // then blend in the saved FRAT score exactly as BriefingPanel does.
+                //
+                // Signature-based deduplication: a trip is re-scored only when its
+                // route or departure date/time changes.  Updating goScore itself does
+                // NOT change the signature, so the setTrips call below does not
+                // retrigger scoring — avoiding a self-reinforcing render cascade.
+                if (!tripsLoaded) return;
                 trips.forEach(t => {
+                    var sig = [t.dep, t.arr, (t.wps || []).join(','), t.date, t.time].join('|');
+                    var id  = String(t.id);
+                    if (scoredTripSigs.current.get(id) === sig) return;
+                    scoredTripSigs.current.set(id, sig);
+
                     var allPts = [t.dep].concat(t.wps || []).concat([t.arr]).filter(Boolean);
                     var dist = 0;
                     for (var i = 0; i < allPts.length - 1; i++) {
@@ -5408,7 +5494,6 @@
                             var weatherScore = ds.total;
                             // Mirror BriefingPanel combinedScore logic:
                             // — FRAT complete → 70/30 blend; otherwise → weather − 20 penalty
-                            // Read from the dedicated per-trip FRAT key (same source BriefingPanel uses)
                             var savedAnswers = (function() {
                                 try {
                                     var s = JSON.parse(localStorage.getItem('flightscore_frat_' + t.id) || 'null');
@@ -5424,7 +5509,6 @@
                             } else {
                                 score = Math.max(0, weatherScore - 20);
                             }
-                            // Hard veto cap: FRAT cannot override a weather-driven ceiling
                             if (ds.scoreCap !== null && ds.scoreCap !== undefined) {
                                 score = Math.min(ds.scoreCap, score);
                             }
@@ -5432,7 +5516,7 @@
                         }
                     }).catch(() => {});
                 });
-            }, []);
+            }, [trips, tripsLoaded]);
 
             // ── Load trips from Firestore when user logs in (or localStorage for guests) ─
             useEffect(function() {
@@ -5500,23 +5584,32 @@
                     try { localStorage.setItem('flightscore_trips', JSON.stringify(trips)); } catch(e) {}
                     return;
                 }
-                var { collection: col, doc: fbDoc, setDoc, deleteDoc } = _fbFns();
+                var { doc: fbDoc, setDoc, deleteDoc } = _fbFns();
                 var db = _fbDb();
                 var newIds = new Set(trips.map(function(t) { return String(t.id); }));
-                // Write / update every current trip
+                // Only write trips whose content has actually changed since the last
+                // render.  This prevents N full Firestore writes on every state update
+                // (e.g. when the auto-score loop updates each trip's goScore one at a
+                // time, previously all N trips were written on each of the N renders).
                 trips.forEach(function(t) {
-                    setDoc(fbDoc(db, 'users', user.uid, 'trips', String(t.id)), t).catch(console.warn);
+                    var id   = String(t.id);
+                    var json = JSON.stringify(t);
+                    if (prevTripJsons.current.get(id) !== json) {
+                        prevTripJsons.current.set(id, json);
+                        setDoc(fbDoc(db, 'users', user.uid, 'trips', id), t).catch(console.warn);
+                    }
                 });
                 // Delete trips that were removed since the last render
                 if (prevTripIds.current) {
                     prevTripIds.current.forEach(function(id) {
                         if (!newIds.has(id)) {
+                            prevTripJsons.current.delete(id);
                             deleteDoc(fbDoc(db, 'users', user.uid, 'trips', id)).catch(console.warn);
                         }
                     });
                 }
                 prevTripIds.current = newIds;
-            }, [trips]);
+            }, [trips, tripsLoaded]);
 
             // Handle #share= URL hash — offer to import a shared trip on load
             useEffect(() => {
