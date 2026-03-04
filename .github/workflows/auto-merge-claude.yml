@@ -40,9 +40,7 @@ jobs:
 
       - name: Deploy Firebase Functions
         env:
-          GOOGLE_APPLICATION_CREDENTIALS_JSON: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_FLIGHTSCORE_CA7E0 }}
+          FIREBASE_TOKEN: ${{ secrets.FIREBASE_TOKEN }}
         run: |
-          echo "$GOOGLE_APPLICATION_CREDENTIALS_JSON" > /tmp/sa.json
-          export GOOGLE_APPLICATION_CREDENTIALS=/tmp/sa.json
           cd functions && npm install && cd ..
-          npx --yes firebase-tools deploy --only functions --project flightscore-ca7e0 --non-interactive
+          npx --yes firebase-tools deploy --only functions --project flightscore-ca7e0 --non-interactive --token "$FIREBASE_TOKEN"
