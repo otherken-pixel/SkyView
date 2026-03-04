@@ -3947,7 +3947,7 @@
 
                 const url = "https://api.anthropic.com/v1/messages";
                 const payload = {
-                    model: "claude-3-5-sonnet-20241022",
+                    model: "claude-haiku-4-5-20251001",
                     max_tokens: 1800,
                     system: "You are an expert aviation weather analyst (CFI-I level) providing a detailed pre-flight briefing. Be specific with numbers — cite thresholds (e.g., 'ceiling 1200ft OVC = MVFR', 'winds 18G25KT = moderate crosswind risk'). For high-elevation airports, estimate density altitude (DA ≈ Elevation + 120 × (OAT_°C − ISA_°C)). Flag icing risk, convective activity, TFRs, and airspace concerns. Use concise bullet points. Provide the briefing using EXACTLY these headers on their own lines (with ** markers): **GO/NO-GO RECOMMENDATION**, **WEATHER SYNOPSIS**, **DEPARTURE WINDOW**, **EN ROUTE HAZARDS**, **RUNWAY ANALYSIS**, **NOTAM IMPACT**, **ALTERNATE RECOMMENDATIONS**, **FREQUENCY GUIDE**",
                     messages: [{ role: "user", content: prompt }]
@@ -4012,7 +4012,7 @@
                     var res = await fetch('https://api.anthropic.com/v1/messages', {
                         method: 'POST',
                         headers: { 'Content-Type':'application/json', 'x-api-key':apiKey, 'anthropic-version':'2023-06-01', 'anthropic-dangerous-direct-browser-access':'true' },
-                        body: JSON.stringify({ model:'claude-3-5-sonnet-20241022', max_tokens:600, system:systemCtx, messages: updated.map(function(m) { return { role:m.role, content:m.content }; }) })
+                        body: JSON.stringify({ model:'claude-haiku-4-5-20251001', max_tokens:600, system:systemCtx, messages: updated.map(function(m) { return { role:m.role, content:m.content }; }) })
                     });
                     var data = await res.json();
                     var reply = data.content?.[0]?.text || 'No response.';
@@ -5609,7 +5609,7 @@
                     'anthropic-dangerous-direct-browser-access': 'true'
                 },
                 body: JSON.stringify({
-                    model: 'claude-3-5-sonnet-20241022',
+                    model: 'claude-haiku-4-5-20251001',
                     max_tokens: 300,
                     system: system,
                     messages: [{ role: 'user', content: inputText }]
