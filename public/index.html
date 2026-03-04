@@ -5862,9 +5862,6 @@
 
             // ── Natural-Language Quick Add state ────────────────────────────────
             var [nlInput,   setNlInput]   = useState('');
-            var [nlApiKey,  setNlApiKey]  = useState(function() {
-                try { return localStorage.getItem('flightscore_anthropic_key') || ''; } catch(e) { return ''; }
-            });
             var [nlLoading, setNlLoading] = useState(false);
             var [nlError,   setNlError]   = useState(null);
 
@@ -5890,27 +5887,8 @@
                 import('https://www.gstatic.com/firebasejs/10.8.1/firebase-firestore.js')
                     .then(function(m) {
                         return m.getDoc(settingsRef);
-                    }).then(function(snap) {
-                        if (snap.exists()) {
-                            var saved = snap.data().anthropicKey || '';
-                            if (saved && !nlApiKey) {
-                                setNlApiKey(saved);
-                                try { localStorage.setItem('flightscore_anthropic_key', saved); } catch(e) {}
-                            }
-                        }
                     }).catch(function() {});
             }, [user]);
-
-            useEffect(function() {
-                if (!user || !nlApiKey.trim()) return;
-                var { doc: fbDoc, setDoc } = _fbFns();
-                var db = _fbDb();
-                if (!db) return;
-                setDoc(fbDoc(db, 'users', user.uid, 'settings', 'anthropic'), {
-                    anthropicKey: nlApiKey.trim(),
-                    updatedAt: Date.now()
-                }).catch(function() {});
-            }, [nlApiKey, user]);
 
             // Dark mode: follows system preference by default; manual toggle saves an explicit override.
             // Uses a separate 'flightscore_theme_manual' key so an explicit choice is
@@ -5989,11 +5967,10 @@
             var [copiedTripId, setCopiedTripId] = useState(null);
 
             var handleNlGenerate = useCallback(async function() {
-                if (!nlInput.trim() || !nlApiKey.trim() || nlLoading) return;
+                if (!nlInput.trim() || nlLoading) return;
                 setNlLoading(true); setNlError(null);
                 try {
-                    try { localStorage.setItem('flightscore_anthropic_key', nlApiKey.trim()); } catch(e) {}
-                    var parsed = await parseTripWithAi(nlInput.trim(), nlApiKey.trim());
+                    var parsed = await parseTripWithAi(nlInput.trim(), null);
                     var trip = {
                         id: Date.now(), goScore: null,
                         dep: parsed.dep, arr: parsed.arr, wps: parsed.wps || [],
@@ -6008,7 +5985,7 @@
                 } finally {
                     setNlLoading(false);
                 }
-            }, [nlInput, nlApiKey, nlLoading]);
+            }, [nlInput, nlLoading]);
 
             // Kick off OurAirports CSV load in the background on first mount.
             // This is non-blocking: the trips list renders immediately, and the
@@ -6507,35 +6484,13 @@
                                         <MdButton
                                             variant={nlLoading ? 'tonal' : 'sparkle'}
                                             icon={nlLoading ? 'sync' : 'auto_awesome'}
-                                            disabled={nlLoading || !nlInput.trim() || !nlApiKey.trim()}
+                                            disabled={nlLoading || !nlInput.trim()}
                                             onClick={handleNlGenerate}
                                             style={{ flexShrink: 0, padding: '13px 20px', whiteSpace: 'nowrap' }}
                                         >
                                             {nlLoading ? 'Parsing\u2026' : 'Generate'}
                                         </MdButton>
                                     </div>
-                                    {!nlApiKey.trim() && (
-                                        <div style={{ marginTop: 10 }}>
-                                            <MdInput
-                                                label="Anthropic API Key"
-                                                value={nlApiKey}
-                                                onChange={function(e) { setNlApiKey(e.target.value); setNlError(null); }}
-                                                type="password"
-                                                placeholder="sk-ant-..."
-                                            />
-                                            <div style={{ marginTop: 5, fontSize: 11, color: 'var(--text-tertiary)', display: 'flex', alignItems: 'center', gap: 4 }}>
-                                                <MdIcon name="lock" style={{ fontSize: 12 }} />
-                                                Sent directly from your browser to Anthropic. Saved locally for convenience.
-                                            </div>
-                                        </div>
-                                    )}
-                                    {nlApiKey.trim() && (
-                                        <div style={{ marginTop: 8, display: 'flex', alignItems: 'center', gap: 5, fontSize: 11, color: 'var(--text-tertiary)' }}>
-                                            <MdIcon name="lock" style={{ fontSize: 12 }} />
-                                            API key saved
-                                            <button onClick={function() { setNlApiKey(''); try { localStorage.removeItem('flightscore_anthropic_key'); } catch(e) {} }} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 11, color: 'var(--accent)', padding: '0 0 0 4px', textDecoration: 'underline' }}>Change</button>
-                                        </div>
-                                    )}
                                     {nlError && (
                                         <div style={{ marginTop: 10, padding: '8px 12px', background: 'var(--md-sys-color-error-container)', color: 'var(--md-sys-color-on-error-container)', borderRadius: 8, fontSize: 13, display: 'flex', alignItems: 'center', gap: 6 }}>
                                             <MdIcon name="error_outline" style={{ fontSize: 16, flexShrink: 0 }} />
