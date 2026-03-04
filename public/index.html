@@ -442,6 +442,9 @@
             getFirestore, collection, doc,
             getDocs, setDoc, deleteDoc
         } from 'https://www.gstatic.com/firebasejs/10.8.1/firebase-firestore.js';
+        import {
+            getFunctions, httpsCallable
+        } from 'https://www.gstatic.com/firebasejs/10.8.1/firebase-functions.js';
 
         // ── Firebase project config ───────────────────────────────────────
         const firebaseConfig = {
@@ -458,16 +461,24 @@
         const app            = initializeApp(firebaseConfig);
         const auth           = getAuth(app);
         const db             = getFirestore(app);
+        const functions      = getFunctions(app);
         const googleProvider = new GoogleAuthProvider();
 
         // Expose all instances + functions via window.firebaseAuth so the
         // Babel/JSX block can access them without its own import statements.
         window.firebaseAuth = {
-            auth, db, googleProvider,
+            auth, db, functions, googleProvider,
             signInWithPopup, signInWithEmailAndPassword,
             createUserWithEmailAndPassword, onAuthStateChanged, signOut,
-            collection, doc, getDocs, setDoc, deleteDoc
+            collection, doc, getDocs, setDoc, deleteDoc,
+            httpsCallable
         };
+        // Resolve the module-ready promise so useAuth can subscribe immediately
+        // without a polling loop. The promise is created synchronously below
+        // in the Babel block; this module resolves it once Firebase is ready.
+        if (typeof window._firebaseAuthResolve === 'function') {
+            window._firebaseAuthResolve();
+        }
     </script>
 </head>
 <body>
@@ -475,6 +486,20 @@
 
     <script type="text/babel">
         const { useState, useEffect, useCallback, useMemo, useRef } = React;
+
+        // ── Centralised AI model constant (Step 2.1) ─────────────────────────
+        // Update this one string to switch the Claude model everywhere.
+        var CLAUDE_MODEL = 'claude-3-5-sonnet-20241022';
+
+        // ── Module-ready promise for Firebase (Step 3.4) ─────────────────────
+        // The Firebase <script type="module"> resolves this promise once
+        // window.firebaseAuth is populated — no polling loop needed.
+        var _firebaseAuthReady = new Promise(function(resolve) {
+            window._firebaseAuthResolve = resolve;
+            // Fallback: if the module already ran before this block executed
+            // (e.g., cached by the browser) resolve immediately.
+            if (window.firebaseAuth) resolve();
+        });
 
         /* =========================================
            FIREBASE HELPERS
@@ -484,6 +509,98 @@
         function _fbAuth() { return window.firebaseAuth && window.firebaseAuth.auth; }
         function _fbDb()   { return window.firebaseAuth && window.firebaseAuth.db;   }
         function _fbFns()  { return window.firebaseAuth || {}; }
+
+        // ── Anthropic API helper (Step 1.4) ──────────────────────────────────
+        // Calls the server-side Firebase Function proxy when available so the
+        // Anthropic API key never touches the browser.  Falls back to direct
+        // browser calls (with the user's own key) when the proxy is not deployed
+        // or when running locally against the emulator.
+        async function callAnthropicApi({ system, messages, max_tokens, apiKey }) {
+            var fns = _fbFns();
+            // Prefer the server proxy — key stays server-side
+            if (fns.httpsCallable && fns.functions) {
+                try {
+                    var callProxy = fns.httpsCallable(fns.functions, 'anthropicProxy');
+                    var result = await callProxy({ model: CLAUDE_MODEL, system, messages, max_tokens: max_tokens || 1800 });
+                    return result.data;          // { content: [{ text: "..." }] }
+                } catch(proxyErr) {
+                    // Proxy not deployed yet or emulator not running — fall through to direct call
+                    console.warn('[FlightScore] anthropicProxy unavailable, falling back to direct API:', proxyErr.message);
+                    if (!apiKey) throw proxyErr; // no fallback key — surface the error
+                }
+            }
+            // Direct browser-to-Anthropic call (requires user-supplied apiKey)
+            if (!apiKey) throw new Error('No Anthropic API key. Deploy the Firebase Function or enter your key below.');
+            var res = await fetch('https://api.anthropic.com/v1/messages', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'x-api-key': apiKey,
+                    'anthropic-version': '2023-06-01',
+                    'anthropic-dangerous-direct-browser-access': 'true'
+                },
+                body: JSON.stringify({ model: CLAUDE_MODEL, max_tokens: max_tokens || 1800, system: system || '', messages })
+            });
+            if (!res.ok) {
+                var errBody = await res.json().catch(function() { return {}; });
+                throw new Error((errBody.error && errBody.error.message) || 'HTTP ' + res.status);
+            }
+            return await res.json();             // { content: [{ text: "..." }] }
+        }
+
+        // Streaming variant (Step 2.4) — yields text deltas via onChunk callback.
+        // Only available when calling the Anthropic API directly (not via the proxy,
+        // which uses callable functions that don't support SSE streaming).
+        // onChunk(text) is called with each incremental text fragment.
+        // Returns the full accumulated text string when complete.
+        async function callAnthropicApiStreaming({ system, messages, max_tokens, apiKey, onChunk }) {
+            if (!apiKey) throw new Error('Streaming requires a direct API key.');
+            var res = await fetch('https://api.anthropic.com/v1/messages', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'x-api-key': apiKey,
+                    'anthropic-version': '2023-06-01',
+                    'anthropic-dangerous-direct-browser-access': 'true'
+                },
+                body: JSON.stringify({
+                    model: CLAUDE_MODEL,
+                    max_tokens: max_tokens || 1800,
+                    system: system || '',
+                    messages,
+                    stream: true
+                })
+            });
+            if (!res.ok) {
+                var errBody = await res.json().catch(function() { return {}; });
+                throw new Error((errBody.error && errBody.error.message) || 'HTTP ' + res.status);
+            }
+            var reader = res.body.getReader();
+            var decoder = new TextDecoder();
+            var accumulated = '';
+            var buffer = '';
+            while (true) {
+                var _ref = await reader.read();
+                if (_ref.done) break;
+                buffer += decoder.decode(_ref.value, { stream: true });
+                var lines = buffer.split('\n');
+                buffer = lines.pop(); // keep the incomplete last line
+                for (var line of lines) {
+                    line = line.trim();
+                    if (!line.startsWith('data:')) continue;
+                    var jsonStr = line.slice(5).trim();
+                    if (jsonStr === '[DONE]') break;
+                    try {
+                        var evt = JSON.parse(jsonStr);
+                        if (evt.type === 'content_block_delta' && evt.delta && evt.delta.text) {
+                            accumulated += evt.delta.text;
+                            if (onChunk) onChunk(accumulated);
+                        }
+                    } catch(e) { /* ignore malformed SSE lines */ }
+                }
+            }
+            return accumulated;
+        }
 
         /* ─────────────────────────────────────────
            useAuth — tracks Firebase auth state
@@ -495,26 +612,21 @@
         function useAuth() {
             var [user, setUser] = useState(undefined);
             useEffect(function() {
-                // The Firebase <script type="module"> is deferred and may not have
-                // run yet when Babel processes this block.  Poll every 50 ms until
-                // window.firebaseAuth is populated before subscribing to auth state.
-                // This prevents the "GoogleAuthProvider is not a constructor" race.
+                // Wait for the Firebase module-ready promise before subscribing.
+                // This eliminates the 50 ms polling race without busy-waiting.
                 var unsubscribe = null;
-                var tid = null;
-                function trySubscribe() {
+                var cancelled = false;
+                _firebaseAuthReady.then(function() {
+                    if (cancelled) return;
                     var auth = _fbAuth();
                     var fns  = _fbFns();
-                    if (!auth || !fns.onAuthStateChanged) {
-                        tid = setTimeout(trySubscribe, 50);
-                        return;
-                    }
+                    if (!auth || !fns.onAuthStateChanged) return;
                     unsubscribe = fns.onAuthStateChanged(auth, function(u) {
                         setUser(u || null);
                     });
-                }
-                trySubscribe();
+                });
                 return function() {
-                    clearTimeout(tid);
+                    cancelled = true;
                     if (typeof unsubscribe === 'function') unsubscribe();
                 };
             }, []);
@@ -1050,6 +1162,24 @@
             );
         }
 
+        // Weather fetch with automatic retry on network errors or 5xx responses.
+        // Retries up to `retries` times (default 2) with short exponential backoff.
+        // 4xx responses are NOT retried — they indicate a bad request, not a transient fault.
+        async function wxFetchWithRetry(url, opts, ms, retries) {
+            var n = (retries != null) ? retries : 2;
+            var delays = [600, 1500];
+            for (var i = 0; i <= n; i++) {
+                try {
+                    var res = await timeoutFetch(url, opts, ms);
+                    if (res.ok || res.status < 500) return res;   // success or 4xx — don't retry
+                    if (i < n) await new Promise(function(r) { setTimeout(r, delays[i] || 2000); });
+                } catch(e) {
+                    if (i === n) throw e;
+                    await new Promise(function(r) { setTimeout(r, delays[i] || 2000); });
+                }
+            }
+        }
+
         /* ─────────────────────────────────────────────────────────────────────
            IN-MEMORY WEATHER CACHE
            Prevents duplicate API round-trips when BriefingPanel mounts, the
@@ -1099,7 +1229,7 @@
             if (_cv !== undefined) return _cv;
             try {
                 // NWS requires Accept header but NOT a custom User-Agent (that triggers CORS preflight failure)
-                const res = await timeoutFetch(
+                const res = await wxFetchWithRetry(
                     `https://api.weather.gov/stations/${icao}/observations/latest`,
                     { headers: { 'Accept': 'application/geo+json' } },
                     10000
@@ -1178,7 +1308,7 @@
 
             async function fetchTafById(id) {
                 try {
-                    const res = await timeoutFetch(
+                    const res = await wxFetchWithRetry(
                         `https://aviationweather.gov/api/data/taf?ids=${id}&format=json`,
                         {}, 8000
                     );
@@ -1230,7 +1360,7 @@
             if (!icao) return null;
             icao = icao.trim().toUpperCase();
             try {
-                const res = await timeoutFetch(
+                const res = await wxFetchWithRetry(
                     `https://aviationweather.gov/api/data/mos?ids=${icao}&format=json`,
                     {}, 10000
                 );
@@ -1267,7 +1397,7 @@
                 } catch(e) {}
 
                 if (!forecastUrl) {
-                    const pointsRes = await timeoutFetch(
+                    const pointsRes = await wxFetchWithRetry(
                         `https://api.weather.gov/points/${lat.toFixed(4)},${lon.toFixed(4)}`,
                         { headers: { "Accept": "application/geo+json" } }, 8000
                     );
@@ -1279,7 +1409,7 @@
                 }
 
                 // Step 2: fetch the actual forecast (NWS grid data, ~7 days)
-                const forecastRes = await timeoutFetch(forecastUrl, { headers: { "Accept": "application/geo+json" } }, 8000);
+                const forecastRes = await wxFetchWithRetry(forecastUrl, { headers: { "Accept": "application/geo+json" } }, 8000);
                 if (!forecastRes.ok) return _cacheSet(_nck, null);
                 const forecastData = await forecastRes.json();
                 const periods = forecastData?.properties?.periods;
@@ -1525,7 +1655,7 @@
             if (_pv !== undefined) return _pv;
             try {
                 var url = 'https://aviationweather.gov/api/data/pirep?format=json&distance=' + (radiusNm || 150) + '&lat=' + lat.toFixed(3) + '&lon=' + lon.toFixed(3) + '&age=3';
-                var res = await timeoutFetch(url, {}, 8000);
+                var res = await wxFetchWithRetry(url, {}, 8000);
                 if (!res.ok) return _cacheSet(_pk, null);
                 var data = await res.json();
                 return _cacheSet(_pk, Array.isArray(data) ? data : null);
@@ -1538,7 +1668,7 @@
             var _sv = _cacheGet('sigmet', WX_TTL_ADVISORY);
             if (_sv !== undefined) return _sv;
             try {
-                var res = await timeoutFetch('https://aviationweather.gov/api/data/airsigmet?format=json', {}, 10000);
+                var res = await wxFetchWithRetry('https://aviationweather.gov/api/data/airsigmet?format=json', {}, 10000);
                 if (!res.ok) return _cacheSet('sigmet', []);
                 var data = await res.json();
                 return _cacheSet('sigmet', (data && data.features) ? data.features : []);
@@ -1550,7 +1680,7 @@
             var _gv = _cacheGet('gairmet', WX_TTL_ADVISORY);
             if (_gv !== undefined) return _gv;
             try {
-                var res = await timeoutFetch('https://aviationweather.gov/api/data/gairmet?format=json', {}, 10000);
+                var res = await wxFetchWithRetry('https://aviationweather.gov/api/data/gairmet?format=json', {}, 10000);
                 if (!res.ok) return _cacheSet('gairmet', []);
                 var data = await res.json();
                 return _cacheSet('gairmet', Array.isArray(data) ? data : []);
@@ -1562,7 +1692,7 @@
             var _cv = _cacheGet('cwa', WX_TTL_ADVISORY);
             if (_cv !== undefined) return _cv;
             try {
-                var res = await timeoutFetch('https://aviationweather.gov/api/data/cwa?format=json', {}, 10000);
+                var res = await wxFetchWithRetry('https://aviationweather.gov/api/data/cwa?format=json', {}, 10000);
                 if (!res.ok) return _cacheSet('cwa', []);
                 var data = await res.json();
                 return _cacheSet('cwa', Array.isArray(data) ? data : []);
@@ -1576,7 +1706,7 @@
             if (_wv !== undefined) return _wv;
             try {
                 var url = 'https://aviationweather.gov/api/data/windtemp?format=json&region=' + (region||'us') + '&level=low&fcst=06';
-                var res = await timeoutFetch(url, {}, 10000);
+                var res = await wxFetchWithRetry(url, {}, 10000);
                 if (!res.ok) return _cacheSet(_wk, []);
                 var data = await res.json();
                 return _cacheSet(_wk, Array.isArray(data) ? data : []);
@@ -3360,7 +3490,7 @@
             else { URL.revokeObjectURL(url); }
         }
 
-        function BriefingPanel({ trip, onScoreUpdate, onFratUpdate, tab, pendingAiPrompt, onClearPendingPrompt }) {
+        function BriefingPanel({ trip, onScoreUpdate, onFratUpdate, tab, pendingAiPrompt, onClearPendingPrompt, user }) {
             // --- Auto-briefing state ---
             var [wxData, setWxData] = useState(null);
             var [loadingWx, setLoadingWx] = useState(true);
@@ -3393,6 +3523,20 @@
             });
             var [fratExpanded, setFratExpanded]   = useState(false);  // panel open/closed
             var [isIfrRated, setIsIfrRated]        = useState(false);  // IFR-rated pilot toggle
+
+            // Sync FRAT answers + skipped flag to Firestore (Step 1.3)
+            // Writes to users/{uid}/frat/{tripId} so FRAT data is available on any device.
+            useEffect(function() {
+                if (!user) return; // guest mode — localStorage-only is fine
+                var { doc: fbDoc, setDoc } = _fbFns();
+                var db = _fbDb();
+                if (!db) return;
+                setDoc(fbDoc(db, 'users', user.uid, 'frat', String(trip.id)), {
+                    answers: fratAnswers,
+                    skipped: fratSkipped,
+                    updatedAt: Date.now()
+                }).catch(function(e) { console.warn('[FlightScore] FRAT Firestore write failed:', e); });
+            }, [fratAnswers, fratSkipped, user]);
 
             // --- AI Enhanced section state ---
             var [aiResult, setAiResult] = useState(null);
@@ -3950,34 +4094,46 @@
                     `\n=== LIVE WEATHER DATA ===\n${wxLines || "No live weather available."}` +
                     advisoryCtx;
 
-                const url = "https://api.anthropic.com/v1/messages";
-                const payload = {
-                    model: "claude-3-5-sonnet-20241022",
-                    max_tokens: 1800,
-                    system: "You are an expert aviation weather analyst (CFI-I level) providing a detailed pre-flight briefing. Be specific with numbers — cite thresholds (e.g., 'ceiling 1200ft OVC = MVFR', 'winds 18G25KT = moderate crosswind risk'). For high-elevation airports, estimate density altitude (DA ≈ Elevation + 120 × (OAT_°C − ISA_°C)). Flag icing risk, convective activity, TFRs, and airspace concerns. Use concise bullet points. Provide the briefing using EXACTLY these headers on their own lines (with ** markers): **GO/NO-GO RECOMMENDATION**, **WEATHER SYNOPSIS**, **DEPARTURE WINDOW**, **EN ROUTE HAZARDS**, **RUNWAY ANALYSIS**, **NOTAM IMPACT**, **ALTERNATE RECOMMENDATIONS**, **FREQUENCY GUIDE**",
-                    messages: [{ role: "user", content: prompt }]
-                };
+                const BRIEFING_SYSTEM = "You are an expert aviation weather analyst (CFI-I level) providing a detailed pre-flight briefing. Be specific with numbers — cite thresholds (e.g., 'ceiling 1200ft OVC = MVFR', 'winds 18G25KT = moderate crosswind risk'). For high-elevation airports, estimate density altitude (DA ≈ Elevation + 120 × (OAT_°C − ISA_°C)). Flag icing risk, convective activity, TFRs, and airspace concerns. Use concise bullet points. Provide the briefing using EXACTLY these headers on their own lines (with ** markers): **GO/NO-GO RECOMMENDATION**, **WEATHER SYNOPSIS**, **DEPARTURE WINDOW**, **EN ROUTE HAZARDS**, **RUNWAY ANALYSIS**, **NOTAM IMPACT**, **ALTERNATE RECOMMENDATIONS**, **FREQUENCY GUIDE**";
 
-                const fetchWithRetry = async (retries = 3) => {
+                // Cache key: trip signature + wx fingerprint so navigating away and
+                // back doesn't refire the expensive API call (Step 2.2)
+                var briefingCacheKey = [trip.id, trip.dep, trip.arr, trip.date, trip.time,
+                    wxData.map(function(w) { return w.icao + ':' + (w.metar ? w.metar.cat : 'X'); }).join(',')
+                ].join('|');
+                if (runAiBriefing._cache && runAiBriefing._cache.key === briefingCacheKey) {
+                    setAiResult(runAiBriefing._cache.result);
+                    setAiLoading(false);
+                    return;
+                }
+
+                // Use streaming when a direct key is present — text appears token-by-token
+                // rather than all at once, dramatically improving perceived responsiveness.
+                // Fall back to non-streaming proxy call when only the server key is available.
+                const callWithRetry = async (retries = 3) => {
                     const delays = [1000, 2000, 4000];
                     for (let i = 0; i <= retries; i++) {
                         try {
-                            const response = await fetch(url, {
-                                method: "POST",
-                                headers: {
-                                    "Content-Type": "application/json",
-                                    "x-api-key": apiKey,
-                                    "anthropic-version": "2023-06-01",
-                                    "anthropic-dangerous-direct-browser-access": "true"
-                                },
-                                body: JSON.stringify(payload)
-                            });
-                            if (!response.ok) {
-                                const errBody = await response.json().catch(() => ({}));
-                                throw new Error(errBody?.error?.message || `HTTP ${response.status}`);
+                            var text;
+                            if (apiKey) {
+                                // Streaming path (Step 2.4): update aiResult incrementally
+                                text = await callAnthropicApiStreaming({
+                                    system: BRIEFING_SYSTEM,
+                                    messages: [{ role: "user", content: prompt }],
+                                    max_tokens: 1800,
+                                    apiKey,
+                                    onChunk: function(partial) { setAiResult(partial); }
+                                });
+                            } else {
+                                // Non-streaming proxy path (key is server-side)
+                                const data = await callAnthropicApi({
+                                    system: BRIEFING_SYSTEM,
+                                    messages: [{ role: "user", content: prompt }],
+                                    max_tokens: 1800,
+                                    apiKey: null
+                                });
+                                text = data.content?.[0]?.text;
                             }
-                            const data = await response.json();
-                            const text = data.content?.[0]?.text;
                             if (!text) throw new Error("Empty response from Claude");
                             return text;
                         } catch (err) {
@@ -3988,13 +4144,17 @@
                 };
 
                 try {
-                    setAiResult(await fetchWithRetry());
+                    const result = await callWithRetry();
+                    runAiBriefing._cache = { key: briefingCacheKey, result }; // Step 2.2 cache
+                    setAiResult(result);
                 } catch (e) {
                     setAiError("Briefing failed: " + (e.message || "Please check your API key and try again."));
                 } finally {
                     setAiLoading(false);
                 }
-            }, [trip, apiKey, wxData, detailedScore]);
+            // detailedScore intentionally excluded — score updates should not re-trigger
+            // an expensive briefing API call (Step 2.3).
+            }, [trip, apiKey, wxData]);
 
             // --- Conversational AI Chat ---
             var sendChat = useCallback(async function() {
@@ -4014,13 +4174,13 @@
                     'Current weather: ' + wxSummary + '. ' +
                     'Answer concisely and specifically about this flight. Always recommend consulting official sources before flight.';
                 try {
-                    var res = await fetch('https://api.anthropic.com/v1/messages', {
-                        method: 'POST',
-                        headers: { 'Content-Type':'application/json', 'x-api-key':apiKey, 'anthropic-version':'2023-06-01', 'anthropic-dangerous-direct-browser-access':'true' },
-                        body: JSON.stringify({ model:'claude-3-5-sonnet-20241022', max_tokens:600, system:systemCtx, messages: updated.map(function(m) { return { role:m.role, content:m.content }; }) })
+                    var chatData = await callAnthropicApi({
+                        system: systemCtx,
+                        messages: updated.map(function(m) { return { role:m.role, content:m.content }; }),
+                        max_tokens: 1200,
+                        apiKey
                     });
-                    var data = await res.json();
-                    var reply = data.content?.[0]?.text || 'No response.';
+                    var reply = chatData.content?.[0]?.text || 'No response.';
                     setChatMessages(function(prev) { return [...prev, { role:'assistant', content:reply }]; });
                 } catch(e) {
                     setChatMessages(function(prev) { return [...prev, { role:'assistant', content:'Error: ' + e.message }]; });
@@ -5090,11 +5250,11 @@
                                 {aiResult && !aiLoading && (
                                     <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '8px 0 16px', borderBottom: '1px solid var(--md-sys-color-outline-variant)' }}>
                                         <span style={{ fontSize: 12, color: 'var(--md-sys-color-on-surface-variant)' }}>Was this briefing helpful?</span>
-                                        <button onClick={() => setAiFeedback('up')} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 4, display: 'inline-flex' }}>
-                                            <MdIcon name="thumb_up" style={{ fontSize: 20, color: aiFeedback === 'up' ? 'var(--cat-vfr-color)' : 'var(--md-sys-color-outline)' }} />
+                                        <button aria-label="Thumbs up — briefing was helpful" onClick={() => setAiFeedback('up')} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 4, display: 'inline-flex' }}>
+                                            <MdIcon name="thumb_up" style={{ fontSize: 20, color: aiFeedback === 'up' ? 'var(--cat-vfr-color)' : 'var(--md-sys-color-outline)' }} aria-hidden="true" />
                                         </button>
-                                        <button onClick={() => setAiFeedback('down')} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 4, display: 'inline-flex' }}>
-                                            <MdIcon name="thumb_down" style={{ fontSize: 20, color: aiFeedback === 'down' ? 'var(--md-sys-color-error)' : 'var(--md-sys-color-outline)' }} />
+                                        <button aria-label="Thumbs down — briefing was not helpful" onClick={() => setAiFeedback('down')} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 4, display: 'inline-flex' }}>
+                                            <MdIcon name="thumb_down" style={{ fontSize: 20, color: aiFeedback === 'down' ? 'var(--md-sys-color-error)' : 'var(--md-sys-color-outline)' }} aria-hidden="true" />
                                         </button>
                                         {aiFeedback && <span style={{ fontSize: 12, color: 'var(--md-sys-color-on-surface-variant)' }}>{aiFeedback === 'up' ? 'Thanks! Feedback helps improve AI responses.' : 'Thanks for the feedback.'}</span>}
                                     </div>
@@ -5128,6 +5288,7 @@
                                         <div style={{ display: 'flex', gap: 8, padding: '10px 14px', borderTop: chatMessages.length ? '1px solid var(--md-sys-color-outline-variant)' : 'none', alignItems: 'flex-end', background: 'var(--md-sys-color-surface-container)' }}>
                                             <textarea
                                                 ref={chatInputRef}
+                                                aria-label="Ask AI about this flight"
                                                 value={chatInput}
                                                 onChange={e => setChatInput(e.target.value)}
                                                 onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendChat(); } }}
@@ -5654,26 +5815,12 @@
                 'Output ONLY the JSON object. No other text.'
             ].join('\n');
 
-            var res = await fetch('https://api.anthropic.com/v1/messages', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'x-api-key': apiKey,
-                    'anthropic-version': '2023-06-01',
-                    'anthropic-dangerous-direct-browser-access': 'true'
-                },
-                body: JSON.stringify({
-                    model: 'claude-3-5-sonnet-20241022',
-                    max_tokens: 300,
-                    system: system,
-                    messages: [{ role: 'user', content: inputText }]
-                })
+            var data = await callAnthropicApi({
+                system,
+                messages: [{ role: 'user', content: inputText }],
+                max_tokens: 300,
+                apiKey
             });
-            if (!res.ok) {
-                var errBody = await res.json().catch(function() { return {}; });
-                throw new Error((errBody.error && errBody.error.message) || 'API error ' + res.status);
-            }
-            var data = await res.json();
             var raw = (data.content && data.content[0] && data.content[0].text) || '';
             if (!raw.trim()) throw new Error('Empty response from Claude');
             // Strip any accidental markdown fences
@@ -5725,6 +5872,45 @@
             useEffect(function() {
                 if (user && user !== undefined) setShowLoginModal(false);
             }, [user]);
+
+            // ── Sync Anthropic API key to/from Firestore (Step 3.2) ─────────────
+            // On login: read the key from users/{uid}/settings and populate state +
+            // localStorage so it works on any device without re-entry.
+            // On key change: write back to Firestore if the user is logged in.
+            useEffect(function() {
+                if (!user) return;
+                var { doc: fbDoc, getDocs, collection: fbCol } = _fbFns();
+                var db = _fbDb();
+                if (!db) return;
+                // Read key from Firestore settings doc
+                var { doc: getDoc2 } = _fbFns();
+                var settingsRef = fbDoc(db, 'users', user.uid, 'settings', 'anthropic');
+                // Use getDocs on a single doc reference isn't ideal; use setDoc/getDoc pattern
+                // Firebase v9 exposes getDoc separately — fall back to setDoc on first write.
+                import('https://www.gstatic.com/firebasejs/10.8.1/firebase-firestore.js')
+                    .then(function(m) {
+                        return m.getDoc(settingsRef);
+                    }).then(function(snap) {
+                        if (snap.exists()) {
+                            var saved = snap.data().anthropicKey || '';
+                            if (saved && !nlApiKey) {
+                                setNlApiKey(saved);
+                                try { localStorage.setItem('flightscore_anthropic_key', saved); } catch(e) {}
+                            }
+                        }
+                    }).catch(function() {});
+            }, [user]);
+
+            useEffect(function() {
+                if (!user || !nlApiKey.trim()) return;
+                var { doc: fbDoc, setDoc } = _fbFns();
+                var db = _fbDb();
+                if (!db) return;
+                setDoc(fbDoc(db, 'users', user.uid, 'settings', 'anthropic'), {
+                    anthropicKey: nlApiKey.trim(),
+                    updatedAt: Date.now()
+                }).catch(function() {});
+            }, [nlApiKey, user]);
 
             // Dark mode: follows system preference by default; manual toggle saves an explicit override.
             // Uses a separate 'flightscore_theme_manual' key so an explicit choice is
@@ -5949,6 +6135,23 @@
                 });
             }, [user]);
 
+            // ── Load FRAT answers from Firestore on login (Step 1.3) ────────────
+            // Populates per-trip localStorage keys so BriefingPanel can read them
+            // immediately without an extra Firestore call on each mount.
+            useEffect(function() {
+                if (!user) return;
+                var { collection: fbCol, getDocs } = _fbFns();
+                var db = _fbDb();
+                if (!db) return;
+                getDocs(fbCol(db, 'users', user.uid, 'frat')).then(function(snap) {
+                    snap.docs.forEach(function(d) {
+                        var data = d.data();
+                        var key  = 'flightscore_frat_' + d.id;
+                        try { localStorage.setItem(key, JSON.stringify({ answers: data.answers || {}, skipped: !!data.skipped })); } catch(e) {}
+                    });
+                }).catch(function(e) { console.warn('[FlightScore] FRAT Firestore load failed:', e); });
+            }, [user]);
+
             // ── Persist trips on every state change (Firestore for auth, localStorage for guest) ─
             useEffect(function() {
                 if (!tripsLoaded) return;
@@ -6131,8 +6334,8 @@
             ];
 
             // ── Flighty-style icon button ──────────────────────────────────────────
-            var IconBtn = ({ icon, onClick, title, active, style: s }) => (
-                <button onClick={onClick} title={title} style={{
+            var IconBtn = ({ icon, onClick, title, active, style: s, 'aria-label': ariaLabel }) => (
+                <button onClick={onClick} title={title} aria-label={ariaLabel || title} style={{
                     background: active ? 'var(--accent-dim)' : 'none',
                     border: '1px solid ' + (active ? 'rgba(10,132,255,0.3)' : 'transparent'),
                     borderRadius: 12, padding: 9, cursor: 'pointer', lineHeight: 1,
@@ -6341,7 +6544,35 @@
                                     )}
                                 </div>
 
-                                <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                                {/* ── Loading skeleton — shown while Firestore data arrives (Step 3.3) ── */}
+                                {!tripsLoaded && (
+                                    <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }} aria-busy="true" aria-label="Loading flights">
+                                        {[0,1,2].map(function(i) { return (
+                                            <div key={i} className="fy-card" style={{ padding: 0, overflow: 'hidden' }} aria-hidden="true">
+                                                <div style={{ height: 3, background: 'var(--card-border)', opacity: 0.6 }} />
+                                                <div style={{ display: 'flex', alignItems: 'center', padding: '18px 20px', gap: 20 }}>
+                                                    <div style={{ width: 60, height: 60, borderRadius: '50%', background: 'var(--card-high)', flexShrink: 0, animation: 'pulse 1.6s ease-in-out infinite' }} />
+                                                    <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 10 }}>
+                                                        <div style={{ height: 22, width: '55%', borderRadius: 6, background: 'var(--card-high)', animation: 'pulse 1.6s ease-in-out infinite' }} />
+                                                        <div style={{ height: 13, width: '35%', borderRadius: 6, background: 'var(--card-mid)', animation: 'pulse 1.6s ease-in-out infinite', animationDelay: '0.15s' }} />
+                                                        <div style={{ display: 'flex', gap: 6 }}>
+                                                            {[40,55,65,50].map(function(w,j) { return (
+                                                                <div key={j} style={{ height: 20, width: w, borderRadius: 6, background: 'var(--card-mid)', animation: 'pulse 1.6s ease-in-out infinite', animationDelay: (j * 0.07) + 's' }} />
+                                                            ); })}
+                                                        </div>
+                                                    </div>
+                                                    <div style={{ display: 'flex', flexDirection: 'column', gap: 6, flexShrink: 0 }}>
+                                                        {[0,1,2,3].map(function(j) { return (
+                                                            <div key={j} style={{ width: 38, height: 38, borderRadius: 12, background: 'var(--card-high)', animation: 'pulse 1.6s ease-in-out infinite', animationDelay: (j * 0.07) + 's' }} />
+                                                        ); })}
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        ); })}
+                                    </div>
+                                )}
+
+                                {tripsLoaded && <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
                                     {trips.slice().sort(function(a, b) {
                                     var aptA = getAirport(a.dep), aptB = getAirport(b.dep);
                                     var tA = (a.date && a.time && aptA) ? getTripTargetUtc(a, aptA.tz || lonToIanaTz(aptA.lon)) : null;
@@ -6454,10 +6685,10 @@
 
                                                     {/* Action icons */}
                                                     <div style={{ display: 'flex', flexDirection: 'column', gap: 4, flexShrink: 0 }} onClick={e => e.stopPropagation()}>
-                                                        <IconBtn icon={copiedTripId === trip.id ? "check" : "share"} title="Copy link" onClick={e => copyTripLink(trip, e)} active={copiedTripId === trip.id} />
-                                                        <IconBtn icon="content_copy" title="Duplicate" onClick={e => duplicateTrip(trip, e)} />
-                                                        <IconBtn icon="edit" title="Edit" onClick={e => editTrip(trip, e)} />
-                                                        <IconBtn icon="delete" title="Delete" onClick={() => deleteTrip(trip.id)} />
+                                                        <IconBtn icon={copiedTripId === trip.id ? "check" : "share"} title="Copy link" aria-label="Copy shareable link for this trip" onClick={e => copyTripLink(trip, e)} active={copiedTripId === trip.id} />
+                                                        <IconBtn icon="content_copy" title="Duplicate" aria-label="Duplicate this trip" onClick={e => duplicateTrip(trip, e)} />
+                                                        <IconBtn icon="edit" title="Edit" aria-label="Edit this trip" onClick={e => editTrip(trip, e)} />
+                                                        <IconBtn icon="delete" title="Delete" aria-label="Delete this trip" onClick={() => deleteTrip(trip.id)} />
                                                     </div>
                                                 </div>
                                             </div>
@@ -6479,7 +6710,7 @@
                                             <div><span style={{ fontWeight: 600, color: 'var(--text-secondary)' }}>{dadJoke.q}</span>{' '}<span>{dadJoke.a}</span></div>
                                         </div>
                                     )}
-                                </div>
+                                </div>}
                             </div>
                         )}
 
@@ -6744,10 +6975,12 @@
                                             var active = tab === t.id;
                                             return (
                                                 <button key={t.id} onClick={() => setTab(t.id)}
+                                                    aria-label={t.label + ' tab'}
+                                                    aria-current={active ? 'page' : undefined}
                                                     className={"nav-rail-item" + (active ? " active" : "")}
                                                     style={{ background: "none", border: "none", cursor: "pointer", width: "100%", padding: "6px 0" }}>
                                                     <div className="rail-pip">
-                                                        <MdIcon name={t.icon} style={{ fontSize: 22, display: "block" }} />
+                                                        <MdIcon name={t.icon} style={{ fontSize: 22, display: "block" }} aria-hidden="true" />
                                                     </div>
                                                     <span className="nav-rail-label">{t.label}</span>
                                                 </button>
@@ -6807,6 +7040,7 @@
                                             {(tab === "brief" || tab === "export") && (
                                                 <WxErrorBoundary label="Flight Briefing">
                                                     <BriefingPanel trip={activeTrip} tab={tab}
+                                                    user={user}
                                                     pendingAiPrompt={pendingAiPrompt}
                                                     onClearPendingPrompt={() => setPendingAiPrompt(null)}
                                                     onScoreUpdate={score => {

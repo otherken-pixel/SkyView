@@ -1,32 +1,102 @@
 /**
- * Import function triggers from their respective submodules:
+ * FlightScore Cloud Functions
  *
- * const {onCall} = require("firebase-functions/v2/https");
- * const {onDocumentWritten} = require("firebase-functions/v2/firestore");
+ * anthropicProxy — callable function that forwards requests to the Anthropic
+ * Messages API.  Keeping the API key server-side means it is never exposed
+ * in the browser bundle or developer tools.
  *
- * See a full list of supported triggers at https://firebase.google.com/docs/functions
+ * Set the key before deploying:
+ *   firebase functions:secrets:set ANTHROPIC_API_KEY
+ * Or via environment config for the emulator:
+ *   export ANTHROPIC_API_KEY=sk-ant-...
  */
 
-const {setGlobalOptions} = require("firebase-functions");
-const {onRequest} = require("firebase-functions/https");
+const { setGlobalOptions } = require("firebase-functions");
+const { onCall, HttpsError } = require("firebase-functions/v2/https");
+const { defineSecret } = require("firebase-functions/params");
 const logger = require("firebase-functions/logger");
+const https = require("https");
 
-// For cost control, you can set the maximum number of containers that can be
-// running at the same time. This helps mitigate the impact of unexpected
-// traffic spikes by instead downgrading performance. This limit is a
-// per-function limit. You can override the limit for each function using the
-// `maxInstances` option in the function's options, e.g.
-// `onRequest({ maxInstances: 5 }, (req, res) => { ... })`.
-// NOTE: setGlobalOptions does not apply to functions using the v1 API. V1
-// functions should each use functions.runWith({ maxInstances: 10 }) instead.
-// In the v1 API, each function can only serve one request per container, so
-// this will be the maximum concurrent request count.
 setGlobalOptions({ maxInstances: 10 });
 
-// Create and deploy your first functions
-// https://firebase.google.com/docs/functions/get-started
+// The Anthropic key is stored as a Firebase Secret (never in source).
+const anthropicApiKey = defineSecret("ANTHROPIC_API_KEY");
 
-// exports.helloWorld = onRequest((request, response) => {
-//   logger.info("Hello logs!", {structuredData: true});
-//   response.send("Hello from Firebase!");
-// });
+/**
+ * anthropicProxy — Firebase callable function
+ *
+ * Accepts: { model, system, messages, max_tokens, stream }
+ * Returns: { content: [{ text: "..." }] }  (same shape as Anthropic's API)
+ *
+ * Called from the browser via:
+ *   const fn = httpsCallable(functions, 'anthropicProxy');
+ *   const result = await fn({ model, system, messages, max_tokens });
+ */
+exports.anthropicProxy = onCall(
+    { secrets: [anthropicApiKey], cors: true },
+    async (request) => {
+        const key = anthropicApiKey.value();
+        if (!key) {
+            throw new HttpsError("failed-precondition", "ANTHROPIC_API_KEY secret is not set.");
+        }
+
+        const { model, system, messages, max_tokens } = request.data || {};
+
+        if (!messages || !Array.isArray(messages) || messages.length === 0) {
+            throw new HttpsError("invalid-argument", "messages must be a non-empty array.");
+        }
+
+        const payload = JSON.stringify({
+            model: model || "claude-3-5-sonnet-20241022",
+            max_tokens: max_tokens || 1800,
+            system: system || "",
+            messages,
+        });
+
+        logger.info("[anthropicProxy] forwarding request", {
+            model, max_tokens, messageCount: messages.length,
+        });
+
+        // Forward to Anthropic via Node https (no external SDK dependency)
+        return new Promise((resolve, reject) => {
+            const options = {
+                hostname: "api.anthropic.com",
+                path: "/v1/messages",
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                    "x-api-key": key,
+                    "anthropic-version": "2023-06-01",
+                    "Content-Length": Buffer.byteLength(payload),
+                },
+            };
+
+            const req = https.request(options, (res) => {
+                let body = "";
+                res.on("data", (chunk) => { body += chunk; });
+                res.on("end", () => {
+                    try {
+                        const data = JSON.parse(body);
+                        if (res.statusCode >= 400) {
+                            const msg = (data.error && data.error.message) || `HTTP ${res.statusCode}`;
+                            logger.warn("[anthropicProxy] Anthropic error", { status: res.statusCode, msg });
+                            reject(new HttpsError("internal", msg));
+                        } else {
+                            resolve({ content: data.content });
+                        }
+                    } catch (e) {
+                        reject(new HttpsError("internal", "Failed to parse Anthropic response."));
+                    }
+                });
+            });
+
+            req.on("error", (e) => {
+                logger.error("[anthropicProxy] network error", e);
+                reject(new HttpsError("unavailable", e.message));
+            });
+
+            req.write(payload);
+            req.end();
+        });
+    }
+);
