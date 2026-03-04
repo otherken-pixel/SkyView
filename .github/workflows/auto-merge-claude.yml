@@ -24,3 +24,11 @@ jobs:
           git checkout main
           git merge --no-ff origin/${{ github.ref_name }} -m "Auto-merge ${{ github.ref_name }} into main"
           git push origin main
+
+      - name: Deploy to Firebase Hosting
+        uses: FirebaseExtended/action-hosting-deploy@v0
+        with:
+          repoToken: ${{ secrets.GITHUB_TOKEN }}
+          firebaseServiceAccount: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_FLIGHTSCORE_CA7E0 }}
+          channelId: live
+          projectId: flightscore-ca7e0
