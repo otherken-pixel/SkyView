@@ -33,7 +33,7 @@ const anthropicApiKey = defineSecret("ANTHROPIC_API_KEY");
  *   const result = await fn({ model, system, messages, max_tokens });
  */
 exports.anthropicProxy = onCall(
-    { secrets: [anthropicApiKey], cors: true },
+    { secrets: [anthropicApiKey], cors: true, invoker: "public" },
     async (request) => {
         let key;
         try {
