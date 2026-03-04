@@ -10,7 +10,6 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
-      id-token: write
     steps:
       - uses: actions/checkout@v4
         with:
@@ -34,18 +33,16 @@ jobs:
           channelId: live
           projectId: flightscore-ca7e0
 
-      - name: Authenticate to Google Cloud
-        uses: google-github-actions/auth@v2
-        with:
-          credentials_json: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_FLIGHTSCORE_CA7E0 }}
-
       - name: Set up Node.js 24
         uses: actions/setup-node@v4
         with:
           node-version: '24'
 
       - name: Deploy Firebase Functions
+        env:
+          GOOGLE_APPLICATION_CREDENTIALS_JSON: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_FLIGHTSCORE_CA7E0 }}
         run: |
-          npm install -g firebase-tools
+          echo "$GOOGLE_APPLICATION_CREDENTIALS_JSON" > /tmp/sa.json
+          export GOOGLE_APPLICATION_CREDENTIALS=/tmp/sa.json
           cd functions && npm install && cd ..
-          firebase deploy --only functions --project flightscore-ca7e0
+          npx --yes firebase-tools deploy --only functions --project flightscore-ca7e0 --non-interactive
