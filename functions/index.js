@@ -35,9 +35,15 @@ const anthropicApiKey = defineSecret("ANTHROPIC_API_KEY");
 exports.anthropicProxy = onCall(
     { secrets: [anthropicApiKey], cors: true },
     async (request) => {
-        const key = anthropicApiKey.value();
+        let key;
+        try {
+            key = anthropicApiKey.value();
+        } catch (secretErr) {
+            logger.error("[anthropicProxy] failed to read ANTHROPIC_API_KEY secret", secretErr);
+            throw new HttpsError("failed-precondition", "ANTHROPIC_API_KEY secret is not configured. Run: firebase functions:secrets:set ANTHROPIC_API_KEY");
+        }
         if (!key) {
-            throw new HttpsError("failed-precondition", "ANTHROPIC_API_KEY secret is not set.");
+            throw new HttpsError("failed-precondition", "ANTHROPIC_API_KEY secret is not set. Run: firebase functions:secrets:set ANTHROPIC_API_KEY");
         }
 
         const { model, system, messages, max_tokens } = request.data || {};

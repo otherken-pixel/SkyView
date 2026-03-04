@@ -524,9 +524,15 @@
                     var result = await callProxy({ model: CLAUDE_MODEL, system, messages, max_tokens: max_tokens || 1800 });
                     return result.data;          // { content: [{ text: "..." }] }
                 } catch(proxyErr) {
-                    // Proxy not deployed yet or emulator not running — fall through to direct call
-                    console.warn('[FlightScore] anthropicProxy unavailable, falling back to direct API:', proxyErr.message);
-                    if (!apiKey) throw proxyErr; // no fallback key — surface the error
+                    console.warn('[FlightScore] anthropicProxy error:', proxyErr.message);
+                    if (!apiKey) {
+                        // Surface a meaningful message — proxyErr.message is often just "internal"
+                        // when the Firebase secret is not configured.
+                        var msg = proxyErr.message && proxyErr.message !== 'internal'
+                            ? proxyErr.message
+                            : 'AI service unavailable. The server-side API key may not be configured yet.';
+                        throw new Error(msg);
+                    }
                 }
             }
             // Direct browser-to-Anthropic call (requires user-supplied apiKey)
@@ -5870,25 +5876,6 @@
                 if (user && user !== undefined) setShowLoginModal(false);
             }, [user]);
 
-            // ── Sync Anthropic API key to/from Firestore (Step 3.2) ─────────────
-            // On login: read the key from users/{uid}/settings and populate state +
-            // localStorage so it works on any device without re-entry.
-            // On key change: write back to Firestore if the user is logged in.
-            useEffect(function() {
-                if (!user) return;
-                var { doc: fbDoc, getDocs, collection: fbCol } = _fbFns();
-                var db = _fbDb();
-                if (!db) return;
-                // Read key from Firestore settings doc
-                var { doc: getDoc2 } = _fbFns();
-                var settingsRef = fbDoc(db, 'users', user.uid, 'settings', 'anthropic');
-                // Use getDocs on a single doc reference isn't ideal; use setDoc/getDoc pattern
-                // Firebase v9 exposes getDoc separately — fall back to setDoc on first write.
-                import('https://www.gstatic.com/firebasejs/10.8.1/firebase-firestore.js')
-                    .then(function(m) {
-                        return m.getDoc(settingsRef);
-                    }).catch(function() {});
-            }, [user]);
 
             // Dark mode: follows system preference by default; manual toggle saves an explicit override.
             // Uses a separate 'flightscore_theme_manual' key so an explicit choice is
