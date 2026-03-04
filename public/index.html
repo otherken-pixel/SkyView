@@ -3,6 +3,8 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="build-commit" content="__BUILD_COMMIT__">
+    <meta name="build-timestamp" content="__BUILD_TIMESTAMP__">
     <title>FlightScore</title>
     <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'><rect width='24' height='24' rx='5' fill='%230b57d0'/><path d='M21 16v-2l-8-5V3.5c0-.83-.67-1.5-1.5-1.5S10 2.67 10 3.5V9l-8 5v2l8-2.5V19l-2 1.5V22l3.5-1 3.5 1v-1.5L13 19v-5.5l8 2.5z' fill='%23ffffff'/></svg>">
     <!-- PWA: iOS meta tags -->
@@ -5474,6 +5476,24 @@
                             <strong> Airports:</strong> OurAirports CC0 public domain ·
                             <strong> Enrichment:</strong> OpenAIP (rate-limited, 1 h cache)
                         </div>
+
+                        {/* ── Build Version ── */}
+                        {(function() {
+                            var commitMeta = document.querySelector('meta[name="build-commit"]');
+                            var tsMeta     = document.querySelector('meta[name="build-timestamp"]');
+                            var commit     = commitMeta ? commitMeta.content : '';
+                            var ts         = tsMeta     ? tsMeta.content     : '';
+                            var hasVersion = commit && commit !== '__BUILD_COMMIT__';
+                            var hasTs      = ts && ts !== '__BUILD_TIMESTAMP__';
+                            if (!hasVersion && !hasTs) return null;
+                            return (
+                                <div style={{ fontSize:11, color:'var(--md-sys-color-on-surface-variant)', opacity:0.6, marginTop:4, fontFamily:'var(--font-mono, monospace)' }}>
+                                    {hasVersion && <span>Build: {commit.substring(0, 7)}</span>}
+                                    {hasVersion && hasTs && <span> · </span>}
+                                    {hasTs && <span>Deployed: {ts}</span>}
+                                </div>
+                            );
+                        })()}
                     </div>
                 </div>
             );
