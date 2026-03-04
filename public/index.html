@@ -2482,12 +2482,17 @@
 
         function CatBadge({ cat }) {
             const lc = cat.toLowerCase();
+            /* WCAG AA: icon communicates flight category independent of color */
+            const catIcon = { VFR: 'check_circle', MVFR: 'warning', IFR: 'cancel', LIFR: 'dangerous' }[cat] || 'help';
             return (
-                <span className="font-mono" style={{ 
-                    display: "inline-flex", padding: "2px 12px", borderRadius: "12px", 
+                <span className="font-mono" style={{
+                    display: "inline-flex", alignItems: "center", gap: 4, padding: "2px 10px", borderRadius: "12px",
                     fontSize: "11px", fontWeight: "700",
-                    background: `var(--cat-${lc}-bg)`, color: `var(--cat-${lc}-color)` 
-                }}>{cat}</span>
+                    background: `var(--cat-${lc}-bg)`, color: `var(--cat-${lc}-color)`
+                }} aria-label={cat + ' conditions'}>
+                    <MdIcon name={catIcon} style={{ fontSize: 12, color: `var(--cat-${lc}-color)` }} aria-hidden="true" />
+                    {cat}
+                </span>
             );
         }
 
@@ -4582,9 +4587,9 @@
                                 var fratScore = fratAnsweredCount > 0 ? calcFratGoScore(fratAnswers) : null;
                                 var baseScore = detailedScore ? detailedScore.total : null;
                                 var fratBand  = fratScore === null ? null
-                                    : fratScore >= 80 ? { color:'var(--go)',      label:'Low Risk — Proceed' }
-                                    : fratScore >= 60 ? { color:'var(--caution)', label:'Caution — Review' }
-                                    :                   { color:'var(--nogo)',    label:'High Risk — No-Go' };
+                                    : fratScore >= 80 ? { color:'var(--go)',      label:'Low Risk — Proceed', icon:'check_circle' }
+                                    : fratScore >= 60 ? { color:'var(--caution)', label:'Caution — Review',   icon:'warning' }
+                                    :                   { color:'var(--nogo)',    label:'High Risk — No-Go',  icon:'cancel' };
                                 var cats = ['P','A','V','E'];
                                 return (
                                     <div style={{ background:'var(--md-sys-color-surface-container)', borderRadius:16, marginBottom:16, overflow:'hidden' }}>
@@ -4593,11 +4598,17 @@
                                             <MdIcon name="checklist_rtl" style={{ color:'var(--accent)', fontSize:20, flexShrink:0 }} />
                                             <span style={{ fontWeight:700, fontSize:13, textTransform:'uppercase', letterSpacing:'0.5px', flex:1 }}>FRAT — Flight Risk Assessment</span>
                                             {fratComplete
-                                                ? <span style={{ fontSize:12, fontWeight:700, background:'var(--go)', color:'#fff', borderRadius:4, padding:'2px 7px', flexShrink:0 }}>COMPLETE ✓</span>
+                                                ? <span style={{ display:'inline-flex', alignItems:'center', gap:4, fontSize:12, fontWeight:700, background:'var(--go)', color:'#fff', borderRadius:4, padding:'2px 7px', flexShrink:0 }} aria-label="FRAT complete">
+                                                      <MdIcon name="check_circle" style={{ fontSize:13, color:'#fff' }} aria-hidden="true" />COMPLETE
+                                                  </span>
                                                 : fratSkipped
-                                                ? <span style={{ fontSize:12, fontWeight:700, background:'var(--nogo)', color:'#fff', borderRadius:4, padding:'2px 7px', flexShrink:0 }}>−20 PTS</span>
+                                                ? <span style={{ display:'inline-flex', alignItems:'center', gap:4, fontSize:12, fontWeight:700, background:'var(--nogo)', color:'#fff', borderRadius:4, padding:'2px 7px', flexShrink:0 }} aria-label="FRAT skipped, minus 20 points penalty">
+                                                      <MdIcon name="cancel" style={{ fontSize:13, color:'#fff' }} aria-hidden="true" />−20 PTS
+                                                  </span>
                                                 : fratAnsweredCount > 0
-                                                ? <span style={{ fontSize:12, fontWeight:600, background:'var(--caution-bg)', color:'var(--caution)', borderRadius:4, padding:'2px 7px', flexShrink:0 }}>{fratAnsweredCount}/{FRAT_TOTAL}</span>
+                                                ? <span style={{ display:'inline-flex', alignItems:'center', gap:4, fontSize:12, fontWeight:600, background:'var(--caution-bg)', color:'var(--caution)', borderRadius:4, padding:'2px 7px', flexShrink:0 }} aria-label={`FRAT in progress: ${fratAnsweredCount} of ${FRAT_TOTAL} answered`}>
+                                                      <MdIcon name="warning" style={{ fontSize:13, color:'var(--caution)' }} aria-hidden="true" />{fratAnsweredCount}/{FRAT_TOTAL}
+                                                  </span>
                                                 : <span style={{ fontSize:12, color:'var(--md-sys-color-on-surface-variant)', background:'var(--md-sys-color-surface-container-high)', borderRadius:4, padding:'2px 7px', flexShrink:0 }}>OPTIONAL</span>
                                             }
                                             <MdIcon name={fratExpanded ? 'expand_less' : 'expand_more'} style={{ fontSize:20, color:'var(--md-sys-color-on-surface-variant)', flexShrink:0 }} />
@@ -4632,14 +4643,19 @@
                                             <div style={{ padding:'0 16px 14px', display:'flex', gap:10 }}>
                                                 {[
                                                     { label:'Base Weather', value:baseScore },
-                                                    { label:'FRAT Score', value:fratScore, sub:fratBand.label, color:fratBand.color },
+                                                    { label:'FRAT Score', value:fratScore, sub:fratBand.label, color:fratBand.color, icon:fratBand.icon },
                                                     { label:'Combined GO Score', value:combinedScore, sub:'70/30 blend' },
                                                 ].map(function(item,i) {
                                                     return (
                                                         <div key={i} style={{ flex:1, background:'var(--md-sys-color-surface-container-high)', borderRadius:10, padding:'10px 8px', textAlign:'center' }}>
                                                             <div style={{ fontSize:22, fontWeight:800, lineHeight:1, color:item.color||'var(--md-sys-color-on-surface)' }}>{item.value}</div>
                                                             <div style={{ fontSize:12, fontWeight:700, textTransform:'uppercase', letterSpacing:'0.4px', color:'var(--md-sys-color-on-surface-variant)', marginTop:3, lineHeight:1.3 }}>{item.label}</div>
-                                                            {item.sub && <div style={{ fontSize:12, color:item.color||'var(--md-sys-color-on-surface-variant)', marginTop:2 }}>{item.sub}</div>}
+                                                            {item.sub && (
+                                                                <div style={{ display:'inline-flex', alignItems:'center', gap:3, fontSize:12, color:item.color||'var(--md-sys-color-on-surface-variant)', marginTop:2 }}>
+                                                                    {item.icon && <MdIcon name={item.icon} style={{ fontSize:13, color:item.color }} aria-hidden="true" />}
+                                                                    {item.sub}
+                                                                </div>
+                                                            )}
                                                         </div>
                                                     );
                                                 })}
@@ -4675,30 +4691,40 @@
                                                                                 {isAuto && <span style={{ fontSize:12, background:'var(--accent-dim)', color:'var(--accent)', borderRadius:4, padding:'1px 5px', fontWeight:700, flexShrink:0 }}>AUTO-FILLED · tap to override</span>}
                                                                                 {q.hint && <span style={{ fontSize:12, color:'var(--md-sys-color-on-surface-variant)', fontStyle:'italic', width:'100%' }}>{q.hint}</span>}
                                                                             </div>
-                                                                            <div style={{ display:'flex', flexDirection:'column', gap:5 }}>
+                                                                            <div style={{ display:'flex', flexDirection:'column', gap:5 }} role="radiogroup" aria-label={q.label}>
                                                                                 {q.opts.map(function(opt) {
                                                                                     var isSelected = fratAnswers[q.id] === opt.p;
-                                                                                    var riskColor = opt.p === 0 ? 'var(--go)' : opt.p <= 3 ? 'var(--caution)' : 'var(--nogo)';
-                                                                                    var riskBg    = opt.p === 0 ? 'var(--go-bg)' : opt.p <= 3 ? 'var(--caution-bg)' : 'var(--nogo-bg)';
+                                                                                    var riskColor  = opt.p === 0 ? 'var(--go)' : opt.p <= 3 ? 'var(--caution)' : 'var(--nogo)';
+                                                                                    var riskBg     = opt.p === 0 ? 'var(--go-bg)' : opt.p <= 3 ? 'var(--caution-bg)' : 'var(--nogo-bg)';
+                                                                                    /* WCAG AA: icon communicates risk tier independent of color */
+                                                                                    var riskIcon   = opt.p === 0 ? 'check_circle' : opt.p <= 3 ? 'warning' : 'cancel';
+                                                                                    var riskLabel  = opt.p === 0 ? 'Low risk' : opt.p <= 3 ? 'Caution' : 'High risk';
                                                                                     return (
-                                                                                        <button key={opt.l} onClick={function() {
-                                                                                            setFratAnswers(function(prev){ return Object.assign({}, prev, { [q.id]: opt.p }); });
-                                                                                            if (q.auto) setFratAutoFilled(function(prev){ var n=Object.assign({},prev); delete n[q.id]; return n; });
-                                                                                        }} style={{
-                                                                                            display:'flex', alignItems:'center', gap:10, padding:'8px 12px',
-                                                                                            background: isSelected ? riskBg : 'var(--md-sys-color-surface-container-high)',
-                                                                                            border:'1px solid '+(isSelected ? riskColor : 'transparent'),
-                                                                                            borderRadius:8, cursor:'pointer', textAlign:'left', width:'100%', transition:'all 0.15s'
-                                                                                        }}>
+                                                                                        <button key={opt.l}
+                                                                                            role="radio"
+                                                                                            aria-checked={isSelected}
+                                                                                            aria-label={opt.l + ' — ' + riskLabel}
+                                                                                            onClick={function() {
+                                                                                                setFratAnswers(function(prev){ return Object.assign({}, prev, { [q.id]: opt.p }); });
+                                                                                                if (q.auto) setFratAutoFilled(function(prev){ var n=Object.assign({},prev); delete n[q.id]; return n; });
+                                                                                            }} style={{
+                                                                                                display:'flex', alignItems:'center', gap:10, padding:'8px 12px',
+                                                                                                background: isSelected ? riskBg : 'var(--md-sys-color-surface-container-high)',
+                                                                                                border:'1px solid '+(isSelected ? riskColor : 'transparent'),
+                                                                                                borderRadius:8, cursor:'pointer', textAlign:'left', width:'100%', transition:'all 0.15s'
+                                                                                            }}>
+                                                                                            {/* Radio indicator */}
                                                                                             <div style={{ width:16, height:16, borderRadius:'50%', flexShrink:0,
                                                                                                 border:'2px solid '+(isSelected ? riskColor : 'var(--md-sys-color-outline)'),
                                                                                                 background: isSelected ? riskColor : 'transparent',
-                                                                                                display:'flex', alignItems:'center', justifyContent:'center' }}>
+                                                                                                display:'flex', alignItems:'center', justifyContent:'center' }} aria-hidden="true">
                                                                                                 {isSelected && <div style={{ width:5, height:5, borderRadius:'50%', background:'#fff' }} />}
                                                                                             </div>
                                                                                             <span style={{ fontSize:12, color:'var(--md-sys-color-on-surface)', flex:1, lineHeight:1.4 }}>{opt.l}</span>
-                                                                                            <span style={{ fontSize:12, fontWeight:700, color:riskColor, opacity:0.75, flexShrink:0 }}>
-                                                                                                {opt.p === 0 ? '✓' : `+${opt.p} risk`}
+                                                                                            {/* Risk badge: icon + label for color-blind accessibility */}
+                                                                                            <span style={{ display:'flex', alignItems:'center', gap:3, fontSize:11, fontWeight:700, color:riskColor, flexShrink:0, opacity: isSelected ? 1 : 0.65 }} aria-hidden="true">
+                                                                                                <MdIcon name={riskIcon} style={{ fontSize:14, color:riskColor }} />
+                                                                                                {opt.p === 0 ? 'OK' : riskLabel}
                                                                                             </span>
                                                                                         </button>
                                                                                     );
@@ -4732,14 +4758,19 @@
                                                                 <div style={{ display:'flex', gap:10 }}>
                                                                     {[
                                                                         { label:'Base Weather Score', value:baseScore, sub:'weather + route' },
-                                                                        { label:'FRAT Score', value:fratScore, sub:fratBand.label, color:fratBand.color },
+                                                                        { label:'FRAT Score', value:fratScore, sub:fratBand.label, color:fratBand.color, icon:fratBand.icon },
                                                                         { label:'Combined GO Score', value:combinedScore, sub:'final score' },
                                                                     ].map(function(item,i) {
                                                                         return (
                                                                             <div key={i} style={{ flex:1, background:'var(--md-sys-color-surface-container)', borderRadius:10, padding:'10px 8px', textAlign:'center' }}>
                                                                                 <div style={{ fontSize:26, fontWeight:800, lineHeight:1, color:item.color||'var(--md-sys-color-on-surface)' }}>{item.value}</div>
                                                                                 <div style={{ fontSize:12, fontWeight:700, textTransform:'uppercase', letterSpacing:'0.4px', color:'var(--md-sys-color-on-surface-variant)', marginTop:4, lineHeight:1.3 }}>{item.label}</div>
-                                                                                {item.sub && <div style={{ fontSize:12, color:item.color||'var(--md-sys-color-on-surface-variant)', marginTop:2 }}>{item.sub}</div>}
+                                                                                {item.sub && (
+                                                                                    <div style={{ display:'inline-flex', alignItems:'center', gap:3, fontSize:12, color:item.color||'var(--md-sys-color-on-surface-variant)', marginTop:2 }}>
+                                                                                        {item.icon && <MdIcon name={item.icon} style={{ fontSize:13, color:item.color }} aria-hidden="true" />}
+                                                                                        {item.sub}
+                                                                                    </div>
+                                                                                )}
                                                                             </div>
                                                                         );
                                                                     })}
@@ -4750,7 +4781,12 @@
                                                                 <div style={{ flex:'0 0 auto', background:'var(--md-sys-color-surface-container)', borderRadius:10, padding:'10px 16px', textAlign:'center', minWidth:80 }}>
                                                                     <div style={{ fontSize:26, fontWeight:800, lineHeight:1, color:fratBand ? fratBand.color : 'var(--md-sys-color-on-surface)' }}>{fratScore}</div>
                                                                     <div style={{ fontSize:11, fontWeight:700, textTransform:'uppercase', letterSpacing:'0.4px', color:'var(--md-sys-color-on-surface-variant)', marginTop:4 }}>FRAT Score</div>
-                                                                    {fratBand && <div style={{ fontSize:11, color:fratBand.color, marginTop:2 }}>{fratBand.label}</div>}
+                                                                    {fratBand && (
+                                                                        <div style={{ display:'inline-flex', alignItems:'center', gap:3, fontSize:11, color:fratBand.color, marginTop:2 }}>
+                                                                            <MdIcon name={fratBand.icon} style={{ fontSize:13, color:fratBand.color }} aria-hidden="true" />
+                                                                            {fratBand.label}
+                                                                        </div>
+                                                                    )}
                                                                 </div>
                                                                 <div style={{ flex:1, fontSize:12, color:'var(--md-sys-color-on-surface-variant)', lineHeight:1.5 }}>
                                                                     <strong style={{ color:'var(--md-sys-color-on-surface)' }}>Live FRAT score</strong> — updates as you answer questions. Answer all {FRAT_TOTAL} to unlock the combined GO Score (70% weather + 30% FRAT).
@@ -4805,14 +4841,27 @@
                             <WindsAloftCard allRoutePts={allRoutePts} stations={windsAloft} cruiseAlt={ac.alt || 6000} />
 
                             {/* Go/No-Go banner — uses finalVerdict (may be overridden by convective SIGMET) */}
-                            <div style={{ background: finalVerdict.verdictBg, borderRadius: 16, padding: '20px 24px', marginBottom: 16, display: 'flex', alignItems: 'center', gap: 16 }}>
-                                <MdIcon name={finalVerdict.verdictIcon} style={{ fontSize: 44, color: finalVerdict.verdictColor, flexShrink: 0 }} />
-                                <div>
-                                    <div style={{ fontSize: 12, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '1px', color: finalVerdict.verdictColor, opacity: 0.75, marginBottom: 2 }}>Go/No-Go Assessment</div>
-                                    <div style={{ fontSize: 30, fontWeight: 800, color: finalVerdict.verdictColor, fontFamily: 'monospace', lineHeight: 1 }}>{finalVerdict.verdict}</div>
-                                    <div style={{ fontSize: 13, color: finalVerdict.verdictColor, opacity: 0.85, marginTop: 4, lineHeight: 1.4 }}>{finalVerdict.verdictDesc}</div>
-                                </div>
-                            </div>
+                            {(function() {
+                                var _now = new Date();
+                                var _ts = String(_now.getUTCHours()).padStart(2,'0') + String(_now.getUTCMinutes()).padStart(2,'0') + 'Z';
+                                var _dt = _now.getUTCFullYear() + '-' + String(_now.getUTCMonth()+1).padStart(2,'0') + '-' + String(_now.getUTCDate()).padStart(2,'0');
+                                return (
+                                    <div style={{ background: finalVerdict.verdictBg, borderRadius: 16, padding: '20px 24px', marginBottom: 16, display: 'flex', alignItems: 'center', gap: 16 }} role="status" aria-live="polite">
+                                        <MdIcon name={finalVerdict.verdictIcon} style={{ fontSize: 44, color: finalVerdict.verdictColor, flexShrink: 0 }} aria-hidden="true" />
+                                        <div style={{ flex: 1 }}>
+                                            <div style={{ fontSize: 12, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '1px', color: finalVerdict.verdictColor, opacity: 0.75, marginBottom: 2 }}>Go/No-Go Assessment</div>
+                                            <div style={{ fontSize: 30, fontWeight: 800, color: finalVerdict.verdictColor, fontFamily: 'monospace', lineHeight: 1 }}>{finalVerdict.verdict}</div>
+                                            <div style={{ fontSize: 13, color: finalVerdict.verdictColor, opacity: 0.85, marginTop: 4, lineHeight: 1.4 }}>{finalVerdict.verdictDesc}</div>
+                                        </div>
+                                        {/* Timestamp — allows responder to screenshot and share with flight crew */}
+                                        <div style={{ flexShrink: 0, textAlign: 'right', borderLeft: '1px solid ' + finalVerdict.verdictColor + '44', paddingLeft: 16 }} title="Score calculated at this UTC time">
+                                            <div style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.8px', color: finalVerdict.verdictColor, opacity: 0.6, marginBottom: 3 }}>Assessed</div>
+                                            <div className="font-mono" style={{ fontSize: 15, fontWeight: 800, color: finalVerdict.verdictColor, lineHeight: 1 }} aria-label={'Assessment time: ' + _ts}>{_ts}</div>
+                                            <div className="font-mono" style={{ fontSize: 11, color: finalVerdict.verdictColor, opacity: 0.7, marginTop: 3 }}>{_dt}</div>
+                                        </div>
+                                    </div>
+                                );
+                            })()}
 
                             {/* ---- Data-source context banner — makes live vs forecast explicit ---- */}
                             {(() => {
@@ -4872,7 +4921,12 @@
                                             <div>
                                                 <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 2, flexWrap: 'wrap' }}>
                                                     <span className="font-mono" style={{ fontWeight: 700, fontSize: 14 }}>{e.icao}</span>
-                                                    {wx && <span style={{ fontSize: 12, fontWeight: 700, color: catColor(wx.cat) }}>{wx.cat}</span>}
+                                                    {wx && (
+                                                        <span style={{ display:'inline-flex', alignItems:'center', gap:3, fontSize: 12, fontWeight: 700, color: catColor(wx.cat) }} aria-label={wx.cat + ' conditions'}>
+                                                            <MdIcon name={{ VFR:'check_circle', MVFR:'warning', IFR:'cancel', LIFR:'dangerous' }[wx.cat]||'help'} style={{ fontSize:13, color:catColor(wx.cat) }} aria-hidden="true" />
+                                                            {wx.cat}
+                                                        </span>
+                                                    )}
                                                     {!wx && <span style={{ fontSize: 12, color: 'var(--md-sys-color-on-surface-variant)' }}>No data</span>}
                                                     <span style={{ fontSize: 12, fontWeight: 600,
                                                         color: e.source === 'mos' ? 'var(--md-sys-color-on-tertiary-container)' : e.source === 'taf' ? 'var(--md-sys-color-primary)' : 'var(--md-sys-color-on-surface-variant)',
@@ -5742,6 +5796,8 @@
             var [forecastDay, setForecastDay] = useState(0);
             var [newTrip, setNewTrip] = useState({ route: ["", ""], aircraft: "c172", date: "", time: defaultTimeStr, name: "" });
             var [editingTripId, setEditingTripId] = useState(null); // null = creating, non-null = editing existing
+            var [wizardStep, setWizardStep] = useState(1);         // 1=Route, 2=When & Aircraft, 3=Review
+            var [resetConfirm, setResetConfirm] = useState(false); // two-tap protection for Reset button
             // Bump this counter to force re-renders after async airport fetches resolve
             var [aptVersion, setAptVersion] = useState(0);
             var [copiedTripId, setCopiedTripId] = useState(null);
@@ -6022,6 +6078,8 @@
                     })(t, Math.round((function() { var d=0; for(var i=0;i<validRoute.length-1;i++){var p1=getAirport(validRoute[i]),p2=getAirport(validRoute[i+1]);if(p1&&p2)d+=calcDist(p1.lat,p1.lon,p2.lat,p2.lon);}return d; })()));
                 }
                 setNewTrip({ route: ["", ""], aircraft: "c172", date: "", time: defaultTimeStr, name: "" });
+                setWizardStep(1);
+                setResetConfirm(false);
                 setView("trips");
             }
 
@@ -6035,6 +6093,8 @@
                     time: trip.time,
                     name: trip.name || ''
                 });
+                setWizardStep(1);
+                setResetConfirm(false);
                 setView("create");
             }
 
@@ -6423,115 +6483,246 @@
                             </div>
                         )}
 
-                        {/* CREATE TRIP */}
+                        {/* CREATE TRIP — Step-by-Step Wizard */}
                         {view === "create" && (
                             <div style={{ maxWidth: 600, margin: "0 auto", padding: "32px 16px" }}>
-                                <MdButton variant="text" icon="arrow_back" onClick={() => { setEditingTripId(null); setView("trips"); }} style={{ marginLeft: '-16px', marginBottom: '16px' }}>Back</MdButton>
-                                <h1 style={{ fontSize: 32, fontWeight: 400, margin: "0 0 24px", color: "var(--md-sys-color-on-background)" }}>{editingTripId ? "Edit Flight" : "Plan a Flight"}</h1>
-                                
+                                <MdButton variant="text" icon="arrow_back" onClick={() => { setEditingTripId(null); setWizardStep(1); setResetConfirm(false); setView("trips"); }} style={{ marginLeft: '-16px', marginBottom: '16px' }}>Back</MdButton>
+                                <h1 style={{ fontSize: 32, fontWeight: 400, margin: "0 0 20px", color: "var(--md-sys-color-on-background)" }}>{editingTripId ? "Edit Flight" : "Plan a Flight"}</h1>
+
+                                {/* ── Wizard Step Indicator ── */}
+                                <div style={{ display: 'flex', alignItems: 'flex-start', marginBottom: 24, userSelect: 'none' }} role="list" aria-label="Wizard steps">
+                                    {[{n:1,label:'Route'},{n:2,label:'When & Aircraft'},{n:3,label:'Review'}].map(function(s, i) {
+                                        var done   = wizardStep > s.n;
+                                        var active = wizardStep === s.n;
+                                        return (
+                                            <React.Fragment key={s.n}>
+                                                {i > 0 && (
+                                                    <div style={{ flex: 1, height: 2, background: done ? 'var(--accent)' : 'var(--md-sys-color-outline-variant)', margin: '15px 6px 0', borderRadius: 2 }} />
+                                                )}
+                                                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 5 }} role="listitem" aria-current={active ? 'step' : undefined}>
+                                                    <div style={{
+                                                        width: 32, height: 32, borderRadius: '50%',
+                                                        background: done ? 'var(--accent)' : active ? 'var(--accent)' : 'var(--md-sys-color-surface-container-high)',
+                                                        border: '2px solid ' + (done || active ? 'var(--accent)' : 'var(--md-sys-color-outline)'),
+                                                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                                        color: done || active ? '#fff' : 'var(--md-sys-color-on-surface-variant)',
+                                                        fontSize: 13, fontWeight: 700, transition: 'all 0.2s'
+                                                    }}>
+                                                        {done
+                                                            ? <MdIcon name="check" style={{ fontSize: 16, color: '#fff' }} />
+                                                            : s.n}
+                                                    </div>
+                                                    <span style={{ fontSize: 11, fontWeight: active ? 700 : 400, color: active ? 'var(--accent)' : done ? 'var(--md-sys-color-on-surface-variant)' : 'var(--text-tertiary)', whiteSpace: 'nowrap' }}>{s.label}</span>
+                                                </div>
+                                            </React.Fragment>
+                                        );
+                                    })}
+                                </div>
+
                                 <MdCard style={{ padding: 24 }}>
-                                    <div style={{ display: "flex", flexDirection: "column", gap: 16, marginBottom: 24 }}>
-                                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                                            <div style={{ fontSize: 14, fontWeight: 500, color: "var(--md-sys-color-on-surface)" }}>Flight Route (Up to 5 legs)</div>
-                                            {newTrip.route.length < 6 && (
-                                                <MdButton variant="tonal" icon="add" onClick={() => {
-                                                    let r = [...newTrip.route];
-                                                    r.splice(r.length - 1, 0, "");
-                                                    setNewTrip({...newTrip, route: r});
-                                                }} style={{ padding: '6px 12px', fontSize: 12 }}>Add Leg</MdButton>
-                                            )}
-                                        </div>
-                                        
-                                        {newTrip.route.map((r, i) => {
-                                            let isDep = i === 0;
-                                            let isArr = i === newTrip.route.length - 1;
-                                            let label = isDep ? "Departure ICAO" : isArr ? "Destination ICAO" : `Waypoint ${i} ICAO`;
-                                            let icon = isDep ? "flight_takeoff" : isArr ? "flight_land" : "location_on";
-                                            
-                                            return (
-                                                <div key={i} style={{ display: "flex", alignItems: "flex-end", gap: 12 }}>
-                                                    <MdIcon name={icon} style={{ color: "var(--md-sys-color-on-surface-variant)", marginBottom: 12, flexShrink: 0 }} />
-                                                    <AirportInput
-                                                        label={label}
-                                                        value={r}
-                                                        onChange={function(v) {
-                                                            let newRoute = [...newTrip.route];
-                                                            newRoute[i] = v;
-                                                            setNewTrip({...newTrip, route: newRoute});
-                                                        }}
-                                                        placeholder={isDep ? "KCLT" : isArr ? "KATL" : "KORD"}
-                                                        containerStyle={{ flex: 1 }}
-                                                    />
-                                                    {(!isDep && !isArr && newTrip.route.length > 2) && (
-                                                        <MdButton variant="text" icon="close" onClick={() => {
-                                                            let newRoute = [...newTrip.route];
-                                                            newRoute.splice(i, 1);
-                                                            setNewTrip({...newTrip, route: newRoute});
-                                                        }} style={{ padding: '8px', color: "var(--md-sys-color-error)", marginBottom: 4 }} />
+
+                                    {/* ════ STEP 1: Route ════ */}
+                                    {wizardStep === 1 && (
+                                        <div>
+                                            <div style={{ marginBottom: 20 }}>
+                                                <div style={{ fontSize: 18, fontWeight: 600, color: 'var(--md-sys-color-on-surface)', marginBottom: 4 }}>Flight Route</div>
+                                                <div style={{ fontSize: 13, color: 'var(--md-sys-color-on-surface-variant)' }}>Enter departure and arrival airports using 4-letter ICAO codes.</div>
+                                            </div>
+
+                                            <div style={{ display: "flex", flexDirection: "column", gap: 14, marginBottom: 20 }}>
+                                                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                                                    <div style={{ fontSize: 13, fontWeight: 500, color: "var(--md-sys-color-on-surface-variant)" }}>Up to 5 legs</div>
+                                                    {newTrip.route.length < 6 && (
+                                                        <MdButton variant="tonal" icon="add" onClick={() => {
+                                                            let r = [...newTrip.route];
+                                                            r.splice(r.length - 1, 0, "");
+                                                            setNewTrip({...newTrip, route: r});
+                                                        }} style={{ padding: '6px 12px', fontSize: 12 }}>Add Waypoint</MdButton>
                                                     )}
                                                 </div>
-                                            );
-                                        })}
-                                    </div>
 
-                                    <div style={{ display: "flex", flexDirection: "column", gap: 16, marginBottom: 24 }}>
-                                        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
-                                            <MdInput type="date" label="Date" value={newTrip.date} onChange={e => setNewTrip({...newTrip, date: e.target.value})} />
-                                            <MdInput type="time" label="Time" value={newTrip.time} onChange={e => setNewTrip({...newTrip, time: e.target.value})} />
-                                        </div>
-                                        <MdSelect label="Aircraft" value={newTrip.aircraft} onChange={e => setNewTrip({...newTrip, aircraft: e.target.value})} options={AIRCRAFT.map(a => ({value: a.id, label: `${a.name} (${a.cat})`}))} />
-                                    </div>
-                                    
-                                    {(() => {
-                                        var validRoutePts = newTrip.route
-                                            .map(r => r.trim().toUpperCase())
-                                            .filter(r => r.length === 4 && getAirport(r));
-                                        if (validRoutePts.length < 2) return null;
-                                        var dist = 0;
-                                        for (var i = 0; i < validRoutePts.length - 1; i++) {
-                                            var p1 = getAirport(validRoutePts[i]);
-                                            var p2 = getAirport(validRoutePts[i+1]);
-                                            dist += calcDist(p1.lat, p1.lon, p2.lat, p2.lon);
-                                        }
-                                        var ac = AIRCRAFT.find(x => x.id === newTrip.aircraft) || AIRCRAFT[0];
-                                        var ete = dist / ac.kts;
-                                        return (
-                                            <div className="font-mono" style={{ background: "var(--md-sys-color-surface-container-high)", borderRadius: 12, padding: 16, marginBottom: 24, display: "flex", justifyContent: "space-around", fontSize: 13 }}>
-                                                <div><span style={{ color: "var(--md-sys-color-on-surface-variant)" }}>DIST </span><span style={{ color: "var(--md-sys-color-primary)", fontWeight: 700 }}>{Math.round(dist)} NM</span></div>
-                                                <div><span style={{ color: "var(--md-sys-color-on-surface-variant)" }}>ETE </span><span style={{ color: "var(--md-sys-color-primary)", fontWeight: 700 }}>{Math.floor(ete)}h {Math.round((ete % 1) * 60)}m</span></div>
+                                                {newTrip.route.map((r, i) => {
+                                                    let isDep = i === 0;
+                                                    let isArr = i === newTrip.route.length - 1;
+                                                    let label = isDep ? "Departure ICAO" : isArr ? "Destination ICAO" : `Waypoint ${i} ICAO`;
+                                                    let icon  = isDep ? "flight_takeoff" : isArr ? "flight_land" : "location_on";
+                                                    return (
+                                                        <div key={i} style={{ display: "flex", alignItems: "flex-end", gap: 12 }}>
+                                                            <MdIcon name={icon} style={{ color: "var(--md-sys-color-on-surface-variant)", marginBottom: 12, flexShrink: 0 }} aria-hidden="true" />
+                                                            <AirportInput
+                                                                label={label}
+                                                                value={r}
+                                                                onChange={function(v) {
+                                                                    let newRoute = [...newTrip.route];
+                                                                    newRoute[i] = v;
+                                                                    setNewTrip({...newTrip, route: newRoute});
+                                                                }}
+                                                                placeholder={isDep ? "KCLT" : isArr ? "KATL" : "KORD"}
+                                                                containerStyle={{ flex: 1 }}
+                                                            />
+                                                            {(!isDep && !isArr && newTrip.route.length > 2) && (
+                                                                <MdButton variant="text" icon="close" onClick={() => {
+                                                                    let newRoute = [...newTrip.route];
+                                                                    newRoute.splice(i, 1);
+                                                                    setNewTrip({...newTrip, route: newRoute});
+                                                                }} style={{ padding: '8px', color: "var(--md-sys-color-error)", marginBottom: 4 }} aria-label={`Remove waypoint ${i}`} />
+                                                            )}
+                                                        </div>
+                                                    );
+                                                })}
                                             </div>
-                                        );
-                                    })()}
 
-                                    <div style={{ display: "flex", gap: 12, justifyContent: "flex-end", marginTop: 16 }}>
-                                        <MdButton variant="text" onClick={() => { setEditingTripId(null); setView("trips"); }}>Cancel</MdButton>
-                                        <MdButton variant="primary" onClick={createTrip} disabled={newTrip.route.filter(r => r.length === 4).length < 2}>{editingTripId ? "Save Changes" : "Create Trip"}</MdButton>
-                                    </div>
-                                </MdCard>
+                                            {/* Popular Hubs quick-fill */}
+                                            <div style={{ marginBottom: 24 }}>
+                                                <div style={{ fontSize: 12, fontWeight: 600, color: "var(--md-sys-color-on-surface-variant)", marginBottom: 8, textTransform: 'uppercase', letterSpacing: '0.5px' }}>Popular Hubs</div>
+                                                <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                                                    {Object.keys(AIRPORTS).slice(0, 15).map(k => (
+                                                        <span key={k} role="button" tabIndex={0}
+                                                            onClick={() => {
+                                                                let newRoute = [...newTrip.route];
+                                                                let emptyIdx = newRoute.findIndex(r => !r || r.length < 4);
+                                                                if (emptyIdx !== -1) { newRoute[emptyIdx] = k; }
+                                                                else if (newRoute.length < 6) { newRoute.splice(newRoute.length - 1, 0, k); }
+                                                                setNewTrip({...newTrip, route: newRoute});
+                                                            }}
+                                                            onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') e.currentTarget.click(); }}
+                                                            className="font-mono"
+                                                            style={{ fontSize: 12, color: "var(--md-sys-color-on-surface)", background: "var(--md-sys-color-surface-container)", padding: "5px 10px", borderRadius: "14px", cursor: "pointer", border: "1px solid var(--md-sys-color-outline-variant)" }}
+                                                            aria-label={`Add ${k} to route`}
+                                                        >{k}</span>
+                                                    ))}
+                                                </div>
+                                            </div>
 
-                                <div style={{ marginTop: 24 }}>
-                                    <div style={{ fontSize: 13, fontWeight: 500, color: "var(--md-sys-color-on-surface-variant)", marginBottom: 12 }}>Popular Hubs</div>
-                                    <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
-                                        {Object.keys(AIRPORTS).slice(0, 15).map(k => (
-                                            <span key={k} onClick={() => {
-                                                let newRoute = [...newTrip.route];
-                                                let emptyIdx = newRoute.findIndex(r => !r || r.length < 4);
-                                                if (emptyIdx !== -1) {
-                                                    newRoute[emptyIdx] = k;
-                                                    setNewTrip({...newTrip, route: newRoute});
-                                                } else if (newRoute.length < 6) {
-                                                    newRoute.splice(newRoute.length - 1, 0, k);
-                                                    setNewTrip({...newTrip, route: newRoute});
+                                            {/* Step 1 action row */}
+                                            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, marginTop: 8 }}>
+                                                {/* Reset — protected by two-tap confirmation */}
+                                                {newTrip.route.some(r => r.length >= 3)
+                                                    ? resetConfirm
+                                                        ? <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                                                              <MdIcon name="warning" style={{ fontSize: 16, color: 'var(--md-sys-color-error)' }} aria-hidden="true" />
+                                                              <span style={{ fontSize: 12, color: 'var(--md-sys-color-error)', fontWeight: 600 }}>Clear all fields?</span>
+                                                              <button onClick={() => { setNewTrip({ route: ["",""], aircraft:"c172", date:"", time:defaultTimeStr, name:"" }); setResetConfirm(false); }}
+                                                                  style={{ background: 'var(--md-sys-color-error)', color: '#fff', border: 'none', borderRadius: 8, padding: '5px 12px', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}
+                                                                  aria-label="Confirm clear form">
+                                                                  Yes, Clear
+                                                              </button>
+                                                              <button onClick={() => setResetConfirm(false)}
+                                                                  style={{ background: 'var(--md-sys-color-surface-container-high)', color: 'var(--md-sys-color-on-surface)', border: '1px solid var(--md-sys-color-outline-variant)', borderRadius: 8, padding: '5px 12px', fontSize: 12, cursor: 'pointer' }}
+                                                                  aria-label="Cancel clear">
+                                                                  Cancel
+                                                              </button>
+                                                          </div>
+                                                        : <button onClick={() => setResetConfirm(true)}
+                                                              style={{ display: 'flex', alignItems: 'center', gap: 6, background: 'none', border: '1px solid var(--md-sys-color-outline-variant)', borderRadius: 8, padding: '7px 12px', fontSize: 12, color: 'var(--md-sys-color-on-surface-variant)', cursor: 'pointer' }}
+                                                              aria-label="Reset form (will ask for confirmation)">
+                                                              <MdIcon name="restart_alt" style={{ fontSize: 16 }} aria-hidden="true" />
+                                                              Reset Form
+                                                          </button>
+                                                    : <div />
                                                 }
-                                            }} className="font-mono" style={{ 
-                                                fontSize: 12, color: "var(--md-sys-color-on-surface)", 
-                                                background: "var(--md-sys-color-surface-container)", 
-                                                padding: "6px 12px", borderRadius: "16px", cursor: "pointer",
-                                                border: "1px solid var(--md-sys-color-outline-variant)" 
-                                            }}>{k}</span>
-                                        ))}
-                                    </div>
-                                </div>
+                                                <MdButton variant="primary" onClick={() => setWizardStep(2)} disabled={newTrip.route.filter(r => r.length === 4).length < 2} aria-label="Go to next step: When and Aircraft">
+                                                    Next
+                                                    <MdIcon name="arrow_forward" style={{ fontSize: 16, marginLeft: 4 }} aria-hidden="true" />
+                                                </MdButton>
+                                            </div>
+                                        </div>
+                                    )}
+
+                                    {/* ════ STEP 2: When & Aircraft ════ */}
+                                    {wizardStep === 2 && (
+                                        <div>
+                                            <div style={{ marginBottom: 20 }}>
+                                                <div style={{ fontSize: 18, fontWeight: 600, color: 'var(--md-sys-color-on-surface)', marginBottom: 4 }}>When & Aircraft</div>
+                                                <div style={{ fontSize: 13, color: 'var(--md-sys-color-on-surface-variant)' }}>Set your departure date, time, and aircraft type.</div>
+                                            </div>
+
+                                            <div style={{ display: "flex", flexDirection: "column", gap: 16, marginBottom: 24 }}>
+                                                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+                                                    <MdInput type="date" label="Departure Date" value={newTrip.date} onChange={e => setNewTrip({...newTrip, date: e.target.value})} />
+                                                    <MdInput type="time" label="Departure Time" value={newTrip.time} onChange={e => setNewTrip({...newTrip, time: e.target.value})} />
+                                                </div>
+                                                <MdSelect label="Aircraft Type" value={newTrip.aircraft} onChange={e => setNewTrip({...newTrip, aircraft: e.target.value})} options={AIRCRAFT.map(a => ({value: a.id, label: `${a.name} (${a.cat})`}))} />
+                                            </div>
+
+                                            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, marginTop: 8 }}>
+                                                <MdButton variant="text" icon="arrow_back" onClick={() => setWizardStep(1)}>Back</MdButton>
+                                                <MdButton variant="primary" onClick={() => setWizardStep(3)} aria-label="Go to next step: Review">
+                                                    Next
+                                                    <MdIcon name="arrow_forward" style={{ fontSize: 16, marginLeft: 4 }} aria-hidden="true" />
+                                                </MdButton>
+                                            </div>
+                                        </div>
+                                    )}
+
+                                    {/* ════ STEP 3: Review & Submit ════ */}
+                                    {wizardStep === 3 && (
+                                        <div>
+                                            <div style={{ marginBottom: 20 }}>
+                                                <div style={{ fontSize: 18, fontWeight: 600, color: 'var(--md-sys-color-on-surface)', marginBottom: 4 }}>Review Your Flight</div>
+                                                <div style={{ fontSize: 13, color: 'var(--md-sys-color-on-surface-variant)' }}>Confirm details before creating.</div>
+                                            </div>
+
+                                            {(() => {
+                                                var validRoutePts = newTrip.route.map(r => r.trim().toUpperCase()).filter(r => r.length === 4);
+                                                var knownPts = validRoutePts.filter(r => getAirport(r));
+                                                var dist = 0;
+                                                for (var i = 0; i < knownPts.length - 1; i++) {
+                                                    var p1 = getAirport(knownPts[i]), p2 = getAirport(knownPts[i+1]);
+                                                    if (p1 && p2) dist += calcDist(p1.lat, p1.lon, p2.lat, p2.lon);
+                                                }
+                                                var ac = AIRCRAFT.find(x => x.id === newTrip.aircraft) || AIRCRAFT[0];
+                                                var ete = dist > 0 ? dist / ac.kts : 0;
+                                                return (
+                                                    <div>
+                                                        {/* Route banner */}
+                                                        <div className="font-mono" style={{ background: "var(--md-sys-color-surface-container-high)", borderRadius: 12, padding: '14px 16px', marginBottom: 12, fontSize: 15, fontWeight: 700, letterSpacing: '0.5px', textAlign: 'center', color: 'var(--md-sys-color-primary)' }}>
+                                                            {validRoutePts.length >= 2 ? validRoutePts.join(' → ') : '—'}
+                                                        </div>
+
+                                                        {/* Stats */}
+                                                        <div className="font-mono" style={{ background: "var(--md-sys-color-surface-container-high)", borderRadius: 12, padding: '12px 16px', marginBottom: 12, display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr", gap: 8, fontSize: 12 }}>
+                                                            <div style={{ textAlign: 'center' }}>
+                                                                <div style={{ color: "var(--md-sys-color-on-surface-variant)", marginBottom: 2 }}>DIST</div>
+                                                                <div style={{ color: "var(--md-sys-color-primary)", fontWeight: 700 }}>{dist > 0 ? Math.round(dist) + ' NM' : '—'}</div>
+                                                            </div>
+                                                            <div style={{ textAlign: 'center' }}>
+                                                                <div style={{ color: "var(--md-sys-color-on-surface-variant)", marginBottom: 2 }}>ETE</div>
+                                                                <div style={{ color: "var(--md-sys-color-primary)", fontWeight: 700 }}>{ete > 0 ? Math.floor(ete) + 'h ' + Math.round((ete % 1) * 60) + 'm' : '—'}</div>
+                                                            </div>
+                                                            <div style={{ textAlign: 'center' }}>
+                                                                <div style={{ color: "var(--md-sys-color-on-surface-variant)", marginBottom: 2 }}>DATE</div>
+                                                                <div style={{ color: "var(--md-sys-color-primary)", fontWeight: 700 }}>{newTrip.date || '—'}</div>
+                                                            </div>
+                                                            <div style={{ textAlign: 'center' }}>
+                                                                <div style={{ color: "var(--md-sys-color-on-surface-variant)", marginBottom: 2 }}>DEP</div>
+                                                                <div style={{ color: "var(--md-sys-color-primary)", fontWeight: 700 }}>{newTrip.time || '—'}</div>
+                                                            </div>
+                                                        </div>
+
+                                                        {/* Aircraft */}
+                                                        <div style={{ background: "var(--md-sys-color-surface-container-high)", borderRadius: 12, padding: '12px 16px', marginBottom: 24, display: 'flex', alignItems: 'center', gap: 10, fontSize: 13 }}>
+                                                            <MdIcon name="flight" style={{ color: 'var(--md-sys-color-on-surface-variant)', fontSize: 18 }} aria-hidden="true" />
+                                                            <span style={{ color: "var(--md-sys-color-on-surface-variant)" }}>Aircraft:</span>
+                                                            <span style={{ fontWeight: 600, color: "var(--md-sys-color-on-surface)" }}>{ac.name} <span style={{ color: 'var(--md-sys-color-on-surface-variant)' }}>({ac.cat})</span></span>
+                                                        </div>
+                                                    </div>
+                                                );
+                                            })()}
+
+                                            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, marginTop: 8 }}>
+                                                <MdButton variant="text" icon="arrow_back" onClick={() => setWizardStep(2)}>Back</MdButton>
+                                                <div style={{ display: 'flex', gap: 8 }}>
+                                                    <MdButton variant="text" onClick={() => { setEditingTripId(null); setWizardStep(1); setResetConfirm(false); setView("trips"); }}>Cancel</MdButton>
+                                                    <MdButton variant="primary" onClick={createTrip} disabled={newTrip.route.filter(r => r.length === 4).length < 2}>
+                                                        {editingTripId ? "Save Changes" : "Create Trip"}
+                                                    </MdButton>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    )}
+
+                                </MdCard>
                             </div>
                         )}
 
