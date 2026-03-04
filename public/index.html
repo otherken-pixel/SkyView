@@ -2037,8 +2037,8 @@
         // Fetch and resolve weather for a trip at its departure time.
         // Returns effectiveWxData array compatible with calcDetailedScore:
         //   TAF   — departure 2–30 h away (exact period from AWC TAF)
-        //   NWS   — departure >30 h away, or TAF unavailable (NWS 7-day day-match)
-        //   METAR — current/past departures, or final fallback
+        //   NWS   — departure >30 h away, OR TAF unavailable in 2–30 h window
+        //   METAR — ≤2 h departures, or final fallback when TAF+NWS both unavailable
         async function fetchEffectiveWxForTrip(trip, allPts) {
             var depApt = getAirport(trip.dep);
             var targetUtc = getTripTargetUtc(trip, depApt ? (depApt.tz || lonToIanaTz(depApt.lon)) : 'America/New_York');
@@ -2067,14 +2067,19 @@
                 }).filter(e => e.effectiveWx);
 
             } else if (hoursUntil !== null && hoursUntil > 2) {
-                // Near-future (2–30 h) — TAF at departure time; METAR fallback.
-                // Within 30 h, TAF and METAR are the authoritative sources.
-                var [metarArr, tafArr] = await Promise.all([
+                // Near-future (2–30 h) — TAF primary, NWS grid fallback, METAR last resort.
+                // All three fetched in parallel; NWS is used when no TAF exists (e.g. small GA airports).
+                var [metarArr, tafArr, nwsArr] = await Promise.all([
                     Promise.all(allPts.map(icao => fetchLiveMetar(icao).catch(() => null))),
-                    Promise.all(allPts.map(icao => fetchLiveTaf(icao).catch(() => null)))
+                    Promise.all(allPts.map(icao => fetchLiveTaf(icao).catch(() => null))),
+                    Promise.all(allPts.map(icao =>
+                        resolveAptCoords(icao).then(a =>
+                            a ? fetchNwsForecast(a.lat, a.lon).catch(() => null) : null
+                        )
+                    ))
                 ]);
                 return allPts.map((icao, idx) => {
-                    var m = metarArr[idx], taf = tafArr[idx];
+                    var m = metarArr[idx], taf = tafArr[idx], nwsDays = nwsArr[idx];
                     var metarLive = !!m, metar = m || makeMetar(icao);
                     if (taf) {
                         var tafWx = parseTafForTime(taf, targetUtc);
@@ -2082,6 +2087,10 @@
                             var lbl = taf._nearbyStation ? `TAF ${taf._nearbyStation}` : 'TAF';
                             return { icao, effectiveWx: tafWx, metarLive, source: 'taf', sourceLabel: lbl };
                         }
+                    }
+                    if (nwsDays) {
+                        var nwsWx = nwsDayToEffectiveWx(pickNwsDay(nwsDays, targetUtc), icao);
+                        if (nwsWx) return { icao, effectiveWx: nwsWx, metarLive, source: 'nws', sourceLabel: 'NWS Grid' };
                     }
                     return { icao, effectiveWx: metar, metarLive, source: 'metar', sourceLabel: metarLive ? 'METAR (no TAF)' : 'No data' };
                 }).filter(e => e.effectiveWx);
