@@ -439,8 +439,8 @@
             createUserWithEmailAndPassword, signInWithEmailAndPassword
         } from 'https://www.gstatic.com/firebasejs/10.8.1/firebase-auth.js';
         import {
-            getFirestore, collection, doc,
-            getDocs, setDoc, deleteDoc
+            initializeFirestore, persistentLocalCache,
+            collection, doc, getDocs, setDoc, deleteDoc
         } from 'https://www.gstatic.com/firebasejs/10.8.1/firebase-firestore.js';
         import {
             getFunctions, httpsCallable
@@ -460,7 +460,7 @@
 
         const app            = initializeApp(firebaseConfig);
         const auth           = getAuth(app);
-        const db             = getFirestore(app);
+        const db             = initializeFirestore(app, { localCache: persistentLocalCache() });
         const functions      = getFunctions(app);
         const googleProvider = new GoogleAuthProvider();
 
@@ -628,7 +628,15 @@
                     var fns  = _fbFns();
                     if (!auth || !fns.onAuthStateChanged) return;
                     unsubscribe = fns.onAuthStateChanged(auth, function(u) {
-                        setUser(u || null);
+                        // Only update state when the UID actually changes.
+                        // Firebase re-fires onAuthStateChanged on token refresh with a new
+                        // object reference for the same user, which would otherwise re-trigger
+                        // the Firestore load effect and overwrite unsaved in-memory changes.
+                        setUser(function(prev) {
+                            var next = u || null;
+                            if ((prev && prev.uid) === (next && next.uid)) return prev;
+                            return next;
+                        });
                     });
                 });
                 return function() {
