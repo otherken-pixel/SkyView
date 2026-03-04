@@ -33,6 +33,11 @@ jobs:
           channelId: live
           projectId: flightscore-ca7e0
 
+      - name: Set up Node.js 24
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+
       - name: Deploy Firebase Functions
         env:
           GOOGLE_APPLICATION_CREDENTIALS_JSON: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_FLIGHTSCORE_CA7E0 }}
