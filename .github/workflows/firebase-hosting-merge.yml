@@ -11,6 +11,12 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - name: Stamp build version into index.html
+        run: |
+          COMMIT_SHA=$(git rev-parse HEAD)
+          BUILD_TS=$(date -u '+%Y-%m-%d %H:%M UTC')
+          sed -i "s/__BUILD_COMMIT__/${COMMIT_SHA}/g" public/index.html
+          sed -i "s/__BUILD_TIMESTAMP__/${BUILD_TS}/g" public/index.html
       - uses: FirebaseExtended/action-hosting-deploy@v0
         with:
           repoToken: ${{ secrets.GITHUB_TOKEN }}
