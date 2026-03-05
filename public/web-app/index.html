@@ -4098,35 +4098,30 @@
                     `\n=== LIVE WEATHER DATA ===\n${wxLines || "No live weather available."}` +
                     advisoryCtx;
 
-                const url = "https://api.anthropic.com/v1/messages";
-                const payload = {
-                    model: "claude-haiku-4-5-20251001",
-                    max_tokens: 1800,
-                    system: "You are an expert aviation weather analyst (CFI-I level) providing a detailed pre-flight briefing. Be specific with numbers — cite thresholds (e.g., 'ceiling 1200ft OVC = MVFR', 'winds 18G25KT = moderate crosswind risk'). For high-elevation airports, estimate density altitude (DA ≈ Elevation + 120 × (OAT_°C − ISA_°C)). Flag icing risk, convective activity, TFRs, and airspace concerns. Use concise bullet points. Provide the briefing using EXACTLY these headers on their own lines (with ** markers): **GO/NO-GO RECOMMENDATION**, **WEATHER SYNOPSIS**, **DEPARTURE WINDOW**, **EN ROUTE HAZARDS**, **RUNWAY ANALYSIS**, **NOTAM IMPACT**, **ALTERNATE RECOMMENDATIONS**, **FREQUENCY GUIDE**",
-                    messages: [{ role: "user", content: prompt }]
+                const geminiSystem = "You are an expert aviation weather analyst (CFI-I level) providing a detailed pre-flight briefing. Be specific with numbers — cite thresholds (e.g., 'ceiling 1200ft OVC = MVFR', 'winds 18G25KT = moderate crosswind risk'). For high-elevation airports, estimate density altitude (DA ≈ Elevation + 120 × (OAT_°C − ISA_°C)). Flag icing risk, convective activity, TFRs, and airspace concerns. Use concise bullet points. Provide the briefing using EXACTLY these headers on their own lines (with ** markers): **GO/NO-GO RECOMMENDATION**, **WEATHER SYNOPSIS**, **DEPARTURE WINDOW**, **EN ROUTE HAZARDS**, **RUNWAY ANALYSIS**, **NOTAM IMPACT**, **ALTERNATE RECOMMENDATIONS**, **FREQUENCY GUIDE**";
+                const geminiPayload = {
+                    contents: [{ role: "user", parts: [{ text: prompt }] }],
+                    systemInstruction: { parts: [{ text: geminiSystem }] },
+                    generationConfig: { maxOutputTokens: 1800, temperature: 0.0 }
                 };
+                const geminiUrl = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=" + apiKey;
 
                 const fetchWithRetry = async (retries = 3) => {
                     const delays = [1000, 2000, 4000];
                     for (let i = 0; i <= retries; i++) {
                         try {
-                            const response = await fetch(url, {
+                            const response = await fetch(geminiUrl, {
                                 method: "POST",
-                                headers: {
-                                    "Content-Type": "application/json",
-                                    "x-api-key": apiKey,
-                                    "anthropic-version": "2023-06-01",
-                                    "anthropic-dangerous-direct-browser-access": "true"
-                                },
-                                body: JSON.stringify(payload)
+                                headers: { "Content-Type": "application/json" },
+                                body: JSON.stringify(geminiPayload)
                             });
                             if (!response.ok) {
                                 const errBody = await response.json().catch(() => ({}));
                                 throw new Error(errBody?.error?.message || `HTTP ${response.status}`);
                             }
                             const data = await response.json();
-                            const text = data.content?.[0]?.text;
-                            if (!text) throw new Error("Empty response from Claude");
+                            const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
+                            if (!text) throw new Error("Empty response from Gemini");
                             return text;
                         } catch (err) {
                             if (i === retries) throw err;
@@ -4162,13 +4157,15 @@
                     'Current weather: ' + wxSummary + '. ' +
                     'Answer concisely and specifically about this flight. Always recommend consulting official sources before flight.';
                 try {
-                    var res = await fetch('https://api.anthropic.com/v1/messages', {
+                    var chatContents = updated.map(function(m) { return { role: m.role === 'assistant' ? 'model' : 'user', parts: [{ text: m.content }] }; });
+                    var chatPayload = { contents: chatContents, systemInstruction: { parts: [{ text: systemCtx }] }, generationConfig: { maxOutputTokens: 600, temperature: 0.0 } };
+                    var res = await fetch('https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=' + apiKey, {
                         method: 'POST',
-                        headers: { 'Content-Type':'application/json', 'x-api-key':apiKey, 'anthropic-version':'2023-06-01', 'anthropic-dangerous-direct-browser-access':'true' },
-                        body: JSON.stringify({ model:'claude-haiku-4-5-20251001', max_tokens:600, system:systemCtx, messages: updated.map(function(m) { return { role:m.role, content:m.content }; }) })
+                        headers: { 'Content-Type':'application/json' },
+                        body: JSON.stringify(chatPayload)
                     });
                     var data = await res.json();
-                    var reply = data.content?.[0]?.text || 'No response.';
+                    var reply = data.candidates?.[0]?.content?.parts?.[0]?.text || 'No response.';
                     setChatMessages(function(prev) { return [...prev, { role:'assistant', content:reply }]; });
                 } catch(e) {
                     setChatMessages(function(prev) { return [...prev, { role:'assistant', content:'Error: ' + e.message }]; });
@@ -5146,10 +5143,10 @@
                             <>
                                 <div style={{ marginBottom: 8, fontSize: 12, color: 'var(--md-sys-color-on-surface-variant)', lineHeight: 1.5, display: 'flex', alignItems: 'flex-start', gap: 6 }}>
                                     <MdIcon name="lock" style={{ fontSize: 13, marginTop: 1, flexShrink: 0 }} />
-                                    Key is sent directly from your browser to Anthropic. Use a key with a spending limit set — never your primary production key.
+                                    Key is sent directly from your browser to Google Gemini. Use a key with a spending limit set — never your primary production key.
                                 </div>
                                 <div style={{ marginBottom: 12 }}>
-                                    <MdInput label="Anthropic API Key" value={apiKey} onChange={e => setApiKey(e.target.value)} placeholder="sk-ant-..." type="password" />
+                                    <MdInput label="Gemini API Key" value={apiKey} onChange={e => setApiKey(e.target.value)} placeholder="AIza..." type="password" />
                                 </div>
                                 <div style={{ display: 'flex', gap: 8, marginBottom: 20 }}>
                                     <MdButton
@@ -5159,7 +5156,7 @@
                                         icon="auto_awesome"
                                         style={{ flex: 1, padding: '14px', fontSize: '15px' }}
                                     >
-                                        {aiLoading ? "Analyzing with Claude…" : "Generate AI Briefing"}
+                                        {aiLoading ? "Analyzing with Gemini…" : "Generate AI Briefing"}
                                     </MdButton>
                                     {window.speechSynthesis && (aiResult || analysis) && (
                                         <MdButton variant="tonal" icon={speaking ? 'stop_circle' : 'volume_up'} onClick={speakBriefing} title={speaking ? 'Stop reading' : 'Read briefing aloud'} style={{ padding: '14px 16px' }}>
@@ -5201,7 +5198,7 @@
 
                                 {!aiResult && !aiLoading && (
                                     <div style={{ textAlign: 'center', padding: '24px', color: 'var(--md-sys-color-on-surface-variant)', fontSize: 13 }}>
-                                        Claude will analyze live weather + the safety score above to generate a detailed narrative briefing with quantitative risk thresholds.
+                                        Gemini will analyze live weather + the safety score above to generate a detailed narrative briefing with quantitative risk thresholds.
                                     </div>
                                 )}
 
@@ -5690,28 +5687,25 @@
                 'Output ONLY the JSON object. No other text.'
             ].join('\n');
 
-            var res = await fetch('https://api.anthropic.com/v1/messages', {
+            var nlPayload = {
+                contents: [{ role: 'user', parts: [{ text: inputText }] }],
+                systemInstruction: { parts: [{ text: system }] },
+                generationConfig: { maxOutputTokens: 300, temperature: 0.0 }
+            };
+            var res = await fetch('https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=' + apiKey, {
                 method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'x-api-key': apiKey,
-                    'anthropic-version': '2023-06-01',
-                    'anthropic-dangerous-direct-browser-access': 'true'
-                },
-                body: JSON.stringify({
-                    model: 'claude-haiku-4-5-20251001',
-                    max_tokens: 300,
-                    system: system,
-                    messages: [{ role: 'user', content: inputText }]
-                })
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(nlPayload)
             });
             if (!res.ok) {
                 var errBody = await res.json().catch(function() { return {}; });
                 throw new Error((errBody.error && errBody.error.message) || 'API error ' + res.status);
             }
             var data = await res.json();
-            var raw = (data.content && data.content[0] && data.content[0].text) || '';
-            if (!raw.trim()) throw new Error('Empty response from Claude');
+            var raw = (data.candidates && data.candidates[0] && data.candidates[0].content &&
+                       data.candidates[0].content.parts && data.candidates[0].content.parts[0] &&
+                       data.candidates[0].content.parts[0].text) || '';
+            if (!raw.trim()) throw new Error('Empty response from Gemini');
             // Strip any accidental markdown fences
             var cleaned = raw.trim().replace(/^```(?:json)?\s*/i, '').replace(/\s*```\s*$/, '');
             var parsed = JSON.parse(cleaned);
@@ -5752,7 +5746,7 @@
             // ── Natural-Language Quick Add state ────────────────────────────────
             var [nlInput,   setNlInput]   = useState('');
             var [nlApiKey,  setNlApiKey]  = useState(function() {
-                try { return localStorage.getItem('flightscore_anthropic_key') || ''; } catch(e) { return ''; }
+                try { return localStorage.getItem('flightscore_gemini_key') || ''; } catch(e) { return ''; }
             });
             var [nlLoading, setNlLoading] = useState(false);
             var [nlError,   setNlError]   = useState(null);
@@ -5840,7 +5834,7 @@
                 if (!nlInput.trim() || !nlApiKey.trim() || nlLoading) return;
                 setNlLoading(true); setNlError(null);
                 try {
-                    try { localStorage.setItem('flightscore_anthropic_key', nlApiKey.trim()); } catch(e) {}
+                    try { localStorage.setItem('flightscore_gemini_key', nlApiKey.trim()); } catch(e) {}
                     var parsed = await parseTripWithAi(nlInput.trim(), nlApiKey.trim());
                     var trip = {
                         id: Date.now(), goScore: null,
@@ -6344,15 +6338,15 @@
                                     {!nlApiKey.trim() && (
                                         <div style={{ marginTop: 10 }}>
                                             <MdInput
-                                                label="Anthropic API Key"
+                                                label="Gemini API Key"
                                                 value={nlApiKey}
                                                 onChange={function(e) { setNlApiKey(e.target.value); setNlError(null); }}
                                                 type="password"
-                                                placeholder="sk-ant-..."
+                                                placeholder="AIza..."
                                             />
                                             <div style={{ marginTop: 5, fontSize: 11, color: 'var(--text-tertiary)', display: 'flex', alignItems: 'center', gap: 4 }}>
                                                 <MdIcon name="lock" style={{ fontSize: 12 }} />
-                                                Sent directly from your browser to Anthropic. Saved locally for convenience.
+                                                Sent directly from your browser to Google Gemini. Saved locally for convenience.
                                             </div>
                                         </div>
                                     )}
@@ -6360,7 +6354,7 @@
                                         <div style={{ marginTop: 8, display: 'flex', alignItems: 'center', gap: 5, fontSize: 11, color: 'var(--text-tertiary)' }}>
                                             <MdIcon name="lock" style={{ fontSize: 12 }} />
                                             API key saved
-                                            <button onClick={function() { setNlApiKey(''); try { localStorage.removeItem('flightscore_anthropic_key'); } catch(e) {} }} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 11, color: 'var(--accent)', padding: '0 0 0 4px', textDecoration: 'underline' }}>Change</button>
+                                            <button onClick={function() { setNlApiKey(''); try { localStorage.removeItem('flightscore_gemini_key'); } catch(e) {} }} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 11, color: 'var(--accent)', padding: '0 0 0 4px', textDecoration: 'underline' }}>Change</button>
                                         </div>
                                     )}
                                     {nlError && (
