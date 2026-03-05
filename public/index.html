@@ -643,7 +643,7 @@
         }
         .score-seg-fill::after {
             content: ''; position: absolute; inset: 0;
-            background: linear-gradient(90deg, transparent 0%, rgba(255,255,255,0.25) 50%, transparent 100%);
+            background: linear-gradient(90deg, rgba(255,255,255,0.18) 0%, rgba(255,255,255,0.35) 50%, rgba(255,255,255,0.06) 100%);
             animation: shimmer 2.5s ease-in-out infinite;
         }
 
@@ -3194,7 +3194,7 @@
                                             </span>
                                         </div>
                                         <div className="score-seg-track">
-                                            <div className="score-seg-fill" style={{ width: pct + '%', background: 'linear-gradient(90deg,' + f.color + 'cc,' + f.color + ')' }} />
+                                            <div className="score-seg-fill" style={{ width: pct + '%', background: f.color }} />
                                         </div>
                                         {f.detail && <div style={{ fontSize: 11, color: 'var(--text-tertiary)', marginTop: 3, lineHeight: 1.4 }}>{f.detail}</div>}
                                     </div>
