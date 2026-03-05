@@ -3797,7 +3797,6 @@
             });
             var [aiLoading, setAiLoading] = useState(false);
             var [aiError, setAiError] = useState(null);
-            var [apiKey, setApiKey] = useState("");
             var [showAI, setShowAI] = useState(false);
             var [aiFeedback, setAiFeedback] = useState(null); // 'up' | 'down'
 
@@ -4454,16 +4453,7 @@
                     for (let i = 0; i <= retries; i++) {
                         try {
                             var text;
-                            if (apiKey) {
-                                // Streaming path (Step 2.4): update aiResult incrementally
-                                text = await callAnthropicApiStreaming({
-                                    system: BRIEFING_SYSTEM,
-                                    messages: [{ role: "user", content: prompt }],
-                                    max_tokens: 4000,
-                                    apiKey,
-                                    onChunk: function(partial) { setAiResult(partial); }
-                                });
-                            } else {
+                            {
                                 // Non-streaming proxy path (key is server-side)
                                 const data = await callAnthropicApi({
                                     system: BRIEFING_SYSTEM,
@@ -4493,11 +4483,11 @@
                 }
             // detailedScore intentionally excluded — score updates should not re-trigger
             // an expensive briefing API call (Step 2.3).
-            }, [trip, apiKey, wxData]);
+            }, [trip, wxData]);
 
             // --- Conversational AI Chat ---
             var sendChat = useCallback(async function() {
-                if (!chatInput.trim() || !apiKey || chatLoading) return;
+                if (!chatInput.trim() || chatLoading) return;
                 var userMsg = chatInput.trim();
                 setChatInput('');
                 var updated = [...chatMessages, { role: 'user', content: userMsg }];
@@ -4517,14 +4507,14 @@
                         system: systemCtx,
                         messages: updated.map(function(m) { return { role:m.role, content:m.content }; }),
                         max_tokens: 1200,
-                        apiKey
+                        apiKey: null
                     });
                     var reply = chatData.content?.[0]?.text || 'No response.';
                     setChatMessages(function(prev) { return [...prev, { role:'assistant', content:reply }]; });
                 } catch(e) {
                     setChatMessages(function(prev) { return [...prev, { role:'assistant', content:'Error: ' + e.message }]; });
                 } finally { setChatLoading(false); }
-            }, [chatInput, chatMessages, apiKey, effectiveWxData, trip, allRoutePts, ac, chatLoading, detailedScore]);
+            }, [chatInput, chatMessages, effectiveWxData, trip, allRoutePts, ac, chatLoading, detailedScore]);
 
             // --- Voice output (Text-to-Speech) ---
             function speakBriefing() {
@@ -4585,9 +4575,9 @@
                     : '--';
                 var altFt = ac.alt || 6000;
 
-                function catClr(c) { return ({VFR:'#1b5e20',MVFR:'#1565c0',IFR:'#b71c1c',LIFR:'#6a1b9a'})[c]||'#555'; }
-                function catBg(c)  { return ({VFR:'#e8f5e9',MVFR:'#e3f2fd',IFR:'#ffebee',LIFR:'#f3e5f5'})[c]||'#eee'; }
-                function scoreClr(pct) { return pct >= 0.85 ? '#2e7d32' : pct >= 0.65 ? '#1565c0' : '#c62828'; }
+                function catClr(c) { return ({VFR:'#1a7a34',MVFR:'#0066cc',IFR:'#cc2200',LIFR:'#7B2D8B'})[c]||'#555'; }
+                function catBg(c)  { return ({VFR:'#d6f5de',MVFR:'#daeeff',IFR:'#fde4e0',LIFR:'#f0e0f7'})[c]||'#eee'; }
+                function scoreClr(pct) { return pct >= 0.80 ? '#1a7a34' : pct >= 0.60 ? '#c4650a' : '#cc2200'; }
 
                 // Parse "M04" or "22" into a signed integer Celsius value
                 function parseCelsius(s) {
@@ -4682,10 +4672,17 @@
                 var shG = { ...sh, color: '#1b5e20', borderBottomColor: '#1b5e20' };
                 var cell   = { fontSize: 11, padding: '4px 7px', borderBottom: '1px solid #e8e8e8', verticalAlign: 'top' };
                 var cellHd = { ...cell, fontSize: 10, fontWeight: 700, color: '#444', background: '#f0f4f8', textTransform: 'uppercase', letterSpacing: '0.5px', padding: '4px 7px' };
-                var mono   = { fontFamily: '"Roboto Mono",monospace' };
+                var mono   = { fontFamily: '"JetBrains Mono","Roboto Mono",monospace' };
                 function catChip(cat) {
                     if (!cat || cat === '—') return <span style={{color:'#555'}}>—</span>;
-                    return <span style={{background:catBg(cat),color:catClr(cat),borderRadius:3,padding:'1px 5px',fontSize:10,fontWeight:700,whiteSpace:'nowrap',...mono}}>{cat}</span>;
+                    return <span style={{background:catBg(cat),color:catClr(cat),borderRadius:20,padding:'2px 8px',fontSize:10,fontWeight:800,whiteSpace:'nowrap',...mono,border:`1px solid ${catClr(cat)}55`,letterSpacing:'0.3px'}}>{cat}</span>;
+                }
+                function windArrow(windStr) {
+                    if (!windStr) return null;
+                    var m = windStr.match(/^(\d{3})@(\d+)/);
+                    if (!m) return null;
+                    var deg = parseInt(m[1]);
+                    return <span style={{display:'inline-block',transform:`rotate(${deg}deg)`,fontSize:13,lineHeight:1,marginRight:2}}>↑</span>;
                 }
                 // NavLog rows — leg distance, cumulative, ETE, ETA, full wx fields
                 var cumNm = 0;
@@ -4730,20 +4727,21 @@
                         '<meta name="viewport" content="width=device-width,initial-scale=1">' +
                         '<title>Flight Brief — ' + allRoutePts.join(' › ') + '</title>' +
                         '<link rel="preconnect" href="https://fonts.googleapis.com">' +
-                        '<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;700;900&family=Roboto+Mono:wght@400;600&display=swap">' +
+                        '<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;900&family=JetBrains+Mono:wght@400;600;700&display=swap">' +
                         '<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200">' +
                         '<style>' +
-                        'body{margin:0;padding:12px 16px;background:#f0f4f8;font-family:Roboto,Arial,sans-serif;}' +
+                        'body{margin:0;padding:12px 16px;background:#f0f4f8;font-family:Inter,system-ui,sans-serif;}' +
                         '.material-symbols-outlined{font-family:"Material Symbols Outlined";font-weight:normal;font-style:normal;display:inline-block;line-height:1;text-transform:none;letter-spacing:normal;word-wrap:normal;white-space:nowrap;direction:ltr;}' +
-                        '.fm{font-family:"Roboto Mono",monospace;}' +
+                        '.fm{font-family:"JetBrains Mono","Roboto Mono",monospace;}' +
+                        'details>summary{cursor:pointer;list-style:none;user-select:none;}details>summary::marker,details>summary::-webkit-details-marker{display:none;}' +
                         // Prevent cards from splitting across print pages
                         '.bs{break-inside:avoid;page-break-inside:avoid;}' +
                         '@media print{' +
                         'body{padding:0;background:#fff;font-size:11px;}' +
                         '@page{margin:1cm;size:Letter portrait;}' +
-                        // Preserve all background colors, badges, and category chips in PDF
                         '*{-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important;color-adjust:exact!important;}' +
                         '.bs{break-inside:avoid!important;page-break-inside:avoid!important;}' +
+                        'details{display:block!important;}details>*{display:block!important;}' +
                         '}' +
                         '</style>' +
                         '</head><body>' +
@@ -4774,7 +4772,7 @@
                              PRINTABLE REGION — FAR 91.103 preflight brief,
                              every section fully expanded for print/PDF.
                             ══════════════════════════════════════════════════ */}
-                        <div id="export-printable" style={{ background:'#fff', color:'#1a1a1a', fontFamily:'Roboto, Arial, sans-serif', border:'1px solid #ddd', borderRadius:10, overflow:'hidden', boxShadow:'0 4px 24px rgba(0,0,0,0.08)' }}>
+                        <div id="export-printable" style={{ background:'#fff', color:'#1a1a1a', fontFamily:'Inter, system-ui, sans-serif', border:'1px solid #dde3ee', borderRadius:12, overflow:'hidden', boxShadow:'0 4px 28px rgba(0,0,0,0.10)' }}>
 
                             {/* ══ 1. HEADER ══════════════════════════════════ */}
                             <div className="brief-header bs" style={{ background:'linear-gradient(135deg,#0b57d0 0%,#1a73e8 100%)', color:'#fff', padding:'14px 20px' }}>
@@ -4786,18 +4784,33 @@
                                         </div>
                                         {trip.name && <div style={{ fontSize:11, opacity:0.8, marginTop:2 }}>{trip.name}</div>}
                                     </div>
-                                    {detailedScore && verd && (
-                                        <div style={{ display:'flex', alignItems:'center', gap:10, flexShrink:0 }}>
-                                            <div style={{ textAlign:'right' }}>
-                                                <div style={{ fontSize:34, fontWeight:900, lineHeight:1, ...mono }}>{combinedScore ?? detailedScore.total}</div>
-                                                <div style={{ fontSize:10, fontWeight:700, opacity:0.65, letterSpacing:'1.5px', textTransform:'uppercase' }}>/ 100</div>
+                                    {detailedScore && verd && (function() {
+                                        var sc = combinedScore ?? detailedScore.total;
+                                        var r = 38, cx = 50, cy = 50;
+                                        var circ = 2 * Math.PI * r;
+                                        var filled = Math.min(sc / 100, 1) * circ;
+                                        var gap = circ - filled;
+                                        var sClr = sc >= 80 ? '#34C759' : sc >= 60 ? '#FF9500' : '#FF3B30';
+                                        var sBg = sc >= 80 ? 'rgba(52,199,89,0.18)' : sc >= 60 ? 'rgba(255,149,0,0.18)' : 'rgba(255,59,48,0.18)';
+                                        return (
+                                            <div style={{ display:'flex', alignItems:'center', gap:12, flexShrink:0 }}>
+                                                <svg width="92" height="92" viewBox="0 0 100 100" style={{ filter:'drop-shadow(0 2px 8px rgba(0,0,0,0.25))', flexShrink:0 }}>
+                                                    <circle cx={cx} cy={cy} r={r} fill={sBg} />
+                                                    <circle cx={cx} cy={cy} r={r} fill="none" stroke="rgba(255,255,255,0.20)" strokeWidth="8"/>
+                                                    <circle cx={cx} cy={cy} r={r} fill="none" stroke={sClr} strokeWidth="8"
+                                                        strokeLinecap="round"
+                                                        strokeDasharray={`${filled} ${gap}`}
+                                                        transform={`rotate(-90 ${cx} ${cy})`}/>
+                                                    <text x={cx} y={cy-2} dominantBaseline="middle" textAnchor="middle" fontSize="22" fontWeight="900" fill="#fff" fontFamily="JetBrains Mono,Roboto Mono,monospace">{sc}</text>
+                                                    <text x={cx} y={cy+14} textAnchor="middle" fontSize="8" fill="rgba(255,255,255,0.65)" fontFamily="JetBrains Mono,Roboto Mono,monospace">/ 100</text>
+                                                </svg>
+                                                <div style={{ background:'rgba(255,255,255,0.18)', backdropFilter:'blur(4px)', color:'#fff', borderRadius:10, padding:'8px 14px', textAlign:'center', minWidth:64, border:`1.5px solid ${sClr}66` }}>
+                                                    <MdIcon name={verd.verdictIcon} style={{ fontSize:20, display:'block', margin:'0 auto 3px', color:sClr }} />
+                                                    <div style={{ fontSize:13, fontWeight:900, letterSpacing:'1.5px', color:sClr }}>{verd.verdict}</div>
+                                                </div>
                                             </div>
-                                            <div style={{ background:vBg, color:vClr, borderRadius:8, padding:'6px 12px', textAlign:'center', minWidth:68 }}>
-                                                <MdIcon name={verd.verdictIcon} style={{ fontSize:18, display:'block', margin:'0 auto 2px' }} />
-                                                <div style={{ fontSize:12, fontWeight:900, letterSpacing:'1px' }}>{verd.verdict}</div>
-                                            </div>
-                                        </div>
-                                    )}
+                                        );
+                                    })()}
                                 </div>
                                 <div style={{ display:'grid', gridTemplateColumns:'repeat(7,auto)', gap:'0 18px', marginTop:10, paddingTop:10, borderTop:'1px solid rgba(255,255,255,0.25)' }}>
                                     {[
@@ -4915,48 +4928,85 @@
                             {/* ══ Body ════════════════════════════════════════ */}
                             <div style={{ padding:'12px 20px', display:'flex', flexDirection:'column', gap:16 }}>
 
-                                {/* ── 4. NAVLOG ─────────────────────────────── */}
+                                {/* ── 4. NAVLOG — Vertical Timeline Stepper ─── */}
                                 <div className="bs">
                                     <div style={sh}>Navigation Log — {allRoutePts.join(' → ')}</div>
-                                    <table style={{ width:'100%', borderCollapse:'collapse' }}>
-                                        <thead>
-                                            <tr>
-                                                {['ICAO','Airport / Role','Leg NM','Cum NM','ETE','ETA (UTC)',`Winds @${Math.round(altFt/1000)}K`,'Cat','Wind (Sfc)','Vis','Sky','Temp/DP','Altim'].map(h =>
-                                                    <th key={h} style={{ ...cellHd, textAlign:'left' }}>{h}</th>
-                                                )}
-                                            </tr>
-                                        </thead>
-                                        <tbody>
-                                            {navRows.map((row, idx) => {
-                                                var cat = row.m ? row.m.cat : null;
-                                                var role = idx===0 ? 'DEP' : idx===navRows.length-1 ? 'DEST' : `WP${idx}`;
-                                                var legEte = row.legMin > 0 ? `${Math.floor(row.legMin/60)}:${String(row.legMin%60).padStart(2,'0')}` : '—';
-                                                var tempDisplay = row.m && row.m.temp ? row.m.temp : '—';
-                                                var altDisplay  = row.m && row.m.alt  ? row.m.alt  : '—';
-                                                return (
-                                                    <tr key={row.icao} style={{ background: idx%2===0?'#fff':'#f8faff' }}>
-                                                        <td style={{ ...cell, ...mono, fontWeight:800, color:'#0b57d0' }}>{row.icao}</td>
-                                                        <td style={{ ...cell, maxWidth:110 }}>
-                                                            <span style={{ fontSize:10, color:'#555', fontWeight:700 }}>[{role}]</span>
-                                                            <span style={{ fontSize:10, display:'block', color:'#333' }}>{row.apt ? row.apt.name : '—'}</span>
-                                                        </td>
-                                                        <td style={{ ...cell, ...mono, textAlign:'right' }}>{row.legNm > 0 ? row.legNm : '—'}</td>
-                                                        <td style={{ ...cell, ...mono, textAlign:'right' }}>{row.cumNm || '—'}</td>
-                                                        <td style={{ ...cell, ...mono, textAlign:'right' }}>{legEte}</td>
-                                                        <td style={{ ...cell, ...mono }}>{row.eta || (idx===0 ? depUtcStr : '—')}</td>
-                                                        <td style={{ ...cell, ...mono }}>{row.windStr}</td>
-                                                        <td style={{ ...cell }}>{catChip(cat)}</td>
-                                                        <td style={{ ...cell, ...mono }}>{row.m ? row.m.wind : '—'}</td>
-                                                        <td style={{ ...cell, ...mono }}>{row.m ? row.m.vis  : '—'}</td>
-                                                        <td style={{ ...cell, ...mono }}>{row.m ? row.m.sky  : '—'}</td>
-                                                        <td style={{ ...cell, ...mono }}>{tempDisplay}</td>
-                                                        <td style={{ ...cell, ...mono }}>{altDisplay}</td>
-                                                    </tr>
-                                                );
-                                            })}
-                                        </tbody>
-                                    </table>
-                                    <div style={{ fontSize:10, color:'#444', marginTop:4 }}>
+                                    <div style={{ display:'flex', flexDirection:'column' }}>
+                                        {navRows.map((row, idx) => {
+                                            var cat = row.m ? row.m.cat : null;
+                                            var isFirst = idx === 0;
+                                            var isLast = idx === navRows.length - 1;
+                                            var role = isFirst ? 'DEP' : isLast ? 'DEST' : `WP${idx}`;
+                                            var legEte = row.legMin > 0 ? `${Math.floor(row.legMin/60)}h${String(row.legMin%60).padStart(2,'0')}m` : null;
+                                            var nodeColor = cat ? catClr(cat) : '#0b57d0';
+                                            var nodeBg = cat ? catBg(cat) : '#daeeff';
+                                            return (
+                                                <div key={row.icao} style={{ display:'flex', gap:0, alignItems:'stretch' }}>
+                                                    {/* Timeline spine */}
+                                                    <div style={{ display:'flex', flexDirection:'column', alignItems:'center', width:30, flexShrink:0 }}>
+                                                        <div style={{ width:2, background: isFirst ? 'transparent' : '#c5d8f7', flex:'0 0 10px' }} />
+                                                        <div style={{ width:16, height:16, borderRadius:'50%', background:nodeBg, border:`2.5px solid ${nodeColor}`, flexShrink:0, zIndex:1, display:'flex', alignItems:'center', justifyContent:'center' }}>
+                                                            <div style={{ width:5, height:5, borderRadius:'50%', background:nodeColor }} />
+                                                        </div>
+                                                        <div style={{ width:2, background: isLast ? 'transparent' : '#c5d8f7', flex:'1 0 10px', minHeight:8 }} />
+                                                    </div>
+                                                    {/* Station content */}
+                                                    <div style={{ flex:1, paddingLeft:8, paddingBottom: isLast ? 0 : 2, paddingTop:2 }}>
+                                                        <div style={{ background:'#fff', border:`1px solid ${nodeColor}33`, borderLeft:`3px solid ${nodeColor}`, borderRadius:6, padding:'7px 10px', marginBottom:isLast?0:0 }}>
+                                                            <div style={{ display:'flex', alignItems:'center', gap:6, marginBottom:4, flexWrap:'wrap' }}>
+                                                                <span style={{ ...mono, fontWeight:900, fontSize:13, color:'#0b57d0' }}>{row.icao}</span>
+                                                                <span style={{ fontSize:9, fontWeight:800, color:'#fff', background:nodeColor, borderRadius:20, padding:'1px 7px', textTransform:'uppercase', letterSpacing:'0.5px' }}>{role}</span>
+                                                                {catChip(cat)}
+                                                                {row.apt && <span style={{ fontSize:10, color:'#555' }}>{row.apt.name}</span>}
+                                                                <span style={{ marginLeft:'auto', ...mono, fontSize:10, color:'#444', fontWeight:700 }}>
+                                                                    {row.eta ? `ETA ${row.eta}` : (isFirst ? `DEP ${depUtcStr}` : '')}
+                                                                </span>
+                                                            </div>
+                                                            <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(85px,1fr))', gap:'3px 10px' }}>
+                                                                {idx > 0 && [
+                                                                    ['Leg', `${row.legNm} NM`],
+                                                                    ['Cum', `${row.cumNm} NM`],
+                                                                    ['ETE', legEte || '—'],
+                                                                ].map(([k,v]) => (
+                                                                    <div key={k} style={{ display:'flex', gap:4, alignItems:'baseline' }}>
+                                                                        <span style={{ fontSize:9, color:'#777', fontWeight:700, textTransform:'uppercase', letterSpacing:'0.3px', flexShrink:0 }}>{k}</span>
+                                                                        <span style={{ ...mono, fontSize:11, fontWeight:700, color:'#222' }}>{v}</span>
+                                                                    </div>
+                                                                ))}
+                                                                {row.windStr !== '—' && (
+                                                                    <div style={{ display:'flex', gap:4, alignItems:'baseline' }}>
+                                                                        <span style={{ fontSize:9, color:'#777', fontWeight:700, textTransform:'uppercase', letterSpacing:'0.3px', flexShrink:0 }}>@{Math.round(altFt/1000)}K</span>
+                                                                        <span style={{ ...mono, fontSize:11, color:'#0b57d0', fontWeight:700 }}>{windArrow(row.windStr)}{row.windStr}</span>
+                                                                    </div>
+                                                                )}
+                                                                {row.m && [
+                                                                    ['Sfc Wind', row.m.wind || '—'],
+                                                                    ['Vis', row.m.vis || '—'],
+                                                                    ['Sky', row.m.sky || '—'],
+                                                                    ['Temp', row.m.temp || '—'],
+                                                                    ['Altim', row.m.alt || '—'],
+                                                                ].map(([k,v]) => (
+                                                                    <div key={k} style={{ display:'flex', gap:4, alignItems:'baseline' }}>
+                                                                        <span style={{ fontSize:9, color:'#777', fontWeight:700, textTransform:'uppercase', letterSpacing:'0.3px', flexShrink:0 }}>{k}</span>
+                                                                        <span style={{ ...mono, fontSize:11, color:'#333' }}>{v}</span>
+                                                                    </div>
+                                                                ))}
+                                                            </div>
+                                                        </div>
+                                                        {/* Inter-leg strip */}
+                                                        {!isLast && legEte && (
+                                                            <div style={{ display:'flex', alignItems:'center', gap:6, padding:'1px 0', marginTop:1 }}>
+                                                                <div style={{ flex:1, height:1, background:'#dde8f5' }} />
+                                                                <span style={{ ...mono, fontSize:9, color:'#999', fontWeight:600, whiteSpace:'nowrap' }}>{legEte}</span>
+                                                                <div style={{ flex:1, height:1, background:'#dde8f5' }} />
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
+                                    <div style={{ fontSize:10, color:'#555', marginTop:6, paddingLeft:38 }}>
                                         {ac.name} · {ac.kts} kts TAS · Cruise {(altFt/1000).toFixed(1)}k ft MSL · {routeDist} NM total · ETE {eteStr} · Winds from FD forecast
                                     </div>
                                 </div>
@@ -5151,20 +5201,27 @@
                                 {/* ── 7. COMPOSITE SAFETY SCORE ───────────────── */}
                                 {detailedScore && (
                                     <div className="bs">
-                                        <div style={sh}>Composite Safety Score — {combinedScore ?? detailedScore.total} / 100</div>
-                                        <div style={{ display:'flex', flexDirection:'column', gap:6 }}>
-                                            {detailedScore.breakdown.map((b, i) => (
-                                                <div key={i} style={{ display:'grid', gridTemplateColumns:'130px 1fr 50px 110px', alignItems:'center', gap:8 }}>
-                                                    <span style={{ fontSize:11, fontWeight:600, color:'#333' }}>{b.label}</span>
-                                                    <div style={{ height:7, background:'#e8e8e8', borderRadius:4, overflow:'hidden' }}>
-                                                        <div style={{ height:'100%', width:(b.score/b.max*100)+'%', background:scoreClr(b.score/b.max), borderRadius:4 }} />
+                                        <div style={sh}>Score Breakdown — {combinedScore ?? detailedScore.total} / 100</div>
+                                        <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(160px,1fr))', gap:8 }}>
+                                            {detailedScore.breakdown.map((b, i) => {
+                                                var pct = b.score / b.max;
+                                                var bClr = scoreClr(pct);
+                                                var bBg = pct >= 0.80 ? '#d6f5de' : pct >= 0.60 ? '#fff4e5' : '#fde4e0';
+                                                return (
+                                                    <div key={i} style={{ background:bBg, borderRadius:8, padding:'8px 10px', border:`1px solid ${bClr}33` }}>
+                                                        <div style={{ display:'flex', justifyContent:'space-between', alignItems:'baseline', marginBottom:6 }}>
+                                                            <span style={{ fontSize:10, fontWeight:700, color:'#444', textTransform:'uppercase', letterSpacing:'0.4px' }}>{b.label}</span>
+                                                            <span style={{ ...mono, fontSize:13, fontWeight:900, color:bClr }}>{b.score}<span style={{ fontSize:9, opacity:0.6 }}>/{b.max}</span></span>
+                                                        </div>
+                                                        <div style={{ height:6, background:'rgba(0,0,0,0.10)', borderRadius:3, overflow:'hidden' }}>
+                                                            <div style={{ height:'100%', width:(pct*100)+'%', background:`linear-gradient(90deg,${bClr}bb,${bClr})`, borderRadius:3 }} />
+                                                        </div>
+                                                        {b.detail && <div style={{ fontSize:9, color:'#666', marginTop:4, lineHeight:1.4 }}>{b.detail}</div>}
                                                     </div>
-                                                    <span style={{ ...mono, fontSize:11, fontWeight:700, textAlign:'right', color:scoreClr(b.score/b.max) }}>{b.score}/{b.max}</span>
-                                                    <span style={{ fontSize:10, color:'#444', textAlign:'right' }}>{b.detail}</span>
-                                                </div>
-                                            ))}
+                                                );
+                                            })}
                                         </div>
-                                        {verd && <div style={{ marginTop:8, padding:'7px 10px', background:vBg, borderRadius:6, border:`1px solid ${vClr}33`, fontSize:11, color:vClr, lineHeight:1.5 }}>{verd.verdictDesc}</div>}
+                                        {verd && <div style={{ marginTop:8, padding:'8px 12px', background:vBg, borderRadius:8, border:`1px solid ${vClr}44`, fontSize:11, color:vClr, lineHeight:1.5, fontWeight:500 }}>{verd.verdictDesc}</div>}
                                     </div>
                                 )}
 
@@ -5191,59 +5248,80 @@
                                 )}
 
                                 {/* ── 9. STATION WEATHER — METAR / TAF ─────────
-                                     All fields including Temp/DP and Altimeter    */}
+                                     Visual cards with accordion for raw data       */}
                                 {effectiveWxData && effectiveWxData.length > 0 && (
                                     <div>
                                         <div style={sh}>Station Weather — METAR &amp; TAF</div>
-                                        <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
+                                        <div style={{ display:'flex', flexDirection:'column', gap:10 }}>
                                             {effectiveWxData.map(e => {
                                                 var m   = e.effectiveWx;
                                                 var apt = getAirport(e.icao);
                                                 var cat = m ? m.cat : null;
+                                                var cClr = cat ? catClr(cat) : '#555';
+                                                var cBg  = cat ? catBg(cat) : '#f5f5f5';
                                                 var td  = parseTempDp(m ? m.temp : null);
                                                 var altH = parseAltInHg(m ? m.alt : null);
                                                 var elev = apt ? apt.elev : 0;
                                                 var wxDA = (td.t != null) ? calculateDensityAltitude(td.t, altH || 29.92, elev || 0) : null;
+                                                // Translate sky string to icon
+                                                var skyIcon = '☀';
+                                                if (m && m.sky) {
+                                                    var sl = m.sky.toUpperCase();
+                                                    if (sl.includes('OVC')) skyIcon = '☁';
+                                                    else if (sl.includes('BKN')) skyIcon = '🌥';
+                                                    else if (sl.includes('SCT')) skyIcon = '⛅';
+                                                    else if (sl.includes('FEW')) skyIcon = '🌤';
+                                                }
                                                 return (
-                                                    <div key={e.icao} className="bs" style={{ border:'1px solid #e0e0e0', borderRadius:6, overflow:'hidden' }}>
-                                                        <div style={{ background: cat ? catBg(cat) : '#f5f5f5', padding:'4px 10px', display:'flex', alignItems:'center', justifyContent:'space-between', gap:8 }}>
+                                                    <div key={e.icao} className="bs" style={{ border:`1.5px solid ${cClr}44`, borderRadius:10, overflow:'hidden', boxShadow:'0 1px 4px rgba(0,0,0,0.06)' }}>
+                                                        {/* Station header bar */}
+                                                        <div style={{ background:`linear-gradient(135deg,${cBg},#fff)`, padding:'8px 12px', display:'flex', alignItems:'center', justifyContent:'space-between', gap:8, borderBottom:`1px solid ${cClr}33` }}>
                                                             <div style={{ display:'flex', alignItems:'center', gap:8 }}>
-                                                                <span style={{ ...mono, fontWeight:800, fontSize:13, color:'#0b57d0' }}>{e.icao}</span>
-                                                                {apt && <span style={{ fontSize:11, color:'#444' }}>{apt.name} · {apt.city}, {apt.state} · Elev {(apt.elev||0).toLocaleString()} ft MSL</span>}
-                                                            </div>
-                                                            <div style={{ display:'flex', alignItems:'center', gap:6 }}>
+                                                                <span style={{ ...mono, fontWeight:900, fontSize:15, color:'#0b57d0' }}>{e.icao}</span>
                                                                 {catChip(cat)}
-                                                                <span style={{ fontSize:10, color:'#444' }}>{e.sourceLabel}</span>
+                                                                {apt && <span style={{ fontSize:11, color:'#555' }}>{apt.name} · Elev {(apt.elev||0).toLocaleString()} ft</span>}
                                                             </div>
+                                                            <span style={{ fontSize:10, color:'#666', fontWeight:600 }}>{e.sourceLabel}</span>
                                                         </div>
                                                         {m && (
-                                                            <div style={{ display:'grid', gridTemplateColumns:'repeat(7,1fr)', gap:'0 2px', padding:'4px 10px', background:'#fafafa', borderBottom:'1px solid #eee' }}>
-                                                                {[
-                                                                    ['Wind',    m.wind || '—'],
-                                                                    ['Vis',     m.vis  || '—'],
-                                                                    ['Sky',     m.sky  || '—'],
-                                                                    ['Temp',    td.t != null ? `${td.t}°C` : '—'],
-                                                                    ['Dewpoint',td.dp != null ? `${td.dp}°C` : '—'],
-                                                                    ['Altimeter', altH != null ? `${altH.toFixed(2)}"` : (m.alt || '—')],
-                                                                    ['Density Alt', wxDA != null ? `${wxDA.toLocaleString()} ft` : '—'],
-                                                                ].map(([k,v])=>(
-                                                                    <div key={k}>
-                                                                        <div style={{ fontSize:9, color:'#444', fontWeight:700, textTransform:'uppercase', letterSpacing:'0.3px' }}>{k}</div>
-                                                                        <div style={{ fontSize:11, fontWeight:600, ...mono }}>{v || '—'}</div>
-                                                                    </div>
-                                                                ))}
-                                                            </div>
-                                                        )}
-                                                        {m && m.raw && (
-                                                            <div style={{ padding:'3px 10px', background:'#fff' }}>
-                                                                <div style={{ fontSize:10, color:'#444', fontWeight:700, textTransform:'uppercase', letterSpacing:'0.5px', marginBottom:1 }}>METAR</div>
-                                                                <div style={{ ...mono, fontSize:11, color:'#222', lineHeight:1.5, wordBreak:'break-all', whiteSpace:'pre-wrap' }}>{m.raw}</div>
-                                                            </div>
-                                                        )}
-                                                        {m && m.taf && (
-                                                            <div style={{ padding:'3px 10px 5px', background:'#fff', borderTop:'1px solid #f0f0f0' }}>
-                                                                <div style={{ fontSize:10, color:'#444', fontWeight:700, textTransform:'uppercase', letterSpacing:'0.5px', marginBottom:1 }}>TAF</div>
-                                                                <div style={{ ...mono, fontSize:11, color:'#333', lineHeight:1.5, wordBreak:'break-all', whiteSpace:'pre-wrap' }}>{m.taf}</div>
+                                                            <div style={{ padding:'8px 12px', background:'#fafcff' }}>
+                                                                {/* Visual metrics row */}
+                                                                <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(90px,1fr))', gap:'6px 8px', marginBottom:8 }}>
+                                                                    {[
+                                                                        ['🌬 Wind',    <span>{windArrow(m.wind)}<span style={{...mono}}>{m.wind || '—'}</span></span>],
+                                                                        ['👁 Vis',     <span style={{...mono}}>{m.vis || '—'}</span>],
+                                                                        [skyIcon+' Sky', <span style={{...mono}}>{m.sky || '—'}</span>],
+                                                                        ['🌡 Temp',    <span style={{...mono}}>{td.t != null ? `${td.t}°C` : '—'}</span>],
+                                                                        ['💧 Dewpt',   <span style={{...mono}}>{td.dp != null ? `${td.dp}°C` : '—'}</span>],
+                                                                        ['🔲 Altim',   <span style={{...mono}}>{altH != null ? `${altH.toFixed(2)}"` : (m.alt||'—')}</span>],
+                                                                        ['⬆ DA',      <span style={{...mono}}>{wxDA != null ? `${wxDA.toLocaleString()}ft` : '—'}</span>],
+                                                                    ].map(([k,v])=>(
+                                                                        <div key={k} style={{ background:'#fff', borderRadius:6, padding:'4px 7px', border:'1px solid #eaeff7' }}>
+                                                                            <div style={{ fontSize:9, color:'#888', fontWeight:700, textTransform:'uppercase', letterSpacing:'0.3px', marginBottom:2 }}>{k}</div>
+                                                                            <div style={{ fontSize:11, fontWeight:700, lineHeight:1.3 }}>{v}</div>
+                                                                        </div>
+                                                                    ))}
+                                                                </div>
+                                                                {/* Accordion for raw METAR/TAF */}
+                                                                {(m.raw || m.taf) && (
+                                                                    <details style={{ borderTop:'1px solid #e8eef7' }}>
+                                                                        <summary style={{ fontSize:10, fontWeight:700, color:'#0b57d0', textTransform:'uppercase', letterSpacing:'0.5px', cursor:'pointer', padding:'5px 0 2px', listStyle:'none', userSelect:'none' }}>
+                                                                            ▶ Raw METAR / TAF
+                                                                        </summary>
+                                                                        {m.raw && (
+                                                                            <div style={{ marginTop:4 }}>
+                                                                                <div style={{ fontSize:9, color:'#666', fontWeight:700, textTransform:'uppercase', letterSpacing:'0.5px', marginBottom:2 }}>METAR</div>
+                                                                                <div style={{ ...mono, fontSize:10, color:'#222', lineHeight:1.55, wordBreak:'break-all', background:'#f5f7fa', padding:'4px 6px', borderRadius:4 }}>{m.raw}</div>
+                                                                            </div>
+                                                                        )}
+                                                                        {m.taf && (
+                                                                            <div style={{ marginTop:6 }}>
+                                                                                <div style={{ fontSize:9, color:'#666', fontWeight:700, textTransform:'uppercase', letterSpacing:'0.5px', marginBottom:2 }}>TAF</div>
+                                                                                <div style={{ ...mono, fontSize:10, color:'#333', lineHeight:1.55, wordBreak:'break-all', whiteSpace:'pre-wrap', background:'#f5f7fa', padding:'4px 6px', borderRadius:4 }}>{m.taf}</div>
+                                                                            </div>
+                                                                        )}
+                                                                    </details>
+                                                                )}
                                                             </div>
                                                         )}
                                                     </div>
@@ -5695,14 +5773,6 @@
 
                                 {showAI && (
                                     <div style={{ padding: '0 16px 16px', borderTop: '1px solid var(--md-sys-color-outline-variant)' }}>
-                                        {/* API Key input */}
-                                        <div style={{ marginTop: 14, marginBottom: 8, fontSize: 12, color: 'var(--md-sys-color-on-surface-variant)', lineHeight: 1.5, display: 'flex', alignItems: 'flex-start', gap: 6 }}>
-                                            <MdIcon name="lock" style={{ fontSize: 13, marginTop: 1, flexShrink: 0 }} />
-                                            Key is sent directly from your browser to Anthropic. Use a key with a spending limit — never your primary production key.
-                                        </div>
-                                        <div style={{ marginBottom: 12 }}>
-                                            <MdInput label="Anthropic API Key (optional)" value={apiKey} onChange={e => setApiKey(e.target.value)} placeholder="sk-ant-… (leave blank to use server key)" type="password" />
-                                        </div>
 
                                         {/* Primary action buttons */}
                                         <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
@@ -5764,7 +5834,7 @@
                                         )}
 
                                         {/* Conversational AI Chat */}
-                                        {apiKey && (
+                                        {(
                                             <div style={{ marginTop: 14, border: '1px solid var(--md-sys-color-outline-variant)', borderRadius: 14, overflow: 'hidden' }}>
                                                 <div style={{ padding: '10px 14px', background: 'var(--md-sys-color-surface-container-high)', borderBottom: chatMessages.length ? '1px solid var(--md-sys-color-outline-variant)' : 'none', display: 'flex', alignItems: 'center', gap: 8 }}>
                                                     <MdIcon name="chat" style={{ fontSize: 15, color: 'var(--md-sys-color-primary)' }} />
