@@ -5661,41 +5661,7 @@
                             <MdButton variant="text" icon="close" onClick={onClose} style={{ padding:8 }} />
                         </div>
 
-                        {/* ── OpenAIP ── */}
-                        <div>
-                            <div style={sectionHead}>OpenAIP API Key</div>
-                            <div style={fieldWrap}>
-                                <div style={{ fontSize:12, color:'var(--md-sys-color-on-surface-variant)', lineHeight:1.5 }}>
-                                    Used for airport frequencies and airspace enrichment.
-                                    Get a free key at <strong>openaip.net</strong>. Stored in your browser and sent directly to OpenAIP — use a free-tier key, not one with billing attached.
-                                </div>
-                                <input
-                                    type="password"
-                                    value={apiKey}
-                                    onChange={function(e) { setApiKey(e.target.value); setTestStatus(null); }}
-                                    placeholder="Enter OpenAIP API key…"
-                                    style={inputStyle}
-                                    autoComplete="off"
-                                    spellCheck={false}
-                                />
-                                <div style={{ display:'flex', gap:8, flexWrap:'wrap' }}>
-                                    <MdButton variant="tonal" icon="save" onClick={saveKey} style={{ fontSize:13 }}>Save Key</MdButton>
-                                    <MdButton variant="text" icon="wifi_tethering" onClick={testKey} disabled={testStatus === 'testing'} style={{ fontSize:13 }}>
-                                        {testStatus === 'testing' ? 'Testing…' : 'Test Connection'}
-                                    </MdButton>
-                                </div>
-                                {testStatus && testStatus !== 'testing' && (
-                                    <div style={{
-                                        display:'flex', alignItems:'center', gap:7,
-                                        fontSize:12, lineHeight:1.4,
-                                        color: testStatus.ok ? 'var(--cat-vfr-color)' : 'var(--md-sys-color-error)'
-                                    }}>
-                                        <MdIcon name={testStatus.ok ? 'check_circle' : 'error'} style={{ fontSize:15 }} />
-                                        {testStatus.msg}
-                                    </div>
-                                )}
-                            </div>
-                        </div>
+                        {/* ── OpenAIP ── hidden */}
 
                         {/* ── OurAirports ── */}
                         <div>
