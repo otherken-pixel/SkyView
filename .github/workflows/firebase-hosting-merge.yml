@@ -6,11 +6,22 @@ on:
   push:
     branches:
       - main
+
+# Only one deploy at a time — prevents partial deploys from racing
+concurrency:
+  group: firebase-deploy
+  cancel-in-progress: false
+
 jobs:
   build_and_deploy:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
+      - name: Set up Node.js 24
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
 
       - name: Stamp build version into index.html
         run: |
@@ -18,6 +29,9 @@ jobs:
           BUILD_TS=$(date -u '+%Y-%m-%d %H:%M UTC')
           sed -i "s/__BUILD_COMMIT__/${COMMIT_SHA}/g" public/index.html
           sed -i "s/__BUILD_TIMESTAMP__/${BUILD_TS}/g" public/index.html
+
+      - name: Install function dependencies
+        run: cd functions && npm install
 
       - name: Deploy to Firebase Hosting
         uses: FirebaseExtended/action-hosting-deploy@v0
@@ -27,14 +41,12 @@ jobs:
           channelId: live
           projectId: flightscore-ca7e0
 
-      - name: Set up Node.js 24
-        uses: actions/setup-node@v4
-        with:
-          node-version: '24'
-
       - name: Deploy Firebase Functions and Firestore Rules
         env:
           FIREBASE_TOKEN: ${{ secrets.FIREBASE_TOKEN }}
         run: |
-          cd functions && npm install && cd ..
-          npx --yes firebase-tools deploy --only functions,firestore:rules --project flightscore-ca7e0 --non-interactive --token "$FIREBASE_TOKEN"
+          npx --yes firebase-tools deploy \
+            --only functions,firestore:rules \
+            --project flightscore-ca7e0 \
+            --non-interactive \
+            --token "$FIREBASE_TOKEN"

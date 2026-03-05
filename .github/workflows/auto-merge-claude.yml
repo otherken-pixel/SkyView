@@ -5,6 +5,11 @@ on:
     branches:
       - 'claude/**'
 
+# Only one auto-merge at a time — queued runs wait instead of racing
+concurrency:
+  group: auto-merge-main
+  cancel-in-progress: false
+
 jobs:
   auto-merge:
     runs-on: ubuntu-latest
@@ -20,7 +25,27 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          # Re-fetch main right before merging (another run may have just pushed)
           git fetch origin main
           git checkout main
-          git merge --no-ff origin/${{ github.ref_name }} -m "Auto-merge ${{ github.ref_name }} into main"
-          git push origin main
+          git reset --hard origin/main
+
+          # Merge the claude branch
+          git merge --no-ff origin/${{ github.ref_name }} \
+            -m "Auto-merge ${{ github.ref_name }} into main"
+
+          # Push with retry — if another run pushed between our fetch and push,
+          # pull-rebase and try again (up to 3 attempts)
+          for attempt in 1 2 3; do
+            if git push origin main; then
+              echo "Push succeeded on attempt $attempt"
+              exit 0
+            fi
+            echo "Push failed (attempt $attempt), rebasing on latest main..."
+            git fetch origin main
+            git rebase origin/main
+          done
+
+          echo "Push failed after 3 attempts"
+          exit 1
