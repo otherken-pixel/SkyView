@@ -2785,19 +2785,21 @@
 
         const MdCard = ({ children, style = {}, onClick }) => {
             return (
-                <div 
+                <div
                     onClick={onClick}
                     style={{
-                        background: 'var(--md-sys-color-surface-container)',
-                        borderRadius: '16px',
+                        background: 'var(--card)',
+                        border: '1px solid var(--card-border)',
+                        borderRadius: '20px',
                         padding: '16px',
-                        color: 'var(--md-sys-color-on-surface)',
+                        color: 'var(--text-primary)',
+                        boxShadow: '0 2px 16px rgba(0,0,0,0.35)',
                         cursor: onClick ? 'pointer' : 'default',
-                        transition: 'background 0.2s',
+                        transition: 'background 0.2s, box-shadow 0.2s',
                         ...style
                     }}
-                    onMouseOver={(e) => { if (onClick) e.currentTarget.style.background = 'var(--md-sys-color-surface-container-high)'; }}
-                    onMouseOut={(e) => { if (onClick) e.currentTarget.style.background = 'var(--md-sys-color-surface-container)'; }}
+                    onMouseOver={(e) => { if (onClick) { e.currentTarget.style.background = 'var(--card-mid)'; e.currentTarget.style.boxShadow = '0 6px 24px rgba(0,0,0,0.5)'; } }}
+                    onMouseOut={(e) => { if (onClick) { e.currentTarget.style.background = 'var(--card)'; e.currentTarget.style.boxShadow = '0 2px 16px rgba(0,0,0,0.35)'; } }}
                 >
                     {children}
                 </div>
@@ -3418,39 +3420,39 @@
             }, [dep, arr]);
 
             if (loading) return (
-                <div style={{ padding:'24px', textAlign:'center', color:'var(--md-sys-color-on-surface-variant)' }}>
+                <div style={{ padding:'24px', textAlign:'center', color:'var(--text-secondary)' }}>
                     <MdIcon name="sync" style={{ animation:'spin 1s linear infinite', fontSize:24 }} />
                     <div style={{ marginTop:8, fontSize:13 }}>Fetching live PIREPs…</div>
                 </div>
             );
             if (!pireps || pireps.length === 0) {
                 return (
-                    <MdCard style={{ padding:16 }}>
-                        <div style={{ textAlign:'center', color:'var(--md-sys-color-on-surface-variant)', fontSize:13 }}>
-                            <MdIcon name="check_circle" style={{ fontSize:20, color:'var(--cat-vfr-color)', display:'block', margin:'0 auto 6px' }} />
-                            No PIREPs within 200 NM — AviationWeather.gov
-                        </div>
-                    </MdCard>
+                    <div style={{ padding:'16px', textAlign:'center', color:'var(--text-secondary)', fontSize:13 }}>
+                        <MdIcon name="check_circle" style={{ fontSize:20, color:'var(--go)', display:'block', margin:'0 auto 6px' }} />
+                        No PIREPs within 200 NM — AviationWeather.gov
+                    </div>
                 );
             }
             return (
-                <MdCard style={{ padding:12 }}>
-                    <div style={{ fontSize:12, color:'var(--cat-vfr-color)', marginBottom:8, display:'flex', alignItems:'center', gap:6 }}>
+                <div>
+                    <div style={{ fontSize:12, color:'var(--go)', marginBottom:10, display:'flex', alignItems:'center', gap:6 }}>
                         <MdIcon name="verified" style={{ fontSize:14 }} />
                         Live PIREPs — AviationWeather.gov ({pireps.length} report{pireps.length !== 1 ? 's' : ''} within 200 NM)
                     </div>
+                    <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
                     {pireps.slice(0, 8).map(function(p, i) {
                         var raw = p.rawOb || p.rawPirep || '';
                         var type = (p.reportType === 'PIREP' || !p.reportType) ? 'UA' : 'UUA';
                         var fallback = [p.acId, p.altitudeFtMsl ? ('FL' + Math.round(p.altitudeFtMsl / 100)) : null, p.turbIntensity ? ('TB ' + p.turbIntensity) : null, p.icingIntensity ? ('IC ' + p.icingIntensity) : null].filter(Boolean).join(' ');
                         return (
-                            <div key={i} className="font-mono" style={{ background:'var(--md-sys-color-surface-container-highest)', borderRadius:8, padding:12, marginBottom:i<Math.min(pireps.length,8)-1?8:0, borderLeft:'4px solid var(--md-sys-color-primary)', fontSize:12, color:'var(--md-sys-color-on-surface)', lineHeight:1.6 }}>
-                                <span style={{ color:'var(--md-sys-color-primary)', fontWeight:700, marginRight:8 }}>{type}</span>
+                            <div key={i} className="font-mono" style={{ background:'var(--card-high)', borderRadius:10, padding:12, borderLeft:'3px solid var(--accent)', fontSize:12, color:'var(--text-primary)', lineHeight:1.6 }}>
+                                <span style={{ color:'var(--accent)', fontWeight:700, marginRight:8 }}>{type}</span>
                                 {raw || fallback || 'No detail available'}
                             </div>
                         );
                     })}
-                </MdCard>
+                    </div>
+                </div>
             );
         }
 
@@ -3458,7 +3460,7 @@
         // Shows active SIGMETs, G-AIRMETs, and CWAs along the route corridor
         function HazardAdvisories({ sigmets, gairmets, cwas, loading, onAskAI }) {
             if (loading) return (
-                <div style={{ display:'flex', alignItems:'center', gap:8, padding:'10px 14px', background:'var(--md-sys-color-surface-container)', borderRadius:12, marginBottom:12, fontSize:13, color:'var(--md-sys-color-on-surface-variant)' }}>
+                <div style={{ display:'flex', alignItems:'center', gap:8, padding:'10px 14px', background:'var(--card-mid)', border:'1px solid var(--card-border-soft)', borderRadius:12, marginBottom:12, fontSize:13, color:'var(--text-secondary)' }}>
                     <MdIcon name="sync" style={{ fontSize:16, animation:'spin 1s linear infinite', flexShrink:0 }} />
                     <span>Fetching SIGMETs, AIRMETs, CWAs…</span>
                 </div>
@@ -3468,7 +3470,7 @@
                 var p = f.properties || {};
                 var hz = (p.hazard || '').toUpperCase();
                 var icon = hz === 'CONVECTIVE' ? 'thunderstorm' : hz === 'TURB' ? 'air' : hz === 'ICE' ? 'ac_unit' : 'warning';
-                var color = hz === 'CONVECTIVE' ? 'var(--md-sys-color-error)' : hz === 'ICE' ? 'var(--cat-mvfr-color)' : 'var(--md-sys-color-warning)';
+                var color = hz === 'CONVECTIVE' ? 'var(--nogo)' : hz === 'ICE' ? 'var(--mvfr)' : 'var(--caution)';
                 var label = 'SIGMET';
                 var isConv = hz === 'CONVECTIVE';
                 items.push({ icon, color, label: isConv ? 'CONVECTIVE SIGMET' : ('SIGMET · ' + hz), text: p.rawAirSigmet || ('Hazard: ' + hz + (p.severity ? ' SEV:'+p.severity : '')), isConv });
@@ -3476,7 +3478,7 @@
             gairmets.forEach(function(g) {
                 var hz = (g.hazard || '').toUpperCase();
                 var icon = hz.includes('TURB') ? 'air' : hz.includes('ICE') ? 'ac_unit' : hz.includes('IFR') || hz.includes('MTN') ? 'cloud' : hz.includes('LLWS') ? 'swap_vert' : 'warning';
-                var color = hz.includes('TURB') ? 'var(--md-sys-color-warning)' : hz.includes('ICE') ? 'var(--cat-mvfr-color)' : 'var(--md-sys-color-on-surface-variant)';
+                var color = hz.includes('TURB') ? 'var(--caution)' : hz.includes('ICE') ? 'var(--mvfr)' : 'var(--text-secondary)';
                 var sev = g.severity ? (' · ' + g.severity) : '';
                 var alt = (g.base != null && g.top != null) ? (' · ' + (g.base*100) + '-' + (g.top*100) + 'ft') : '';
                 items.push({ icon, color, label: 'AIRMET ' + (g.tag||'') + ' · ' + hz + sev, text: 'Valid: ' + (g.validTime||'') + alt });
@@ -3484,16 +3486,16 @@
             cwas.forEach(function(c) {
                 var hz = (c.hazard || '').toUpperCase();
                 var icon = hz === 'TS' ? 'thunderstorm' : hz === 'TURB' ? 'air' : hz === 'ICE' ? 'ac_unit' : hz === 'IFR' ? 'cloud' : 'warning';
-                var color = hz === 'TS' ? 'var(--md-sys-color-error)' : 'var(--md-sys-color-warning)';
+                var color = hz === 'TS' ? 'var(--nogo)' : 'var(--caution)';
                 var top = c.top ? (' · Top ' + c.top + 'ft') : '';
                 items.push({ icon, color, label: 'CWA · ' + (c.cwsuId||'') + ' · ' + hz + (c.qualifier ? ' ' + c.qualifier : ''), text: (c.rawCWA || ('Hazard: ' + hz)) + top });
             });
             if (items.length === 0) return null;
             return (
-                <div style={{ background:'var(--md-sys-color-surface-container)', borderRadius:16, padding:16, marginBottom:16 }}>
+                <div style={{ background:'var(--card-mid)', border:'1px solid var(--card-border-soft)', borderRadius:16, padding:16, marginBottom:16 }}>
                     <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:12 }}>
-                        <MdIcon name="notifications_active" style={{ color:'var(--md-sys-color-error)', fontSize:18 }} />
-                        <span style={{ fontWeight:700, fontSize:13, textTransform:'uppercase', letterSpacing:'0.5px', color:'var(--md-sys-color-error)', flex:1 }}>
+                        <MdIcon name="notifications_active" style={{ color:'var(--nogo)', fontSize:18 }} />
+                        <span style={{ fontWeight:700, fontSize:13, textTransform:'uppercase', letterSpacing:'0.5px', color:'var(--nogo)', flex:1 }}>
                             Active Hazard Advisories ({items.length})
                         </span>
                         {onAskAI && (
@@ -3506,12 +3508,12 @@
                     <div style={{ display:'flex', flexDirection:'column', gap:10 }}>
                         {items.map(function(item, i) {
                             return (
-                                <div key={i} style={{ background: item.isConv ? 'var(--md-sys-color-error-container)' : 'var(--md-sys-color-surface-container-high)', borderRadius:10, padding:'10px 12px', borderLeft:'3px solid '+item.color }}>
+                                <div key={i} style={{ background: item.isConv ? 'var(--nogo-bg)' : 'var(--card-high)', borderRadius:10, padding:'10px 12px', borderLeft:'3px solid '+item.color }}>
                                     <div style={{ display:'flex', alignItems:'center', gap:7, marginBottom:4 }}>
                                         <MdIcon name={item.icon} style={{ fontSize:15, color:item.color, flexShrink:0 }} />
                                         <span style={{ fontSize:12, fontWeight:700, color:item.color, textTransform:'uppercase', letterSpacing:'0.4px' }}>{item.label}</span>
                                     </div>
-                                    <div className="font-mono" style={{ fontSize:12, color:'var(--md-sys-color-on-surface)', lineHeight:1.5, whiteSpace:'pre-wrap', wordBreak:'break-word' }}>{item.text}</div>
+                                    <div className="font-mono" style={{ fontSize:12, color:'var(--text-primary)', lineHeight:1.5, whiteSpace:'pre-wrap', wordBreak:'break-word' }}>{item.text}</div>
                                 </div>
                             );
                         })}
@@ -3537,30 +3539,30 @@
                 <div style={{ background:'var(--md-sys-color-surface-container)', borderRadius:16, padding:16, marginBottom:16 }}>
                     <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:12 }}>
                         <MdIcon name="air" style={{ color:'var(--md-sys-color-secondary)', fontSize:18 }} />
-                        <span style={{ fontWeight:700, fontSize:13, textTransform:'uppercase', letterSpacing:'0.5px', color:'var(--md-sys-color-secondary)' }}>Winds Aloft</span>
-                        <span style={{ fontSize:12, fontWeight:700, background:'var(--md-sys-color-secondary-container)', color:'var(--md-sys-color-on-secondary-container)', borderRadius:4, padding:'2px 6px', letterSpacing:'0.5px' }}>
+                        <span style={{ fontWeight:700, fontSize:13, textTransform:'uppercase', letterSpacing:'0.5px', color:'var(--text-secondary)' }}>Winds Aloft</span>
+                        <span style={{ fontSize:12, fontWeight:700, background:'var(--card-high)', color:'var(--text-primary)', borderRadius:6, padding:'2px 8px', letterSpacing:'0.5px' }}>
                             {(alt/1000).toFixed(0)}K FT · FD WINDS
                         </span>
                     </div>
                     <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
                         {rows.map(function(r) {
                             return (
-                                <div key={r.icao} style={{ display:'grid', gridTemplateColumns:'50px 1fr', gap:'6px 12px', alignItems:'center', padding:'6px 0', borderBottom:'1px solid var(--md-sys-color-outline-variant)' }}>
+                                <div key={r.icao} style={{ display:'grid', gridTemplateColumns:'50px 1fr', gap:'6px 12px', alignItems:'center', padding:'6px 0', borderBottom:'1px solid var(--card-border-soft)' }}>
                                     <span className="font-mono" style={{ fontWeight:700, fontSize:13 }}>{r.icao}</span>
                                     {r.w ? (
-                                        <div className="font-mono" style={{ fontSize:12, color:'var(--md-sys-color-on-surface)' }}>
+                                        <div className="font-mono" style={{ fontSize:12, color:'var(--text-primary)' }}>
                                             {r.w.lv ? 'LGT & VRB' : (r.w.wdir + '° @ ' + r.w.wspd + 'kt')}
-                                            {r.w.temp != null && <span style={{ marginLeft:10, color:'var(--md-sys-color-on-surface-variant)' }}>{r.w.temp > 0 ? '+' : ''}{r.w.temp}°C</span>}
-                                            <span style={{ marginLeft:8, fontSize:12, color:'var(--md-sys-color-on-surface-variant)' }}>(via {r.stnId})</span>
+                                            {r.w.temp != null && <span style={{ marginLeft:10, color:'var(--text-secondary)' }}>{r.w.temp > 0 ? '+' : ''}{r.w.temp}°C</span>}
+                                            <span style={{ marginLeft:8, fontSize:12, color:'var(--text-tertiary)' }}>(via {r.stnId})</span>
                                         </div>
                                     ) : (
-                                        <span style={{ fontSize:12, color:'var(--md-sys-color-on-surface-variant)' }}>No FD data</span>
+                                        <span style={{ fontSize:12, color:'var(--text-secondary)' }}>No FD data</span>
                                     )}
                                 </div>
                             );
                         })}
                     </div>
-                    <div style={{ fontSize:12, color:'var(--md-sys-color-on-surface-variant)', marginTop:8, lineHeight:1.5 }}>
+                    <div style={{ fontSize:12, color:'var(--text-secondary)', marginTop:8, lineHeight:1.5 }}>
                         Nearest FD reporting station used per waypoint. Source: AviationWeather.gov /api/data/windtemp.
                     </div>
                 </div>
@@ -6843,7 +6845,7 @@
             return (
                 <div style={{ position:'fixed', inset:0, background:'rgba(0,0,0,0.72)', zIndex:9000, display:'flex', alignItems:'center', justifyContent:'center', padding:16 }}
                     onClick={function(e){ if(e.target===e.currentTarget) onClose(); }}>
-                    <div style={{ background:'var(--card)', borderRadius:22, width:'100%', maxWidth:480, maxHeight:'90vh', overflowY:'auto', boxShadow:'0 24px 80px rgba(0,0,0,0.6)', border:'1px solid var(--card-border)' }}>
+                    <div style={{ background:'var(--card)', borderRadius:20, width:'100%', maxWidth:480, maxHeight:'90vh', overflowY:'auto', boxShadow:'0 24px 80px rgba(0,0,0,0.6)', border:'1px solid var(--card-border)' }}>
 
                         {/* Header */}
                         <div style={{ display:'flex', alignItems:'center', gap:14, padding:'20px 22px 16px', borderBottom:'1px solid var(--card-border-soft)' }}>
@@ -6962,56 +6964,59 @@
 
             var overlay = {
                 position:'fixed', inset:0, zIndex:2000,
-                background:'rgba(0,0,0,0.55)', backdropFilter:'blur(4px)',
-                display:'flex', alignItems:'center', justifyContent:'center'
+                background:'rgba(0,0,0,0.72)', backdropFilter:'blur(8px)',
+                display:'flex', alignItems:'center', justifyContent:'center', padding:16
             };
             var box = {
-                background:'var(--md-sys-color-surface)',
-                color:'var(--md-sys-color-on-surface)',
-                borderRadius:24, padding:'28px 28px 24px', width:'min(460px, 94vw)',
-                boxShadow:'0 8px 40px rgba(0,0,0,0.25)',
-                display:'flex', flexDirection:'column', gap:22
+                background:'var(--card)',
+                border:'1px solid var(--card-border)',
+                borderRadius:20, padding:'24px 24px 20px', width:'min(460px, 94vw)',
+                boxShadow:'0 24px 80px rgba(0,0,0,0.6)',
+                display:'flex', flexDirection:'column', gap:20
             };
             var sectionHead = {
                 fontSize:12, fontWeight:700, textTransform:'uppercase',
-                letterSpacing:'1px', color:'var(--md-sys-color-primary)',
-                borderBottom:'2px solid var(--md-sys-color-primary)',
-                paddingBottom:5, marginBottom:10
+                letterSpacing:'1px', color:'var(--accent)',
+                borderBottom:'1px solid var(--card-border-soft)',
+                paddingBottom:8, marginBottom:10
             };
             var fieldWrap = { display:'flex', flexDirection:'column', gap:8 };
             var inputStyle = {
-                fontFamily:'monospace', fontSize:13,
-                background:'var(--md-sys-color-surface-container-high)',
-                color:'var(--md-sys-color-on-surface)',
-                border:'1px solid var(--md-sys-color-outline)',
-                borderRadius:8, padding:'9px 12px', width:'100%', boxSizing:'border-box'
+                fontFamily:'var(--font-mono)', fontSize:13,
+                background:'var(--card-high)',
+                color:'var(--text-primary)',
+                border:'1px solid var(--card-border)',
+                borderRadius:10, padding:'9px 12px', width:'100%', boxSizing:'border-box'
             };
 
             return (
                 <div style={overlay} onClick={function(e) { if (e.target === e.currentTarget) onClose(); }}>
                     <div style={box}>
                         {/* Header */}
-                        <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between' }}>
-                            <div style={{ display:'flex', alignItems:'center', gap:10 }}>
-                                <MdIcon name="settings" style={{ color:'var(--md-sys-color-primary)', fontSize:22 }} />
-                                <span style={{ fontSize:20, fontWeight:600 }}>Settings</span>
+                        <div style={{ display:'flex', alignItems:'center', gap:14, borderBottom:'1px solid var(--card-border-soft)', paddingBottom:16, marginBottom:4 }}>
+                            <div style={{ width:40, height:40, borderRadius:12, background:'var(--accent-dim)', border:'1px solid rgba(10,132,255,0.3)', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
+                                <MdIcon name="settings" style={{ color:'var(--accent)', fontSize:22 }} />
                             </div>
-                            <MdButton variant="text" icon="close" onClick={onClose} style={{ padding:8 }} />
+                            <div style={{ flex:1 }}>
+                                <div style={{ fontWeight:800, fontSize:16, color:'var(--text-primary)', letterSpacing:'-0.01em' }}>Settings</div>
+                                <div style={{ fontSize:12, color:'var(--text-tertiary)' }}>App configuration &amp; data sources</div>
+                            </div>
+                            <button onClick={onClose} style={{ background:'none', border:'none', cursor:'pointer', color:'var(--text-secondary)', padding:6, display:'flex', alignItems:'center', justifyContent:'center', borderRadius:8 }}>
+                                <MdIcon name="close" style={{ fontSize:20 }} />
+                            </button>
                         </div>
-
-                        {/* ── OpenAIP ── hidden */}
 
                         {/* ── OurAirports ── */}
                         <div>
                             <div style={sectionHead}>Airport Database (OurAirports)</div>
                             <div style={fieldWrap}>
-                                <div style={{ fontSize:12, color:'var(--md-sys-color-on-surface-variant)', lineHeight:1.5 }}>
+                                <div style={{ fontSize:13, color:'var(--text-secondary)', lineHeight:1.6 }}>
                                     Powers airport autocomplete with ~12,000 airports worldwide. Loaded once from <strong>ourairports.com</strong> open data and cached locally for 30 days.
                                 </div>
                                 <div style={{ display:'flex', alignItems:'center', gap:8, flexWrap:'wrap' }}>
                                     <div style={{
-                                        fontSize:12, fontWeight:500,
-                                        color: oaCount > 0 ? 'var(--cat-vfr-color)' : 'var(--md-sys-color-on-surface-variant)',
+                                        fontSize:12, fontWeight:600,
+                                        color: oaCount > 0 ? 'var(--go)' : 'var(--text-secondary)',
                                         display:'flex', alignItems:'center', gap:5
                                     }}>
                                         <MdIcon name={oaCount > 0 ? 'database' : 'cloud_off'} style={{ fontSize:16 }} />
@@ -7029,7 +7034,7 @@
                         </div>
 
                         {/* ── About / Data Sources ── */}
-                        <div style={{ fontSize:12, color:'var(--md-sys-color-on-surface-variant)', lineHeight:1.6, borderTop:'1px solid var(--md-sys-color-outline-variant)', paddingTop:14 }}>
+                        <div style={{ fontSize:12, color:'var(--text-secondary)', lineHeight:1.6, borderTop:'1px solid var(--card-border-soft)', paddingTop:14 }}>
                             <strong>Weather:</strong> NOAA AviationWeather.gov (free, no key) ·
                             <strong> Airports:</strong> OurAirports CC0 public domain ·
                             <strong> Enrichment:</strong> OpenAIP (rate-limited, 1 h cache)
@@ -7045,7 +7050,7 @@
                             var hasTs      = ts && ts !== '__BUILD_TIMESTAMP__';
                             if (!hasVersion && !hasTs) return null;
                             return (
-                                <div style={{ fontSize:11, color:'var(--md-sys-color-on-surface-variant)', opacity:0.6, marginTop:4, fontFamily:'var(--font-mono, monospace)' }}>
+                                <div style={{ fontSize:11, color:'var(--text-tertiary)', marginTop:4, fontFamily:'var(--font-mono)' }}>
                                     {hasVersion && <span>Build: {commit.substring(0, 7)}</span>}
                                     {hasVersion && hasTs && <span> · </span>}
                                     {hasTs && <span>Deployed: {ts}</span>}
@@ -8116,7 +8121,7 @@
                                         </MdButton>
                                     </div>
                                     {nlError && (
-                                        <div style={{ marginTop: 10, padding: '8px 12px', background: 'var(--md-sys-color-error-container)', color: 'var(--md-sys-color-on-error-container)', borderRadius: 8, fontSize: 13, display: 'flex', alignItems: 'center', gap: 6 }}>
+                                        <div style={{ marginTop: 10, padding: '10px 14px', background: 'var(--nogo-bg)', color: 'var(--nogo)', border: '1px solid rgba(255,59,48,0.25)', borderRadius: 10, fontSize: 13, display: 'flex', alignItems: 'center', gap: 8 }}>
                                             <MdIcon name="error_outline" style={{ fontSize: 16, flexShrink: 0 }} />
                                             {nlError}
                                         </div>
@@ -8297,7 +8302,7 @@
                         {view === "create" && (
                             <div style={{ maxWidth: 600, margin: "0 auto", padding: "32px 16px" }}>
                                 <MdButton variant="text" icon="arrow_back" onClick={() => { setEditingTripId(null); setWizardStep(1); setResetConfirm(false); setView("trips"); }} style={{ marginLeft: '-16px', marginBottom: '16px' }}>Back</MdButton>
-                                <h1 style={{ fontSize: 32, fontWeight: 400, margin: "0 0 20px", color: "var(--md-sys-color-on-background)" }}>{editingTripId ? "Edit Flight" : "Plan a Flight"}</h1>
+                                <h1 style={{ fontSize: 28, fontWeight: 800, margin: "0 0 20px", color: "var(--text-primary)", letterSpacing: '-0.02em' }}>{editingTripId ? "Edit Flight" : "Plan a Flight"}</h1>
 
                                 {/* ── Wizard Step Indicator ── */}
                                 <div style={{ display: 'flex', alignItems: 'flex-start', marginBottom: 24, userSelect: 'none' }} role="list" aria-label="Wizard steps">
@@ -8307,41 +8312,41 @@
                                         return (
                                             <React.Fragment key={s.n}>
                                                 {i > 0 && (
-                                                    <div style={{ flex: 1, height: 2, background: done ? 'var(--accent)' : 'var(--md-sys-color-outline-variant)', margin: '15px 6px 0', borderRadius: 2 }} />
+                                                    <div style={{ flex: 1, height: 2, background: done ? 'var(--accent)' : 'var(--card-border)', margin: '15px 6px 0', borderRadius: 2 }} />
                                                 )}
                                                 <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 5 }} role="listitem" aria-current={active ? 'step' : undefined}>
                                                     <div style={{
                                                         width: 32, height: 32, borderRadius: '50%',
-                                                        background: done ? 'var(--accent)' : active ? 'var(--accent)' : 'var(--md-sys-color-surface-container-high)',
-                                                        border: '2px solid ' + (done || active ? 'var(--accent)' : 'var(--md-sys-color-outline)'),
+                                                        background: done ? 'var(--accent)' : active ? 'var(--accent)' : 'var(--card-high)',
+                                                        border: '2px solid ' + (done || active ? 'var(--accent)' : 'var(--card-border)'),
                                                         display: 'flex', alignItems: 'center', justifyContent: 'center',
-                                                        color: done || active ? '#fff' : 'var(--md-sys-color-on-surface-variant)',
+                                                        color: done || active ? 'var(--text-primary)' : 'var(--text-secondary)',
                                                         fontSize: 13, fontWeight: 700, transition: 'all 0.2s'
                                                     }}>
                                                         {done
-                                                            ? <MdIcon name="check" style={{ fontSize: 16, color: '#fff' }} />
+                                                            ? <MdIcon name="check" style={{ fontSize: 16 }} />
                                                             : s.n}
                                                     </div>
-                                                    <span style={{ fontSize: 11, fontWeight: active ? 700 : 400, color: active ? 'var(--accent)' : done ? 'var(--md-sys-color-on-surface-variant)' : 'var(--text-tertiary)', whiteSpace: 'nowrap' }}>{s.label}</span>
+                                                    <span style={{ fontSize: 11, fontWeight: active ? 700 : 400, color: active ? 'var(--accent)' : done ? 'var(--text-secondary)' : 'var(--text-tertiary)', whiteSpace: 'nowrap' }}>{s.label}</span>
                                                 </div>
                                             </React.Fragment>
                                         );
                                     })}
                                 </div>
 
-                                <MdCard style={{ padding: 24 }}>
+                                <div className="fy-card" style={{ padding: 24 }}>
 
                                     {/* ════ STEP 1: Route ════ */}
                                     {wizardStep === 1 && (
                                         <div>
                                             <div style={{ marginBottom: 20 }}>
-                                                <div style={{ fontSize: 18, fontWeight: 600, color: 'var(--md-sys-color-on-surface)', marginBottom: 4 }}>Flight Route</div>
-                                                <div style={{ fontSize: 13, color: 'var(--md-sys-color-on-surface-variant)' }}>Enter departure and arrival airports using 4-letter ICAO codes.</div>
+                                                <div style={{ fontSize: 18, fontWeight: 700, color: 'var(--text-primary)', marginBottom: 4 }}>Flight Route</div>
+                                                <div style={{ fontSize: 13, color: 'var(--text-secondary)' }}>Enter departure and arrival airports using 4-letter ICAO codes.</div>
                                             </div>
 
                                             <div style={{ display: "flex", flexDirection: "column", gap: 14, marginBottom: 20 }}>
                                                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                                                    <div style={{ fontSize: 13, fontWeight: 500, color: "var(--md-sys-color-on-surface-variant)" }}>Up to 5 legs</div>
+                                                    <div style={{ fontSize: 13, fontWeight: 500, color: "var(--text-secondary)" }}>Up to 5 legs</div>
                                                     {newTrip.route.length < 6 && (
                                                         <MdButton variant="tonal" icon="add" onClick={() => {
                                                             let r = [...newTrip.route];
@@ -8358,7 +8363,7 @@
                                                     let icon  = isDep ? "flight_takeoff" : isArr ? "flight_land" : "location_on";
                                                     return (
                                                         <div key={i} style={{ display: "flex", alignItems: "flex-end", gap: 12 }}>
-                                                            <MdIcon name={icon} style={{ color: "var(--md-sys-color-on-surface-variant)", marginBottom: 12, flexShrink: 0 }} aria-hidden="true" />
+                                                            <MdIcon name={icon} style={{ color: "var(--text-secondary)", marginBottom: 12, flexShrink: 0 }} aria-hidden="true" />
                                                             <AirportInput
                                                                 label={label}
                                                                 value={r}
@@ -8375,7 +8380,7 @@
                                                                     let newRoute = [...newTrip.route];
                                                                     newRoute.splice(i, 1);
                                                                     setNewTrip({...newTrip, route: newRoute});
-                                                                }} style={{ padding: '8px', color: "var(--md-sys-color-error)", marginBottom: 4 }} aria-label={`Remove waypoint ${i}`} />
+                                                                }} style={{ padding: '8px', color: "var(--nogo)", marginBottom: 4 }} aria-label={`Remove waypoint ${i}`} />
                                                             )}
                                                         </div>
                                                     );
@@ -8384,7 +8389,7 @@
 
                                             {/* Popular Hubs quick-fill */}
                                             <div style={{ marginBottom: 24 }}>
-                                                <div style={{ fontSize: 12, fontWeight: 600, color: "var(--md-sys-color-on-surface-variant)", marginBottom: 8, textTransform: 'uppercase', letterSpacing: '0.5px' }}>Popular Hubs</div>
+                                                <div style={{ fontSize: 12, fontWeight: 700, color: "var(--text-tertiary)", marginBottom: 8, textTransform: 'uppercase', letterSpacing: '0.8px' }}>Popular Hubs</div>
                                                 <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
                                                     {Object.keys(AIRPORTS).slice(0, 15).map(k => (
                                                         <span key={k} role="button" tabIndex={0}
@@ -8397,7 +8402,7 @@
                                                             }}
                                                             onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') e.currentTarget.click(); }}
                                                             className="font-mono"
-                                                            style={{ fontSize: 12, color: "var(--md-sys-color-on-surface)", background: "var(--md-sys-color-surface-container)", padding: "5px 10px", borderRadius: "14px", cursor: "pointer", border: "1px solid var(--md-sys-color-outline-variant)" }}
+                                                            style={{ fontSize: 12, color: "var(--text-primary)", background: "var(--card-mid)", padding: "5px 12px", borderRadius: "99px", cursor: "pointer", border: "1px solid var(--card-border-soft)" }}
                                                             aria-label={`Add ${k} to route`}
                                                         >{k}</span>
                                                     ))}
@@ -8410,21 +8415,21 @@
                                                 {newTrip.route.some(r => r.length >= 3)
                                                     ? resetConfirm
                                                         ? <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                                                              <MdIcon name="warning" style={{ fontSize: 16, color: 'var(--md-sys-color-error)' }} aria-hidden="true" />
-                                                              <span style={{ fontSize: 12, color: 'var(--md-sys-color-error)', fontWeight: 600 }}>Clear all fields?</span>
+                                                              <MdIcon name="warning" style={{ fontSize: 16, color: 'var(--nogo)' }} aria-hidden="true" />
+                                                              <span style={{ fontSize: 12, color: 'var(--nogo)', fontWeight: 600 }}>Clear all fields?</span>
                                                               <button onClick={() => { setNewTrip({ route: ["",""], aircraft:"c172", date:"", time:defaultTimeStr, name:"" }); setResetConfirm(false); }}
-                                                                  style={{ background: 'var(--md-sys-color-error)', color: '#fff', border: 'none', borderRadius: 8, padding: '5px 12px', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}
+                                                                  style={{ background: 'var(--nogo)', color: 'var(--text-primary)', border: 'none', borderRadius: 8, padding: '5px 12px', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}
                                                                   aria-label="Confirm clear form">
                                                                   Yes, Clear
                                                               </button>
                                                               <button onClick={() => setResetConfirm(false)}
-                                                                  style={{ background: 'var(--md-sys-color-surface-container-high)', color: 'var(--md-sys-color-on-surface)', border: '1px solid var(--md-sys-color-outline-variant)', borderRadius: 8, padding: '5px 12px', fontSize: 12, cursor: 'pointer' }}
+                                                                  style={{ background: 'var(--card-high)', color: 'var(--text-primary)', border: '1px solid var(--card-border)', borderRadius: 8, padding: '5px 12px', fontSize: 12, cursor: 'pointer' }}
                                                                   aria-label="Cancel clear">
                                                                   Cancel
                                                               </button>
                                                           </div>
                                                         : <button onClick={() => setResetConfirm(true)}
-                                                              style={{ display: 'flex', alignItems: 'center', gap: 6, background: 'none', border: '1px solid var(--md-sys-color-outline-variant)', borderRadius: 8, padding: '7px 12px', fontSize: 12, color: 'var(--md-sys-color-on-surface-variant)', cursor: 'pointer' }}
+                                                              style={{ display: 'flex', alignItems: 'center', gap: 6, background: 'none', border: '1px solid var(--card-border)', borderRadius: 8, padding: '7px 12px', fontSize: 12, color: 'var(--text-secondary)', cursor: 'pointer' }}
                                                               aria-label="Reset form (will ask for confirmation)">
                                                               <MdIcon name="restart_alt" style={{ fontSize: 16 }} aria-hidden="true" />
                                                               Reset Form
@@ -8443,8 +8448,8 @@
                                     {wizardStep === 2 && (
                                         <div>
                                             <div style={{ marginBottom: 20 }}>
-                                                <div style={{ fontSize: 18, fontWeight: 600, color: 'var(--md-sys-color-on-surface)', marginBottom: 4 }}>When & Aircraft</div>
-                                                <div style={{ fontSize: 13, color: 'var(--md-sys-color-on-surface-variant)' }}>Set your departure date, time, and aircraft type.</div>
+                                                <div style={{ fontSize: 18, fontWeight: 700, color: 'var(--text-primary)', marginBottom: 4 }}>When &amp; Aircraft</div>
+                                                <div style={{ fontSize: 13, color: 'var(--text-secondary)' }}>Set your departure date, time, and aircraft type.</div>
                                             </div>
 
                                             <div style={{ display: "flex", flexDirection: "column", gap: 16, marginBottom: 24 }}>
@@ -8469,8 +8474,8 @@
                                     {wizardStep === 3 && (
                                         <div>
                                             <div style={{ marginBottom: 20 }}>
-                                                <div style={{ fontSize: 18, fontWeight: 600, color: 'var(--md-sys-color-on-surface)', marginBottom: 4 }}>Review Your Flight</div>
-                                                <div style={{ fontSize: 13, color: 'var(--md-sys-color-on-surface-variant)' }}>Confirm details before creating.</div>
+                                                <div style={{ fontSize: 18, fontWeight: 700, color: 'var(--text-primary)', marginBottom: 4 }}>Review Your Flight</div>
+                                                <div style={{ fontSize: 13, color: 'var(--text-secondary)' }}>Confirm details before creating.</div>
                                             </div>
 
                                             {(() => {
@@ -8486,35 +8491,35 @@
                                                 return (
                                                     <div>
                                                         {/* Route banner */}
-                                                        <div className="font-mono" style={{ background: "var(--md-sys-color-surface-container-high)", borderRadius: 12, padding: '14px 16px', marginBottom: 12, fontSize: 15, fontWeight: 700, letterSpacing: '0.5px', textAlign: 'center', color: 'var(--md-sys-color-primary)' }}>
+                                                        <div className="font-mono" style={{ background: "var(--card-high)", border: '1px solid var(--card-border-soft)', borderRadius: 14, padding: '14px 16px', marginBottom: 12, fontSize: 15, fontWeight: 700, letterSpacing: '0.5px', textAlign: 'center', color: 'var(--accent)' }}>
                                                             {validRoutePts.length >= 2 ? validRoutePts.join(' → ') : '—'}
                                                         </div>
 
                                                         {/* Stats */}
-                                                        <div className="font-mono" style={{ background: "var(--md-sys-color-surface-container-high)", borderRadius: 12, padding: '12px 16px', marginBottom: 12, display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr", gap: 8, fontSize: 12 }}>
+                                                        <div className="font-mono" style={{ background: "var(--card-high)", border: '1px solid var(--card-border-soft)', borderRadius: 14, padding: '12px 16px', marginBottom: 12, display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr", gap: 8, fontSize: 12 }}>
                                                             <div style={{ textAlign: 'center' }}>
-                                                                <div style={{ color: "var(--md-sys-color-on-surface-variant)", marginBottom: 2 }}>DIST</div>
-                                                                <div style={{ color: "var(--md-sys-color-primary)", fontWeight: 700 }}>{dist > 0 ? Math.round(dist) + ' NM' : '—'}</div>
+                                                                <div style={{ color: "var(--text-tertiary)", marginBottom: 4, textTransform: 'uppercase', letterSpacing: '0.5px', fontSize: 10 }}>DIST</div>
+                                                                <div style={{ color: "var(--text-primary)", fontWeight: 700 }}>{dist > 0 ? Math.round(dist) + ' NM' : '—'}</div>
                                                             </div>
                                                             <div style={{ textAlign: 'center' }}>
-                                                                <div style={{ color: "var(--md-sys-color-on-surface-variant)", marginBottom: 2 }}>ETE</div>
-                                                                <div style={{ color: "var(--md-sys-color-primary)", fontWeight: 700 }}>{ete > 0 ? Math.floor(ete) + 'h ' + Math.round((ete % 1) * 60) + 'm' : '—'}</div>
+                                                                <div style={{ color: "var(--text-tertiary)", marginBottom: 4, textTransform: 'uppercase', letterSpacing: '0.5px', fontSize: 10 }}>ETE</div>
+                                                                <div style={{ color: "var(--text-primary)", fontWeight: 700 }}>{ete > 0 ? Math.floor(ete) + 'h ' + Math.round((ete % 1) * 60) + 'm' : '—'}</div>
                                                             </div>
                                                             <div style={{ textAlign: 'center' }}>
-                                                                <div style={{ color: "var(--md-sys-color-on-surface-variant)", marginBottom: 2 }}>DATE</div>
-                                                                <div style={{ color: "var(--md-sys-color-primary)", fontWeight: 700 }}>{newTrip.date || '—'}</div>
+                                                                <div style={{ color: "var(--text-tertiary)", marginBottom: 4, textTransform: 'uppercase', letterSpacing: '0.5px', fontSize: 10 }}>DATE</div>
+                                                                <div style={{ color: "var(--text-primary)", fontWeight: 700 }}>{newTrip.date || '—'}</div>
                                                             </div>
                                                             <div style={{ textAlign: 'center' }}>
-                                                                <div style={{ color: "var(--md-sys-color-on-surface-variant)", marginBottom: 2 }}>DEP</div>
-                                                                <div style={{ color: "var(--md-sys-color-primary)", fontWeight: 700 }}>{newTrip.time || '—'}</div>
+                                                                <div style={{ color: "var(--text-tertiary)", marginBottom: 4, textTransform: 'uppercase', letterSpacing: '0.5px', fontSize: 10 }}>DEP</div>
+                                                                <div style={{ color: "var(--text-primary)", fontWeight: 700 }}>{newTrip.time || '—'}</div>
                                                             </div>
                                                         </div>
 
                                                         {/* Aircraft */}
-                                                        <div style={{ background: "var(--md-sys-color-surface-container-high)", borderRadius: 12, padding: '12px 16px', marginBottom: 24, display: 'flex', alignItems: 'center', gap: 10, fontSize: 13 }}>
-                                                            <MdIcon name="flight" style={{ color: 'var(--md-sys-color-on-surface-variant)', fontSize: 18 }} aria-hidden="true" />
-                                                            <span style={{ color: "var(--md-sys-color-on-surface-variant)" }}>Aircraft:</span>
-                                                            <span style={{ fontWeight: 600, color: "var(--md-sys-color-on-surface)" }}>{ac.name} <span style={{ color: 'var(--md-sys-color-on-surface-variant)' }}>({ac.cat})</span></span>
+                                                        <div style={{ background: "var(--card-high)", border: '1px solid var(--card-border-soft)', borderRadius: 14, padding: '12px 16px', marginBottom: 24, display: 'flex', alignItems: 'center', gap: 10, fontSize: 13 }}>
+                                                            <MdIcon name="flight" style={{ color: 'var(--text-secondary)', fontSize: 18 }} aria-hidden="true" />
+                                                            <span style={{ color: "var(--text-secondary)" }}>Aircraft:</span>
+                                                            <span style={{ fontWeight: 600, color: "var(--text-primary)" }}>{ac.name} <span style={{ color: 'var(--text-secondary)' }}>({ac.cat})</span></span>
                                                         </div>
                                                     </div>
                                                 );
@@ -8532,7 +8537,7 @@
                                         </div>
                                     )}
 
-                                </MdCard>
+                                </div>
                             </div>
                         )}
 
