@@ -1313,8 +1313,147 @@
             } catch(e) { return _cacheSet(_ck, null); }
         }
 
-        // Fetch live TAF from Aviation Weather Center API
-        // Returns full TAF object: { rawTAF, forecast: [{timeFrom, timeTo, wdir, wspd, wgst, visib, skyCondition[]}] }
+        // Parse raw TAF text into the structured format parseTafForTime expects:
+        //   { stationId, rawTAF, fcsts: [{ changeIndicator, timeFrom, timeTo, wdir, wspd, wgst, visib, skyCondition }] }
+        function parseRawTaf(rawText) {
+            if (!rawText) return null;
+            var raw = rawText.replace(/\n/g, ' ').replace(/\s+/g, ' ').trim();
+
+            // Extract station ID: TAF [AMD|COR] ICAO DDHHmmZ DDHH/DDHH ...
+            var stationMatch = raw.match(/\bTAF\s+(?:AMD\s+|COR\s+)?([A-Z][A-Z0-9]{3})\s/);
+            if (!stationMatch) return null;
+            var stationId = stationMatch[1];
+
+            // Extract issue time (DDHHmmZ) and valid period (DDHH/DDHH)
+            var headerMatch = raw.match(/(\d{2})(\d{2})(\d{2})Z\s+(\d{4})\/(\d{4})\s/);
+            if (!headerMatch) return null;
+
+            // Convert DDHH or DDHHmm to a UTC Date, using current month as reference.
+            function ddhhToDate(ddhh, mm) {
+                var dd = parseInt(ddhh.substring(0, 2));
+                var hh = parseInt(ddhh.substring(2, 4));
+                var min = mm || 0;
+                var now = new Date();
+                var year = now.getUTCFullYear(), month = now.getUTCMonth();
+                var d = new Date(Date.UTC(year, month, dd, hh, min, 0));
+                if (d.getTime() < now.getTime() - 20 * 86400000)
+                    d = new Date(Date.UTC(year, month + 1, dd, hh, min, 0));
+                if (d.getTime() > now.getTime() + 20 * 86400000)
+                    d = new Date(Date.UTC(year, month - 1, dd, hh, min, 0));
+                return d;
+            }
+
+            // Parse wind token: DDDSSKT, DDDSSGSSGKT, VRBSSKT
+            function parseWind(tokens) {
+                for (var t of tokens) {
+                    var m = t.match(/^(\d{3}|VRB)(\d{2,3})(G(\d{2,3}))?KT$/);
+                    if (m) return { wdir: m[1] === 'VRB' ? 0 : parseInt(m[1]), wspd: parseInt(m[2]), wgst: m[4] ? parseInt(m[4]) : 0 };
+                }
+                return { wdir: 0, wspd: 0, wgst: 0 };
+            }
+
+            // Parse visibility token: P6SM, 6SM, 3SM, 1/2SM, 1 1/2SM, etc.
+            // Returns a string that parseFloat can handle (decimals, not fractions).
+            function parseVis(tokens) {
+                for (var i = 0; i < tokens.length; i++) {
+                    var t = tokens[i];
+                    if (t === 'P6SM') return '6+';
+                    // Whole number + fraction: "1 1/2SM"
+                    if (/^\d+$/.test(t) && i + 1 < tokens.length && /^\d+\/\d+SM$/.test(tokens[i + 1])) {
+                        var frac = tokens[i + 1].replace('SM', '').split('/');
+                        return String(parseInt(t) + parseInt(frac[0]) / parseInt(frac[1]));
+                    }
+                    // Pure fraction: "1/2SM"
+                    var fm = t.match(/^(\d+)\/(\d+)SM$/);
+                    if (fm) return String(parseInt(fm[1]) / parseInt(fm[2]));
+                    // Whole number: "6SM", "3SM"
+                    var wm = t.match(/^(\d+)SM$/);
+                    if (wm) return wm[1];
+                }
+                return '6+';
+            }
+
+            // Parse sky condition tokens: CLR, SKC, FEWnnn, SCTnnn, BKNnnn, OVCnnn, VVnnn
+            function parseSky(tokens) {
+                var conds = [];
+                for (var t of tokens) {
+                    var m = t.match(/^(SKC|CLR|NSC|FEW|SCT|BKN|OVC|VV)(\d{3})?(CB|TCU)?$/);
+                    if (m) {
+                        var cover = (m[1] === 'SKC' || m[1] === 'NSC') ? 'CLR' : m[1] === 'VV' ? 'OVC' : m[1];
+                        conds.push({ skyCover: cover, cloudBase: m[2] ? parseInt(m[2]) * 100 : null });
+                    }
+                }
+                return conds;
+            }
+
+            // Split TAF body into groups by FM/TEMPO/BECMG/PROB markers
+            var bodyMatch = raw.match(/\d{4}\/\d{4}\s+(.*)/);
+            if (!bodyMatch) return null;
+            var body = bodyMatch[1];
+            var parts = body.split(/\s+(?=FM\d{6}|TEMPO\s|BECMG\s|PROB\d{2}\s)/);
+
+            var validFrom = ddhhToDate(headerMatch[4]);
+            var validTo   = ddhhToDate(headerMatch[5]);
+            var fcsts = [];
+
+            // Initial (base) conditions
+            if (parts.length > 0) {
+                var tok = parts[0].trim().split(/\s+/);
+                var w = parseWind(tok);
+                fcsts.push({
+                    changeIndicator: '', timeFrom: validFrom.toISOString(), timeTo: validTo.toISOString(),
+                    wdir: w.wdir, wspd: w.wspd, wgst: w.wgst,
+                    visib: parseVis(tok), skyCondition: parseSky(tok)
+                });
+            }
+
+            // Subsequent groups
+            for (var gi = 1; gi < parts.length; gi++) {
+                var tok = parts[gi].trim().split(/\s+/);
+                var ci = '', tfDate = null, ttDate = null, start = 0;
+
+                if (tok[0].startsWith('FM') && tok[0].length >= 8) {
+                    ci = 'FM';
+                    tfDate = ddhhToDate(tok[0].substring(2, 6), parseInt(tok[0].substring(6, 8)));
+                    ttDate = validTo;
+                    start = 1;
+                } else if (tok[0] === 'TEMPO' || tok[0] === 'BECMG') {
+                    ci = tok[0];
+                    if (tok[1] && /^\d{4}\/\d{4}$/.test(tok[1])) {
+                        var pp = tok[1].split('/');
+                        tfDate = ddhhToDate(pp[0]); ttDate = ddhhToDate(pp[1]);
+                    }
+                    start = 2;
+                } else if (/^PROB\d{2}$/.test(tok[0])) {
+                    ci = tok[0]; // PROB30 or PROB40
+                    var pIdx = 1;
+                    if (tok[pIdx] === 'TEMPO') { ci = tok[0]; pIdx++; } // PROB30 TEMPO — still treated as prob
+                    if (tok[pIdx] && /^\d{4}\/\d{4}$/.test(tok[pIdx])) {
+                        var pp = tok[pIdx].split('/');
+                        tfDate = ddhhToDate(pp[0]); ttDate = ddhhToDate(pp[1]);
+                        pIdx++;
+                    }
+                    start = pIdx;
+                }
+
+                var wxTok = tok.slice(start);
+                var w = parseWind(wxTok);
+                fcsts.push({
+                    changeIndicator: ci,
+                    timeFrom: tfDate ? tfDate.toISOString() : null,
+                    timeTo:   ttDate ? ttDate.toISOString() : null,
+                    wdir: w.wdir, wspd: w.wspd, wgst: w.wgst,
+                    visib: parseVis(wxTok), skyCondition: parseSky(wxTok)
+                });
+            }
+
+            if (fcsts.length === 0) return null;
+            return { stationId: stationId, rawTAF: rawText, fcsts: fcsts };
+        }
+
+        // Fetch live TAF via NWS api.weather.gov (CORS-friendly).
+        // Falls back to aviationweather.gov for environments where CORS isn't an issue.
+        // Returns full TAF object: { rawTAF, fcsts: [{timeFrom, timeTo, wdir, wspd, wgst, visib, skyCondition[]}] }
         async function fetchLiveTaf(icao) {
             if (!icao) return null;
             icao = icao.trim().toUpperCase();
@@ -1322,7 +1461,25 @@
             var _cv = _cacheGet(_ck, WX_TTL_TAF);
             if (_cv !== undefined) return _cv;
 
-            async function fetchTafById(id) {
+            // Primary: NWS api.weather.gov — proper CORS support for browser fetches.
+            async function fetchTafNws(id) {
+                try {
+                    const res = await wxFetchWithRetry(
+                        `https://api.weather.gov/stations/${id}/tafs?limit=1`,
+                        { headers: { 'Accept': 'application/geo+json' } }, 8000
+                    );
+                    if (!res.ok) return null;
+                    const data = await res.json();
+                    var features = (data && data.features) || (data && data.type === 'Feature' ? [data] : []);
+                    if (features.length === 0) return null;
+                    var rawMsg = features[0].properties && features[0].properties.rawMessage;
+                    if (!rawMsg) return null;
+                    return parseRawTaf(rawMsg);
+                } catch(e) { return null; }
+            }
+
+            // Fallback: AWC aviationweather.gov — no CORS, works in non-browser contexts.
+            async function fetchTafAwc(id) {
                 try {
                     const res = await wxFetchWithRetry(
                         `https://aviationweather.gov/api/data/taf?ids=${id}&format=json`,
@@ -1336,6 +1493,10 @@
                 } catch(e) { return null; }
             }
 
+            async function fetchTafById(id) {
+                return await fetchTafNws(id) || await fetchTafAwc(id);
+            }
+
             var apt = getAirport(icao);
             // When the airport has a known tafRef, fetch both in parallel to avoid
             // the sequential 2-request waterfall (first always 404s for small airports).
@@ -1345,7 +1506,7 @@
                     fetchTafById(apt.tafRef)
                 ]);
                 if (primary) return _cacheSet(_ck, primary);
-                if (fallback) return _cacheSet(_ck, { ...fallback, _nearbyStation: fallback.stationId });
+                if (fallback) return _cacheSet(_ck, { ...fallback, _nearbyStation: fallback.stationId || apt.tafRef });
                 return _cacheSet(_ck, null);
             }
 
@@ -1364,7 +1525,7 @@
                 for (var nb of nearby) {
                     if (nb.d > 0.5) break; // > ~30 nm — not useful
                     var nbTaf = await fetchTafById(nb.id);
-                    if (nbTaf) return _cacheSet(_ck, { ...nbTaf, _nearbyStation: nbTaf.stationId });
+                    if (nbTaf) return _cacheSet(_ck, { ...nbTaf, _nearbyStation: nbTaf.stationId || nb.id });
                 }
             }
             return _cacheSet(_ck, null);
@@ -1857,10 +2018,15 @@
             var wspd = fp.wspd || 0, wdir = fp.wdir || 0, wgst = fp.wgst || 0;
             var wdirStr = wdir === 0 ? "VRB" : String(wdir).padStart(3, "0");
             var wind = `${wdirStr}${String(wspd).padStart(2,"0")}${wgst > 0 ? "G" + String(wgst).padStart(2,"0") : ""}KT`;
-            // AWC returns visib as a string like "6+", "3", "1/2" — parseFloat handles
-            // all of these: "6+" → 6, "3" → 3, "1/2" → 0.5.  Numeric values pass through.
-            var visib = fp.visib != null ? parseFloat(fp.visib) : 6;
-            if (isNaN(visib)) visib = 6;
+            // visib may be "6+", "3", "1/2", "1.5", or a number.
+            // parseFloat("1/2") returns 1 (wrong), so handle fractions explicitly.
+            var visib = 6;
+            if (fp.visib != null) {
+                var vs = String(fp.visib);
+                var fracMatch = vs.match(/^(\d+)\/(\d+)$/);
+                visib = fracMatch ? parseInt(fracMatch[1]) / parseInt(fracMatch[2]) : parseFloat(vs);
+                if (isNaN(visib)) visib = 6;
+            }
             var vis = visib >= 6 ? "P6SM" : `${visib}SM`;
             var skyArr = fp.skyCondition || [];
             var skyStr = skyArr.length > 0
