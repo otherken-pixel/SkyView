@@ -1700,6 +1700,116 @@
             );
         }
 
+        // ── Runway Utilities ──────────────────────────────────────────────────────
+
+        // Query Overpass API for aeroway=runway ways near the airport bounding box.
+        // Returns [{ ref, hdg1, hdg2, lengthFt, surface, source }] on success,
+        // or falls back to approximate headings derived from the static AIRPORTS.rwy list.
+        async function fetchRunwayData(icao) {
+            var apt = getAirport(icao);
+            if (!apt || !apt.lat) return [];
+            var d = 0.08; // ~9 km margin
+            var s = (apt.lat - d).toFixed(5), n = (apt.lat + d).toFixed(5);
+            var w = (apt.lon - d).toFixed(5), eLon = (apt.lon + d).toFixed(5);
+            var query = '[out:json][timeout:15];'
+                      + 'way["aeroway"="runway"](' + s + ',' + w + ',' + n + ',' + eLon + ');'
+                      + 'out geom;';
+            try {
+                var res = await timeoutFetch('https://overpass-api.de/api/interpreter', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                    body: 'data=' + encodeURIComponent(query)
+                }, 15000);
+                if (res.ok) {
+                    var data = await res.json();
+                    var ways = (data.elements || []).filter(function(el) {
+                        return el.type === 'way' && Array.isArray(el.geometry) && el.geometry.length >= 2;
+                    });
+                    if (ways.length > 0) {
+                        return ways.map(function(el) {
+                            var g   = el.geometry;
+                            var hdg = rwyBearing(g[0].lat, g[0].lon, g[g.length-1].lat, g[g.length-1].lon);
+                            var ref = (el.tags && el.tags.ref) || '';
+                            var lenM = el.tags && parseFloat(el.tags['length'] || el.tags['est:length'] || '0');
+                            return {
+                                ref:      ref,
+                                hdg1:     Math.round(hdg),
+                                hdg2:     Math.round((hdg + 180) % 360),
+                                lengthFt: lenM > 0 ? Math.round(lenM * 3.281) : null,
+                                surface:  (el.tags && el.tags.surface) || null,
+                                source:   'osm'
+                            };
+                        });
+                    }
+                }
+            } catch(e) { /* fall through to static fallback */ }
+
+            // Fallback: derive from AIRPORTS.rwy designator strings (accuracy ±5°)
+            return (apt.rwy || []).map(function(pair) {
+                var parts = pair.replace(/[LCRlcr]/g, '').split('/');
+                var n1 = parseInt(parts[0], 10) || 0;
+                var n2 = parseInt(parts[1], 10) || (n1 + 18) % 36;
+                return {
+                    ref:      pair,
+                    hdg1:     n1 * 10,
+                    hdg2:     n2 === 0 ? 360 : n2 * 10,
+                    lengthFt: null,
+                    surface:  null,
+                    source:   'static'
+                };
+            });
+        }
+
+        // Great-circle bearing (°true) from point 1 → point 2.
+        function rwyBearing(lat1, lon1, lat2, lon2) {
+            var φ1 = lat1 * Math.PI / 180, φ2 = lat2 * Math.PI / 180;
+            var Δλ = (lon2 - lon1) * Math.PI / 180;
+            var y  = Math.sin(Δλ) * Math.cos(φ2);
+            var x  = Math.cos(φ1) * Math.sin(φ2) - Math.sin(φ1) * Math.cos(φ2) * Math.cos(Δλ);
+            return (Math.atan2(y, x) * 180 / Math.PI + 360) % 360;
+        }
+
+        // Headwind (+) / tailwind (−) and absolute crosswind components (knots).
+        //   θ = windDir − runwayHdg
+        //   headwind  = V × cos θ
+        //   crosswind = |V × sin θ|
+        function calcWindComponents(windDir, windSpd, runwayHdg) {
+            if (windDir == null || !windSpd) return { headwind: 0, crosswind: 0 };
+            var θ = (windDir - runwayHdg) * Math.PI / 180;
+            return {
+                headwind:  Math.round(windSpd * Math.cos(θ)),
+                crosswind: Math.round(Math.abs(windSpd * Math.sin(θ)))
+            };
+        }
+
+        // Expand runway pairs into individual ends with computed wind components,
+        // then sort descending by headwind (best first).
+        function buildRunwayEnds(runways, windDir, windSpd) {
+            var ends = [];
+            runways.forEach(function(rwy) {
+                var parts = (rwy.ref || '').split('/');
+                [
+                    { hdg: rwy.hdg1, id: (parts[0] || String(Math.round(rwy.hdg1 / 10))).trim() },
+                    { hdg: rwy.hdg2, id: (parts[1] || String(Math.round(rwy.hdg2 / 10))).trim() }
+                ].forEach(function(end) {
+                    var c = calcWindComponents(windDir, windSpd, end.hdg);
+                    ends.push({
+                        id:        end.id,
+                        ref:       rwy.ref,
+                        heading:   end.hdg,
+                        headwind:  c.headwind,
+                        crosswind: c.crosswind,
+                        xwindWarn: c.crosswind > 15,
+                        lengthFt:  rwy.lengthFt,
+                        surface:   rwy.surface,
+                        source:    rwy.source
+                    });
+                });
+            });
+            ends.sort(function(a, b) { return b.headwind - a.headwind; });
+            return ends;
+        }
+
         // Weather fetch with automatic retry on network errors or 5xx responses.
         // Retries up to `retries` times (default 2) with short exponential backoff.
         // 4xx responses are NOT retried — they indicate a bad request, not a transient fault.
@@ -4372,6 +4482,153 @@
                             </div>
                         );
                     })}
+                </div>
+            );
+        }
+
+        // Mini SVG compass showing wind direction relative to runway heading.
+        // relAngle=0 → headwind (arrow from top); 90 → right crosswind; 180 → tailwind.
+        function RunwayWindRose({ relAngle, isBest }) {
+            var S = 52, cx = S/2, cy = S/2, r = 17;
+            // Source point on circle rim where wind comes FROM
+            var αRad = relAngle * Math.PI / 180;
+            var sx = cx + r * Math.sin(αRad);
+            var sy = cy - r * Math.cos(αRad);
+            // Arrow vector toward center, stopping 5 px short
+            var dx = cx - sx, dy = cy - sy, len = Math.sqrt(dx*dx + dy*dy);
+            var ux = dx/len, uy = dy/len;
+            var ex = sx + ux * (len - 5), ey = sy + uy * (len - 5);
+            // Arrowhead wings
+            var hx = ex - ux*7, hy = ey - uy*7;
+            var p1x = hx - uy*4, p1y = hy + ux*4;
+            var p2x = hx + uy*4, p2y = hy - ux*4;
+            var col = isBest ? 'var(--accent)' : 'var(--text-secondary)';
+            return (
+                <svg width={S} height={S} viewBox={`0 0 ${S} ${S}`} style={{ flexShrink: 0 }}>
+                    <circle cx={cx} cy={cy} r={r+1} fill="none" stroke="var(--card-border)" strokeWidth="1"/>
+                    {/* Runway strip */}
+                    <rect x={cx-3} y={4} width={6} height={S-8} rx={2} fill="rgba(255,255,255,0.07)"/>
+                    <line x1={cx} y1={4} x2={cx} y2={S-4} stroke="var(--text-tertiary)" strokeWidth="1" strokeDasharray="3,2"/>
+                    {/* Landing threshold bar at bottom */}
+                    <line x1={cx-6} y1={S-5} x2={cx+6} y2={S-5} stroke="var(--text-tertiary)" strokeWidth="2" strokeLinecap="round"/>
+                    {/* Wind arrow */}
+                    <line x1={sx} y1={sy} x2={ex} y2={ey} stroke={col} strokeWidth="2.5" strokeLinecap="round"/>
+                    <polygon points={`${ex},${ey} ${p1x},${p1y} ${p2x},${p2y}`} fill={col}/>
+                </svg>
+            );
+        }
+
+        function RunwayPanel({ icao, windDir, windSpd }) {
+            var [runways, setRunways] = useState(null);
+            var [loading, setLoading] = useState(true);
+
+            useEffect(function() {
+                setLoading(true);
+                setRunways(null);
+                fetchRunwayData(icao)
+                    .then(function(data) { setRunways(data); setLoading(false); })
+                    .catch(function()    { setRunways([]);   setLoading(false); });
+            }, [icao]);
+
+            if (loading) return (
+                <div style={{ padding: '24px', textAlign: 'center', color: 'var(--text-tertiary)' }}>
+                    <MdIcon name="sync" style={{ fontSize: 22, animation: 'spin 1s linear infinite', display: 'block', margin: '0 auto 8px' }}/>
+                    <div style={{ fontSize: 13 }}>Loading runway data…</div>
+                </div>
+            );
+
+            if (!runways || runways.length === 0) return (
+                <div style={{ padding: '16px', textAlign: 'center', color: 'var(--text-tertiary)', fontSize: 13 }}>
+                    <MdIcon name="info" style={{ fontSize: 20, display: 'block', margin: '0 auto 6px' }}/>
+                    No runway data found
+                </div>
+            );
+
+            var hasWind = windDir != null && windSpd > 0;
+            var ends    = buildRunwayEnds(runways, windDir, windSpd);
+            var source  = runways[0].source;
+
+            return (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                    {/* Wind summary line */}
+                    <div style={{ fontSize: 12, color: hasWind ? 'var(--cat-vfr-color)' : 'var(--text-tertiary)', display: 'flex', alignItems: 'center', gap: 6, marginBottom: 2 }}>
+                        <MdIcon name="air" style={{ fontSize: 14 }}/>
+                        {hasWind
+                            ? `Wind ${windDir}° at ${windSpd} kt — best runway highlighted`
+                            : 'No wind data — showing headings only'
+                        }
+                    </div>
+
+                    {ends.map(function(end, i) {
+                        var isBest   = hasWind && i === 0;
+                        var relAngle = windDir != null ? ((windDir - end.heading) % 360 + 360) % 360 : 0;
+                        return (
+                            <div key={i} style={{
+                                background:   isBest ? 'rgba(10,132,255,0.07)' : 'var(--md-sys-color-surface-container)',
+                                border:       '1px solid ' + (isBest ? 'rgba(10,132,255,0.35)' : 'var(--card-border-soft)'),
+                                borderRadius: 14, padding: '14px 16px'
+                            }}>
+                                {/* Header: runway id + badges + heading */}
+                                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
+                                    <span style={{ fontWeight: 800, fontSize: 24, fontFamily: 'var(--font-mono)', color: isBest ? 'var(--accent)' : 'var(--text-primary)', letterSpacing: 1, lineHeight: 1 }}>
+                                        {end.id}
+                                    </span>
+                                    {isBest && (
+                                        <span style={{ fontSize: 10, fontWeight: 700, background: 'var(--accent)', color: '#fff', borderRadius: 6, padding: '3px 9px', letterSpacing: 0.4, flexShrink: 0 }}>
+                                            BEST
+                                        </span>
+                                    )}
+                                    {end.xwindWarn && (
+                                        <span style={{ fontSize: 10, fontWeight: 700, background: 'rgba(255,149,0,0.18)', color: 'var(--caution)', borderRadius: 6, padding: '3px 9px', letterSpacing: 0.4, flexShrink: 0, display: 'flex', alignItems: 'center', gap: 3 }}>
+                                            <MdIcon name="warning" style={{ fontSize: 11 }}/> X-WIND
+                                        </span>
+                                    )}
+                                    <span style={{ marginLeft: 'auto', fontSize: 12, color: 'var(--text-tertiary)', fontFamily: 'var(--font-mono)' }}>
+                                        {end.heading}° mag
+                                    </span>
+                                </div>
+
+                                {/* Wind rose + component numbers */}
+                                <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+                                    {hasWind && <RunwayWindRose relAngle={relAngle} isBest={isBest}/>}
+                                    {hasWind ? (
+                                        <div style={{ display: 'flex', gap: 24, flex: 1 }}>
+                                            <div>
+                                                <div style={{ fontSize: 10, color: 'var(--text-tertiary)', textTransform: 'uppercase', letterSpacing: 0.6, marginBottom: 3 }}>
+                                                    {end.headwind >= 0 ? 'Headwind' : 'Tailwind'}
+                                                </div>
+                                                <div style={{ fontSize: 22, fontWeight: 700, fontFamily: 'var(--font-mono)', color: end.headwind < 0 ? 'var(--nogo)' : isBest ? 'var(--accent)' : 'var(--text-primary)', lineHeight: 1 }}>
+                                                    {Math.abs(end.headwind)}<span style={{ fontSize: 13, fontWeight: 400, marginLeft: 3 }}>kt</span>
+                                                </div>
+                                            </div>
+                                            <div>
+                                                <div style={{ fontSize: 10, color: 'var(--text-tertiary)', textTransform: 'uppercase', letterSpacing: 0.6, marginBottom: 3 }}>
+                                                    Crosswind
+                                                </div>
+                                                <div style={{ fontSize: 22, fontWeight: 700, fontFamily: 'var(--font-mono)', color: end.xwindWarn ? 'var(--caution)' : 'var(--text-primary)', lineHeight: 1 }}>
+                                                    {end.crosswind}<span style={{ fontSize: 13, fontWeight: 400, marginLeft: 3 }}>kt</span>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    ) : (
+                                        <div style={{ fontSize: 13, color: 'var(--text-tertiary)', flex: 1 }}>Wind unavailable — enter weather to see components</div>
+                                    )}
+                                </div>
+
+                                {/* Footer: length + surface */}
+                                {(end.lengthFt || end.surface) && (
+                                    <div style={{ marginTop: 10, display: 'flex', gap: 14, fontSize: 11, color: 'var(--text-tertiary)', borderTop: '1px solid var(--card-border-soft)', paddingTop: 8 }}>
+                                        {end.lengthFt && <span><MdIcon name="straighten" style={{ fontSize: 12, verticalAlign: 'middle', marginRight: 3 }}/>{end.lengthFt.toLocaleString()} ft</span>}
+                                        {end.surface   && <span style={{ textTransform: 'capitalize' }}>{end.surface}</span>}
+                                    </div>
+                                )}
+                            </div>
+                        );
+                    })}
+
+                    <div style={{ fontSize: 11, color: 'var(--text-tertiary)', textAlign: 'right' }}>
+                        Runway geometry — {source === 'osm' ? 'OpenStreetMap / Overpass' : 'Estimated from designator (±5°)'}
+                    </div>
                 </div>
             );
         }
@@ -8025,8 +8282,9 @@
             var tabList = [
                 { id: "brief", label: "Briefing", icon: "auto_awesome" },
                 { id: "wx", label: "Weather", icon: "partly_cloudy_day" },
-                { id: "notam", label: "NOTAMs", icon: "warning" },
-                { id: "freq", label: "Freqs", icon: "cell_tower" },
+                { id: "notam",   label: "NOTAMs",  icon: "warning" },
+                { id: "runway",  label: "Runways", icon: "flight_land" },
+                { id: "freq",    label: "Freqs",   icon: "cell_tower" },
                 { id: "fbo", label: "FBO", icon: "local_gas_station" },
                 { id: "export", label: "Export", icon: "print" }
             ];
@@ -8761,6 +9019,23 @@
                                                             <NotamsPanel icao={rt} />
                                                         </div>
                                                     ))}
+                                                </div>
+                                            )}
+
+                                            {tab === "runway" && (
+                                                <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
+                                                    {fullRoute.map(function(rt, idx) {
+                                                        var wxEntry = (effectiveWxData || []).find(function(e) { return e.icao === rt; });
+                                                        var wx = wxEntry && wxEntry.effectiveWx;
+                                                        return (
+                                                            <div key={idx}>
+                                                                <h2 style={{ fontSize: 14, fontWeight: 700, margin: '0 0 12px', color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.8px' }}>
+                                                                    Runways · {rt}
+                                                                </h2>
+                                                                <RunwayPanel icao={rt} windDir={wx ? wx.wdir : null} windSpd={wx ? (wx.wspd || 0) : 0} />
+                                                            </div>
+                                                        );
+                                                    })}
                                                 </div>
                                             )}
 
