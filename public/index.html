@@ -1654,16 +1654,26 @@
                 );
                 if (!res.ok) return [];
                 var data = await res.json();
-                if (!Array.isArray(data) || data.length === 0) return [];
-                return data.slice(0, 12).map(function(n) {
-                    var kw = (n.keyword || n.facilityType || 'NOTAM').toUpperCase();
-                    var text = n.message || n.notamText || n.text || '';
+                // API may return a bare array OR an object with an items/notams/data array
+                var items = Array.isArray(data) ? data
+                    : Array.isArray(data.items)  ? data.items
+                    : Array.isArray(data.notams) ? data.notams
+                    : Array.isArray(data.data)   ? data.data
+                    : [];
+                if (items.length === 0) return [];
+                return items.slice(0, 20).map(function(n) {
+                    // AWC JSON uses keyword/featureName for category; icaoMessage/traditionalMessage for text
+                    var kw = (n.keyword || n.featureName || n.facilityType || 'NOTAM').toUpperCase();
+                    var text = n.icaoMessage || n.traditionalMessage || n.notamText
+                             || n.message || n.text || n.plainLanguageMessage
+                             || n.traditionalMessageFrom4thWord || '';
+                    if (!text && typeof n === 'string') text = n; // plain-text array fallback
                     var sev = (kw === 'TFR' || kw === 'SECURITY') ? 'error'
                             : (kw === 'RWY' || kw === 'TWY')      ? 'warning'
                             : 'tertiary';
-                    return { type: kw, severity: sev, text };
+                    return { type: kw, severity: sev, text: text.trim() };
                 }).filter(function(n) { return n.text; });
-            } catch(e) { return []; }
+            } catch(e) { console.warn('[SkyView] NOTAM fetch error:', e); return []; }
         }
 
         function getGoColor(s) { return s >= 75 ? "var(--go)" : s >= 50 ? "var(--caution)" : "var(--nogo)"; }
@@ -4248,9 +4258,9 @@
             }, [icao]);
 
             var sevColors = {
-                warning: "var(--md-sys-color-warning)",
-                tertiary: "var(--md-sys-color-tertiary)",
-                error: "var(--md-sys-color-error)"
+                warning: "var(--caution)",
+                tertiary: "var(--text-secondary)",
+                error: "var(--nogo)"
             };
 
             if (loading) return (
