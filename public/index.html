@@ -1722,6 +1722,11 @@
         // or falls back to approximate headings derived from the static AIRPORTS.rwy list.
         async function fetchRunwayData(icao) {
             var apt = getAirport(icao);
+            if (!apt || !apt.lat) {
+                apt = await fetchAirportInfo(icao).catch(function() { return null; });
+                if (apt) await enrichAirportFromOpenAIP(icao).catch(function() {});
+                apt = getAirport(icao);
+            }
             if (!apt || !apt.lat) return [];
             var d = 0.08; // ~9 km margin
             var s = (apt.lat - d).toFixed(5), n = (apt.lat + d).toFixed(5);
