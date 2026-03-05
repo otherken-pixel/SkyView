@@ -449,6 +449,21 @@
         } from 'https://www.gstatic.com/firebasejs/10.8.1/firebase-functions.js';
 
         // ── Firebase project config ───────────────────────────────────────
+        // SECURITY: This API key is restricted to specific Firebase services
+        // (Auth, Firestore, Functions) and MUST be locked to your domain(s)
+        // via HTTP Referrer restrictions in Google Cloud Console:
+        //   1. Go to https://console.cloud.google.com/apis/credentials
+        //      (project: flightscore-ca7e0)
+        //   2. Click the "Browser key (auto created by Firebase)" API key
+        //   3. Under "Application restrictions" → select "HTTP referrers"
+        //   4. Add allowed referrers:
+        //        flightscore-ca7e0.web.app/*
+        //        flightscore-ca7e0.firebaseapp.com/*
+        //        localhost:*/*   (for local dev only — remove in production)
+        //   5. Under "API restrictions" → restrict to only:
+        //        Identity Toolkit API, Cloud Firestore API,
+        //        Firebase Installations API, Token Service API
+        //   6. Save. Changes take effect within ~5 minutes.
         const firebaseConfig = {
             apiKey:            "AIzaSyBioGERBvCiwo9yC0suvpvkvbHY4dCBeAE",
             authDomain:        "flightscore-ca7e0.firebaseapp.com",
@@ -523,7 +538,7 @@
             if (fns.httpsCallable && fns.functions) {
                 try {
                     var callProxy = fns.httpsCallable(fns.functions, 'anthropicProxy');
-                    var result = await callProxy({ model: CLAUDE_MODEL, system, messages, max_tokens: max_tokens || 1800 });
+                    var result = await callProxy({ model: CLAUDE_MODEL, system, messages, max_tokens: max_tokens || 1800, temperature: 0.0 });
                     return result.data;          // { content: [{ text: "..." }] }
                 } catch(proxyErr) {
                     console.warn('[FlightScore] anthropicProxy error:', proxyErr.message);
@@ -547,7 +562,7 @@
                     'anthropic-version': '2023-06-01',
                     'anthropic-dangerous-direct-browser-access': 'true'
                 },
-                body: JSON.stringify({ model: CLAUDE_MODEL, max_tokens: max_tokens || 1800, system: system || '', messages })
+                body: JSON.stringify({ model: CLAUDE_MODEL, max_tokens: max_tokens || 1800, temperature: 0.0, system: system || '', messages })
             });
             if (!res.ok) {
                 var errBody = await res.json().catch(function() { return {}; });
@@ -1235,8 +1250,9 @@
             return 'VFR';
         }
 
-        // Fetch live METAR via NWS api.weather.gov — proper CORS support, no API key needed.
-        // aviationweather.gov omits Access-Control-Allow-Origin, making it unusable from browsers.
+        // Fetch live METAR via the weatherProxy Firebase Callable Function.
+        // The proxy fetches from aviationweather.gov (global coverage, no CORS issues
+        // server-side) and returns the structured JSON to the browser.
         async function fetchLiveMetar(icao) {
             if (!icao) return null;
             icao = icao.trim().toUpperCase();
@@ -1244,215 +1260,124 @@
             var _cv = _cacheGet(_ck, WX_TTL_METAR);
             if (_cv !== undefined) return _cv;
             try {
-                // NWS requires Accept header but NOT a custom User-Agent (that triggers CORS preflight failure)
-                const res = await wxFetchWithRetry(
-                    `https://api.weather.gov/stations/${icao}/observations/latest`,
-                    { headers: { 'Accept': 'application/geo+json' } },
-                    10000
-                );
-                if (!res.ok) { console.warn('[METAR] NWS HTTP', res.status, icao); return null; }
-                const data = await res.json();
-                const p = data && data.properties;
-                if (!p) return null;
-
-                // Wind — NWS returns speed in km_h-1 or m_s-1 depending on version
-                function nwsKts(ws) {
-                    if (!ws || ws.value == null) return 0;
-                    const u = ws.unitCode || '';
-                    if (u.includes('km_h') || u.includes('kmh')) return Math.round(ws.value / 1.852);
-                    if (u.includes('mi_h') || u.includes('mph')) return Math.round(ws.value * 0.868976);
-                    return Math.round(ws.value * 1.944); // assume m/s
+                var fns = _fbFns();
+                if (!fns.httpsCallable || !fns.functions) {
+                    console.warn('[METAR] Firebase Functions not available');
+                    return _cacheSet(_ck, null);
                 }
-                const wspd   = nwsKts(p.windSpeed);
-                const wgst   = nwsKts(p.windGust);
-                const wdirRaw = (p.windDirection && p.windDirection.value != null) ? Math.round(p.windDirection.value) : 0;
-                const isVrb  = (wspd === 0 && wdirRaw === 0);
-                const wdirStr = isVrb ? 'VRB' : String(wdirRaw).padStart(3, '0');
-                const wind   = `${wdirStr}${String(wspd).padStart(2,'0')}${wgst > 0 ? 'G'+String(wgst).padStart(2,'0') : ''}KT`;
+                var callProxy = fns.httpsCallable(fns.functions, 'weatherProxy');
+                var result = await callProxy({ type: 'metar', icao: icao });
+                var data = result.data; // array from aviationweather.gov JSON
+                if (!Array.isArray(data) || data.length === 0) return _cacheSet(_ck, null);
+                var m = data[0];
 
-                // Visibility — NWS returns meters
-                const visM  = (p.visibility && p.visibility.value != null) ? p.visibility.value : 16093;
-                const visMi = visM / 1609.34;
-                const visStr = visMi >= 6 ? 'P6SM' : `${Math.round(visMi)}SM`;
+                // Wind — aviationweather.gov returns knots directly
+                var wspd = m.wspd != null ? m.wspd : 0;
+                var wgst = m.wgst != null ? m.wgst : 0;
+                var wdirRaw = m.wdir != null ? m.wdir : 0;
+                var isVrb = (wspd === 0 && wdirRaw === 0);
+                var wdirStr = isVrb ? 'VRB' : String(wdirRaw).padStart(3, '0');
+                var wind = wdirStr + String(wspd).padStart(2, '0') + (wgst > 0 ? 'G' + String(wgst).padStart(2, '0') : '') + 'KT';
 
-                // Cloud layers — base in meters, amount as SKC/CLR/FEW/SCT/BKN/OVC/VV
-                const coverMap = { CLR:'CLR', SKC:'CLR', NSC:'CLR', CAVOK:'CLR',
-                                   FEW:'FEW', SCT:'SCT', BKN:'BKN', OVC:'OVC', VV:'OVC' };
-                const layers = Array.isArray(p.cloudLayers) ? p.cloudLayers : [];
-                let skyStr = 'CLR', ceilingFt = null;
-                if (layers.length > 0) {
-                    const parts = layers.map(layer => {
-                        const cover  = coverMap[layer.amount] || layer.amount || '';
-                        const baseM  = (layer.base && layer.base.value != null) ? layer.base.value : null;
-                        const baseFt = baseM != null ? Math.round(baseM * 3.281) : null;
+                // Visibility — statute miles
+                var visMi = m.visib != null ? m.visib : 10;
+                var visStr = visMi >= 6 ? 'P6SM' : Math.round(visMi) + 'SM';
+
+                // Cloud layers — already in feet AGL from aviationweather.gov
+                var coverMap = { CLR:'CLR', SKC:'CLR', NSC:'CLR', CAVOK:'CLR',
+                                 FEW:'FEW', SCT:'SCT', BKN:'BKN', OVC:'OVC', VV:'OVC' };
+                var clouds = Array.isArray(m.clouds) ? m.clouds : [];
+                var skyStr = 'CLR', ceilingFt = null;
+                if (clouds.length > 0) {
+                    var parts = clouds.map(function(layer) {
+                        var cover = coverMap[layer.cover] || layer.cover || '';
+                        var baseFt = layer.base != null ? layer.base : null;
                         if ((cover === 'BKN' || cover === 'OVC') && baseFt != null)
                             if (ceilingFt === null || baseFt < ceilingFt) ceilingFt = baseFt;
                         if (cover === 'CLR') return '';
-                        return `${cover}${baseFt != null ? String(Math.round(baseFt/100)).padStart(3,'0') : ''}`;
+                        return cover + (baseFt != null ? String(Math.round(baseFt / 100)).padStart(3, '0') : '');
                     }).filter(Boolean);
                     if (parts.length > 0) skyStr = parts.join(' ');
                 }
 
                 // Temperature / Dewpoint (Celsius)
-                const tempC = (p.temperature && p.temperature.value != null) ? p.temperature.value : 15;
-                const dewpC = (p.dewpoint  && p.dewpoint.value  != null) ? p.dewpoint.value  : 5;
-                const tI = Math.round(tempC), dI = Math.round(dewpC);
-                const tempStr = `${tI<0?'M':''}${Math.abs(tI)<10?'0':''}${Math.abs(tI)}/${dI<0?'M':''}${Math.abs(dI)<10?'0':''}${Math.abs(dI)}`;
+                var tempC = m.temp != null ? m.temp : 15;
+                var dewpC = m.dewp != null ? m.dewp : 5;
+                var tI = Math.round(tempC), dI = Math.round(dewpC);
+                var tempStr = (tI < 0 ? 'M' : '') + (Math.abs(tI) < 10 ? '0' : '') + Math.abs(tI) + '/' +
+                              (dI < 0 ? 'M' : '') + (Math.abs(dI) < 10 ? '0' : '') + Math.abs(dI);
 
-                // Altimeter — NWS returns barometric pressure in Pascals
-                const pressurePa = (p.barometricPressure && p.barometricPressure.value != null)
-                    ? p.barometricPressure.value : 101325;
-                const altStr = `A${String(Math.round(pressurePa / 3386.39 * 100)).padStart(4,'0')}`;
+                // Altimeter — aviationweather.gov returns inHg directly (altim field)
+                var altInHg = m.altim != null ? m.altim : 29.92;
+                var altStr = 'A' + String(Math.round(altInHg * 100)).padStart(4, '0');
 
                 return _cacheSet(_ck, {
-                    raw:  p.rawMessage || `${icao} METAR`,
-                    wind, vis: visStr, sky: skyStr, temp: tempStr, alt: altStr,
+                    raw:  m.rawOb || (icao + ' METAR'),
+                    wind: wind, vis: visStr, sky: skyStr, temp: tempStr, alt: altStr,
                     cat:  deriveCat(ceilingFt, visMi),
-                    wspd, wdir: (!isVrb && wdirRaw > 0) ? wdirRaw : null
+                    wspd: wspd, wdir: (!isVrb && wdirRaw > 0) ? wdirRaw : null
                 });
-            } catch(e) { return _cacheSet(_ck, null); }
+            } catch(e) { console.warn('[METAR] weatherProxy error', icao, e.message); return _cacheSet(_ck, null); }
         }
 
-        // Parse raw TAF text into the structured format parseTafForTime expects:
+        // Map structured TAF JSON from aviationweather.gov into the internal format
+        // that parseTafForTime expects:
         //   { stationId, rawTAF, fcsts: [{ changeIndicator, timeFrom, timeTo, wdir, wspd, wgst, visib, skyCondition }] }
-        function parseRawTaf(rawText) {
-            if (!rawText) return null;
-            var raw = rawText.replace(/\n/g, ' ').replace(/\s+/g, ' ').trim();
+        //
+        // The input `tafJson` is a single TAF object from the aviationweather.gov JSON
+        // API (fetched via weatherProxy). It contains a `fcsts` array of pre-tokenised
+        // forecast periods — no regex parsing needed.
+        function parseRawTaf(tafJson) {
+            if (!tafJson) return null;
 
-            // Extract station ID: TAF [AMD|COR] ICAO DDHHmmZ DDHH/DDHH ...
-            var stationMatch = raw.match(/\bTAF\s+(?:AMD\s+|COR\s+)?([A-Z][A-Z0-9]{3})\s/);
-            if (!stationMatch) return null;
-            var stationId = stationMatch[1];
-
-            // Extract issue time (DDHHmmZ) and valid period (DDHH/DDHH)
-            var headerMatch = raw.match(/(\d{2})(\d{2})(\d{2})Z\s+(\d{4})\/(\d{4})\s/);
-            if (!headerMatch) return null;
-
-            // Convert DDHH or DDHHmm to a UTC Date, using current month as reference.
-            function ddhhToDate(ddhh, mm) {
-                var dd = parseInt(ddhh.substring(0, 2));
-                var hh = parseInt(ddhh.substring(2, 4));
-                var min = mm || 0;
-                var now = new Date();
-                var year = now.getUTCFullYear(), month = now.getUTCMonth();
-                var d = new Date(Date.UTC(year, month, dd, hh, min, 0));
-                if (d.getTime() < now.getTime() - 20 * 86400000)
-                    d = new Date(Date.UTC(year, month + 1, dd, hh, min, 0));
-                if (d.getTime() > now.getTime() + 20 * 86400000)
-                    d = new Date(Date.UTC(year, month - 1, dd, hh, min, 0));
-                return d;
+            // If called with a raw string (legacy fallback), return null — callers
+            // should now pass the structured JSON object instead.
+            if (typeof tafJson === 'string') {
+                console.warn('[TAF] parseRawTaf received raw text — expected structured JSON');
+                return null;
             }
 
-            // Parse wind token: DDDSSKT, DDDSSGSSGKT, VRBSSKT
-            function parseWind(tokens) {
-                for (var t of tokens) {
-                    var m = t.match(/^(\d{3}|VRB)(\d{2,3})(G(\d{2,3}))?KT$/);
-                    if (m) return { wdir: m[1] === 'VRB' ? 0 : parseInt(m[1]), wspd: parseInt(m[2]), wgst: m[4] ? parseInt(m[4]) : 0 };
-                }
-                return { wdir: 0, wspd: 0, wgst: 0 };
-            }
+            var stationId = tafJson.icaoId || tafJson.stationId || null;
+            var rawTAF = tafJson.rawTAF || tafJson.rawOb || '';
 
-            // Parse visibility token: P6SM, 6SM, 3SM, 1/2SM, 1 1/2SM, etc.
-            // Returns a string that parseFloat can handle (decimals, not fractions).
-            function parseVis(tokens) {
-                for (var i = 0; i < tokens.length; i++) {
-                    var t = tokens[i];
-                    if (t === 'P6SM') return '6+';
-                    // Whole number + fraction: "1 1/2SM"
-                    if (/^\d+$/.test(t) && i + 1 < tokens.length && /^\d+\/\d+SM$/.test(tokens[i + 1])) {
-                        var frac = tokens[i + 1].replace('SM', '').split('/');
-                        return String(parseInt(t) + parseInt(frac[0]) / parseInt(frac[1]));
-                    }
-                    // Pure fraction: "1/2SM"
-                    var fm = t.match(/^(\d+)\/(\d+)SM$/);
-                    if (fm) return String(parseInt(fm[1]) / parseInt(fm[2]));
-                    // Whole number: "6SM", "3SM"
-                    var wm = t.match(/^(\d+)SM$/);
-                    if (wm) return wm[1];
-                }
-                return '6+';
-            }
+            // Prefer the pre-parsed fcsts array from aviationweather.gov JSON
+            var periods = tafJson.fcsts || tafJson.forecast;
+            if (!Array.isArray(periods) || periods.length === 0) return null;
 
-            // Parse sky condition tokens: CLR, SKC, FEWnnn, SCTnnn, BKNnnn, OVCnnn, VVnnn
-            function parseSky(tokens) {
-                var conds = [];
-                for (var t of tokens) {
-                    var m = t.match(/^(SKC|CLR|NSC|FEW|SCT|BKN|OVC|VV)(\d{3})?(CB|TCU)?$/);
-                    if (m) {
-                        var cover = (m[1] === 'SKC' || m[1] === 'NSC') ? 'CLR' : m[1] === 'VV' ? 'OVC' : m[1];
-                        conds.push({ skyCover: cover, cloudBase: m[2] ? parseInt(m[2]) * 100 : null });
-                    }
-                }
-                return conds;
-            }
-
-            // Split TAF body into groups by FM/TEMPO/BECMG/PROB markers
-            var bodyMatch = raw.match(/\d{4}\/\d{4}\s+(.*)/);
-            if (!bodyMatch) return null;
-            var body = bodyMatch[1];
-            var parts = body.split(/\s+(?=FM\d{6}|TEMPO\s|BECMG\s|PROB\d{2}\s)/);
-
-            var validFrom = ddhhToDate(headerMatch[4]);
-            var validTo   = ddhhToDate(headerMatch[5]);
-            var fcsts = [];
-
-            // Initial (base) conditions
-            if (parts.length > 0) {
-                var tok = parts[0].trim().split(/\s+/);
-                var w = parseWind(tok);
-                fcsts.push({
-                    changeIndicator: '', timeFrom: validFrom.toISOString(), timeTo: validTo.toISOString(),
-                    wdir: w.wdir, wspd: w.wspd, wgst: w.wgst,
-                    visib: parseVis(tok), skyCondition: parseSky(tok)
-                });
-            }
-
-            // Subsequent groups
-            for (var gi = 1; gi < parts.length; gi++) {
-                var tok = parts[gi].trim().split(/\s+/);
-                var ci = '', tfDate = null, ttDate = null, start = 0;
-
-                if (tok[0].startsWith('FM') && tok[0].length >= 8) {
-                    ci = 'FM';
-                    tfDate = ddhhToDate(tok[0].substring(2, 6), parseInt(tok[0].substring(6, 8)));
-                    ttDate = validTo;
-                    start = 1;
-                } else if (tok[0] === 'TEMPO' || tok[0] === 'BECMG') {
-                    ci = tok[0];
-                    if (tok[1] && /^\d{4}\/\d{4}$/.test(tok[1])) {
-                        var pp = tok[1].split('/');
-                        tfDate = ddhhToDate(pp[0]); ttDate = ddhhToDate(pp[1]);
-                    }
-                    start = 2;
-                } else if (/^PROB\d{2}$/.test(tok[0])) {
-                    ci = tok[0]; // PROB30 or PROB40
-                    var pIdx = 1;
-                    if (tok[pIdx] === 'TEMPO') { ci = tok[0]; pIdx++; } // PROB30 TEMPO — still treated as prob
-                    if (tok[pIdx] && /^\d{4}\/\d{4}$/.test(tok[pIdx])) {
-                        var pp = tok[pIdx].split('/');
-                        tfDate = ddhhToDate(pp[0]); ttDate = ddhhToDate(pp[1]);
-                        pIdx++;
-                    }
-                    start = pIdx;
+            var fcsts = periods.map(function(p) {
+                // Map sky conditions from the API's clouds array
+                var skyCondition = [];
+                if (Array.isArray(p.clouds)) {
+                    skyCondition = p.clouds.map(function(c) {
+                        var cover = c.cover || 'CLR';
+                        if (cover === 'SKC' || cover === 'NSC') cover = 'CLR';
+                        if (cover === 'VV') cover = 'OVC';
+                        return { skyCover: cover, cloudBase: c.base != null ? c.base : null };
+                    });
                 }
 
-                var wxTok = tok.slice(start);
-                var w = parseWind(wxTok);
-                fcsts.push({
+                // changeIndicator: API uses '' for initial, 'FM', 'TEMPO', 'BECMG', 'PROB30', etc.
+                var ci = p.changeIndicator || p.change || '';
+
+                return {
                     changeIndicator: ci,
-                    timeFrom: tfDate ? tfDate.toISOString() : null,
-                    timeTo:   ttDate ? ttDate.toISOString() : null,
-                    wdir: w.wdir, wspd: w.wspd, wgst: w.wgst,
-                    visib: parseVis(wxTok), skyCondition: parseSky(wxTok)
-                });
-            }
+                    timeFrom: p.timeFrom || p.dateStart || null,
+                    timeTo:   p.timeTo   || p.dateEnd   || null,
+                    wdir:     p.wdir != null ? p.wdir : 0,
+                    wspd:     p.wspd != null ? p.wspd : 0,
+                    wgst:     p.wgst != null ? p.wgst : 0,
+                    visib:    p.visib != null ? String(p.visib) : '6+',
+                    skyCondition: skyCondition
+                };
+            });
 
             if (fcsts.length === 0) return null;
-            return { stationId: stationId, rawTAF: rawText, fcsts: fcsts };
+            return { stationId: stationId, rawTAF: rawTAF, fcsts: fcsts };
         }
 
-        // Fetch live TAF via NWS api.weather.gov (CORS-friendly).
-        // Falls back to aviationweather.gov for environments where CORS isn't an issue.
+        // Fetch live TAF via the weatherProxy Firebase Callable Function.
+        // The proxy fetches structured JSON from aviationweather.gov (global coverage,
+        // no CORS issues server-side) and returns the pre-parsed TAF data.
         // Returns full TAF object: { rawTAF, fcsts: [{timeFrom, timeTo, wdir, wspd, wgst, visib, skyCondition[]}] }
         async function fetchLiveTaf(icao) {
             if (!icao) return null;
@@ -1461,40 +1386,19 @@
             var _cv = _cacheGet(_ck, WX_TTL_TAF);
             if (_cv !== undefined) return _cv;
 
-            // Primary: NWS api.weather.gov — proper CORS support for browser fetches.
-            async function fetchTafNws(id) {
+            // Fetch TAF for a given station via the weatherProxy callable
+            async function fetchTafById(id) {
                 try {
-                    const res = await wxFetchWithRetry(
-                        `https://api.weather.gov/stations/${id}/tafs?limit=1`,
-                        { headers: { 'Accept': 'application/geo+json' } }, 8000
-                    );
-                    if (!res.ok) return null;
-                    const data = await res.json();
-                    var features = (data && data.features) || (data && data.type === 'Feature' ? [data] : []);
-                    if (features.length === 0) return null;
-                    var rawMsg = features[0].properties && features[0].properties.rawMessage;
-                    if (!rawMsg) return null;
-                    return parseRawTaf(rawMsg);
-                } catch(e) { return null; }
-            }
-
-            // Fallback: AWC aviationweather.gov — no CORS, works in non-browser contexts.
-            async function fetchTafAwc(id) {
-                try {
-                    const res = await wxFetchWithRetry(
-                        `https://aviationweather.gov/api/data/taf?ids=${id}&format=json`,
-                        {}, 8000
-                    );
-                    if (!res.ok) return null;
-                    const data = await res.json();
+                    var fns = _fbFns();
+                    if (!fns.httpsCallable || !fns.functions) return null;
+                    var callProxy = fns.httpsCallable(fns.functions, 'weatherProxy');
+                    var result = await callProxy({ type: 'taf', icao: id });
+                    var data = result.data;
                     if (!Array.isArray(data) || data.length === 0) return null;
                     var obj = data[0];
-                    return (obj && (obj.fcsts || obj.forecast || obj.rawTAF)) ? obj : null;
+                    // parseRawTaf now expects the structured JSON object
+                    return parseRawTaf(obj);
                 } catch(e) { return null; }
-            }
-
-            async function fetchTafById(id) {
-                return await fetchTafNws(id) || await fetchTafAwc(id);
             }
 
             var apt = getAirport(icao);
