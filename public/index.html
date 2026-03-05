@@ -854,17 +854,27 @@
             KUZA: [{ name: "Skytech, Inc.", phone: "(803) 366-5108", fuel: [{ type: "100LL", service: "Full Serve & Self-Serve (24/7)" }, { type: "Jet-A", service: "Full Serve" }], hours: "M–F 7am–8pm · Sa–Su 8am–7pm", services: ["FAA Repair Station", "Pilot Shop", "Crew Car", "Rental Car", "Tie-Down", "Volume Discounts"] }],
         };
 
+        // Longest runway in feet for hardcoded airports.
+        // Used in NWKRAFT export section to confirm runway adequacy.
+        const AIRPORT_MAX_RWY = {
+            KCLT:10000, KATL:11889, KJFK:14572, KORD:13000, KLAX:12091,
+            KSFO:11870, KDFW:13401, KDEN:16000, KMIA:13000, KSEA:11900,
+            KBOS:10083, KPHX:10300, KMCO:12005, KCHS:9001,  KGSP:8001,
+            KCAE:8001,  KRDU:10000, KIAD:11500, KMSY:10104, KCVG:11000,
+            KUZA:5001
+        };
+
         const AIRCRAFT = [
-            { id: "c172", name: "Cessna 172 Skyhawk", cat: "SEL", kts: 120 },
-            { id: "c182", name: "Cessna 182 Skylane", cat: "SEL", kts: 145 },
-            { id: "pa28", name: "Piper Cherokee", cat: "SEL", kts: 128 },
-            { id: "be36", name: "Bonanza A36", cat: "SEL", kts: 170 },
-            { id: "sr22", name: "Cirrus SR22", cat: "SEL", kts: 180 },
-            { id: "pa44", name: "Piper Seminole", cat: "MEL", kts: 163 },
-            { id: "be58", name: "Baron 58", cat: "MEL", kts: 200 },
-            { id: "tbm9", name: "TBM 960", cat: "SET", kts: 330 },
-            { id: "pc12", name: "Pilatus PC-12", cat: "SET", kts: 280 },
-            { id: "other", name: "Other", cat: "-", kts: 150 },
+            { id: "c172", name: "Cessna 172 Skyhawk",  cat: "SEL", kts: 120, gph: 8.5,  fuel: 53,  toRoll: 960,  toOver50: 1630, ldgRoll: 575,  ldgOver50: 1335 },
+            { id: "c182", name: "Cessna 182 Skylane",   cat: "SEL", kts: 145, gph: 13.5, fuel: 92,  toRoll: 810,  toOver50: 1514, ldgRoll: 590,  ldgOver50: 1350 },
+            { id: "pa28", name: "Piper Cherokee",        cat: "SEL", kts: 128, gph: 8.8,  fuel: 50,  toRoll: 890,  toOver50: 1499, ldgRoll: 573,  ldgOver50: 1400 },
+            { id: "be36", name: "Bonanza A36",           cat: "SEL", kts: 170, gph: 14.5, fuel: 74,  toRoll: 1110, toOver50: 1875, ldgRoll: 780,  ldgOver50: 1700 },
+            { id: "sr22", name: "Cirrus SR22",           cat: "SEL", kts: 180, gph: 16,   fuel: 81,  toRoll: 1020, toOver50: 2065, ldgRoll: 761,  ldgOver50: 1790 },
+            { id: "pa44", name: "Piper Seminole",        cat: "MEL", kts: 163, gph: 16,   fuel: 108, toRoll: 800,  toOver50: 1400, ldgRoll: 700,  ldgOver50: 1550 },
+            { id: "be58", name: "Baron 58",              cat: "MEL", kts: 200, gph: 24,   fuel: 166, toRoll: 1200, toOver50: 2150, ldgRoll: 775,  ldgOver50: 1700 },
+            { id: "tbm9", name: "TBM 960",               cat: "SET", kts: 330, gph: 55,   fuel: 313, toRoll: 2780, toOver50: 3000, ldgRoll: 1900, ldgOver50: 2400 },
+            { id: "pc12", name: "Pilatus PC-12",         cat: "SET", kts: 280, gph: 62,   fuel: 316, toRoll: 1900, toOver50: 2600, ldgRoll: 1700, ldgOver50: 2100 },
+            { id: "other", name: "Other",                cat: "-",   kts: 150, gph: 10,   fuel: 60,  toRoll: 900,  toOver50: 1600, ldgRoll: 600,  ldgOver50: 1400 },
         ];
 
         const AVIATION_DAD_JOKES = [
@@ -3847,6 +3857,25 @@
             var [windsAloft, setWindsAloft] = useState([]);
             var [loadingAdvisory, setLoadingAdvisory] = useState(true);
 
+            // NOTAMs per airport — fetched for all route airports on mount/trip change.
+            // Available in the export tab for the NOTAMs & TFRs section.
+            var [notamsByAirport, setNotamsByAirport] = useState({});
+            var [notamsLoaded, setNotamsLoaded] = useState(false);
+            useEffect(function() {
+                setNotamsLoaded(false);
+                var pts = [trip.dep].concat(trip.wps || []).concat([trip.arr]).filter(Boolean);
+                Promise.all(pts.map(function(icao) {
+                    return fetchLiveNotams(icao)
+                        .then(function(data) { return { icao: icao, data: data || [] }; })
+                        .catch(function() { return { icao: icao, data: [] }; });
+                })).then(function(results) {
+                    var byApt = {};
+                    results.forEach(function(r) { byApt[r.icao] = r.data; });
+                    setNotamsByAirport(byApt);
+                    setNotamsLoaded(true);
+                });
+            }, [trip.id]);
+
             var ac = AIRCRAFT.find(a => a.id === trip.aircraft) || AIRCRAFT[0];
             var allRoutePts = useMemo(() =>
                 [trip.dep].concat(trip.wps || []).concat([trip.arr]),
@@ -4545,9 +4574,9 @@
 
             var levelColor = { high: 'var(--md-sys-color-error)', medium: 'var(--cat-mvfr-color)' };
 
-            // ── Export / Print tab ──────────────────────────────────────────────────────
-            // All state (effectiveWxData, finalVerdict, windsAloft, etc.) lives in
-            // BriefingPanel's hooks — no re-fetching or prop drilling needed.
+            // ── Export / Print tab — FAA FAR 91.103 compliant preflight brief ──────────
+            // All state (effectiveWxData, finalVerdict, windsAloft, notamsByAirport,
+            // etc.) lives in BriefingPanel's hooks — no re-fetching needed.
             if (tab === "export") {
                 var now = new Date();
                 var nowUtcStr = `${String(now.getUTCHours()).padStart(2,'0')}${String(now.getUTCMinutes()).padStart(2,'0')}Z ${now.getUTCFullYear()}-${String(now.getUTCMonth()+1).padStart(2,'0')}-${String(now.getUTCDate()).padStart(2,'0')}`;
@@ -4559,6 +4588,26 @@
                 function catClr(c) { return ({VFR:'#1b5e20',MVFR:'#1565c0',IFR:'#b71c1c',LIFR:'#6a1b9a'})[c]||'#555'; }
                 function catBg(c)  { return ({VFR:'#e8f5e9',MVFR:'#e3f2fd',IFR:'#ffebee',LIFR:'#f3e5f5'})[c]||'#eee'; }
                 function scoreClr(pct) { return pct >= 0.85 ? '#2e7d32' : pct >= 0.65 ? '#1565c0' : '#c62828'; }
+
+                // Parse "M04" or "22" into a signed integer Celsius value
+                function parseCelsius(s) {
+                    if (s == null || s === '' || s === '—') return null;
+                    var neg = String(s).startsWith('M');
+                    var val = parseFloat(String(s).replace('M',''));
+                    return isNaN(val) ? null : (neg ? -val : val);
+                }
+                // Split "22/14" or "M04/M08" into { t, dp } Celsius numbers
+                function parseTempDp(tempStr) {
+                    if (!tempStr || !tempStr.includes('/')) return { t: null, dp: null };
+                    var parts = tempStr.split('/');
+                    return { t: parseCelsius(parts[0]), dp: parseCelsius(parts[1]) };
+                }
+                // Parse "A2992" → 29.92 inHg
+                function parseAltInHg(altStr) {
+                    if (!altStr || !String(altStr).startsWith('A')) return null;
+                    var v = parseFloat(String(altStr).slice(1)) / 100;
+                    return isNaN(v) ? null : v;
+                }
 
                 // Show a spinner while weather is still loading so the NavLog
                 // doesn't appear with empty data before the first fetch completes.
@@ -4575,28 +4624,70 @@
                 var vClr = !verd ? '#1b5e20' : verd.verdict === 'GO' ? '#1b5e20' : verd.verdict === 'CAUTION' ? '#e65100' : '#b71c1c';
                 var vBg  = !verd ? '#e8f5e9' : verd.verdict === 'GO' ? '#e8f5e9' : verd.verdict === 'CAUTION' ? '#fff3e0' : '#ffebee';
 
+                // Wind rows at cruise altitude (for NavLog column)
                 var windRows = allRoutePts.map(icao => {
                     var apt = getAirport(icao);
-                    if (!apt) return { icao, w: null };
+                    if (!apt) return { icao, w: null, stn: null };
                     var stn = closestWindStation(windsAloft, apt.lat, apt.lon);
-                    return { icao, w: stn ? getWindAtAlt(stn, altFt) : null };
+                    return { icao, stn, w: stn ? getWindAtAlt(stn, altFt) : null };
                 });
+
+                // Multi-altitude wind levels for the Winds Aloft table
+                var windLevels = [3000, 6000, 9000, 12000, 18000];
 
                 var advisoryCount = sigmets.length + gairmets.length + cwas.length;
 
+                // ── Fuel / endurance calculations (FAR 91.151 VFR day) ──
+                var totalEteMin = navRows.reduce(function(s, r) { return s + (r.legMin || 0); }, 0);
+                var tripFuelGal  = ac.gph ? parseFloat(((totalEteMin / 60) * ac.gph).toFixed(1)) : null;
+                var reserveGal   = ac.gph ? parseFloat((0.5 * ac.gph).toFixed(1)) : null;   // 30 min FAR 91.151
+                var taxiGal      = ac.gph ? parseFloat(((12/60) * ac.gph).toFixed(1)) : null; // 12-min taxi
+                var totalReqGal  = (tripFuelGal != null) ? parseFloat((tripFuelGal + reserveGal + taxiGal).toFixed(1)) : null;
+                var fuelRemainingGal = (ac.fuel && totalReqGal != null) ? parseFloat((ac.fuel - totalReqGal).toFixed(1)) : null;
+                var totalEnduranceMin = ac.gph && ac.fuel ? Math.round((ac.fuel / ac.gph) * 60) : null;
+                var remainingEnduranceMin = (totalEnduranceMin && totalEteMin) ? totalEnduranceMin - totalEteMin - 42 : null; // subtract ETE + 30+12 min
+
+                // ── Density altitude at dep and arr airports ──
+                var depAptData = getAirport(trip.dep);
+                var arrAptData = getAirport(trip.arr);
+                var depWxEntry = effectiveWxData ? effectiveWxData.find(e => e.icao === trip.dep) : null;
+                var arrWxEntry = effectiveWxData ? effectiveWxData.find(e => e.icao === trip.arr) : null;
+                var depM = depWxEntry ? depWxEntry.effectiveWx : null;
+                var arrM = arrWxEntry ? arrWxEntry.effectiveWx : null;
+                var depTempDp = parseTempDp(depM ? depM.temp : null);
+                var arrTempDp = parseTempDp(arrM ? arrM.temp : null);
+                var depAltInHg = parseAltInHg(depM ? depM.alt : null);
+                var arrAltInHg = parseAltInHg(arrM ? arrM.alt : null);
+                var depElev = depAptData ? (depAptData.elev || 0) : 0;
+                var arrElev = arrAptData ? (arrAptData.elev || 0) : 0;
+                var depDA = (depTempDp.t != null) ? calculateDensityAltitude(depTempDp.t, depAltInHg || 29.92, depElev) : depElev;
+                var arrDA = (arrTempDp.t != null) ? calculateDensityAltitude(arrTempDp.t, arrAltInHg || 29.92, arrElev) : arrElev;
+                // Adjust TO/LDG distances for density altitude (10% per 1000 ft DA above SL)
+                var depFactor = ac.toRoll ? Math.max(1, 1 + (depDA / 1000) * 0.1) : null;
+                var arrFactor = ac.ldgRoll ? Math.max(1, 1 + (arrDA / 1000) * 0.05) : null;
+                var adjToRoll   = depFactor && ac.toRoll   ? Math.round(ac.toRoll   * depFactor) : null;
+                var adjToOver50 = depFactor && ac.toOver50 ? Math.round(ac.toOver50 * depFactor) : null;
+                var adjLdgRoll   = arrFactor && ac.ldgRoll   ? Math.round(ac.ldgRoll   * arrFactor) : null;
+                var adjLdgOver50 = arrFactor && ac.ldgOver50 ? Math.round(ac.ldgOver50 * arrFactor) : null;
+
+                // ── Runway data ──
+                function getMaxRwy(icao) { return AIRPORT_MAX_RWY[icao] || null; }
+                var depMaxRwy = getMaxRwy(trip.dep);
+                var arrMaxRwy = getMaxRwy(trip.arr);
+
                 // Dense styles — tighter than the app UI to match ForeFlight print density
-                var sh  = { fontSize: 12, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '1px', color: '#0b57d0', borderBottom: '2px solid #0b57d0', paddingBottom: 4, marginBottom: 8, marginTop: 0 };
+                var sh  = { fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '1px', color: '#0b57d0', borderBottom: '2px solid #0b57d0', paddingBottom: 4, marginBottom: 8, marginTop: 0 };
                 var shR = { ...sh, color: '#b71c1c', borderBottomColor: '#b71c1c' };
-                var cell   = { fontSize: 12, padding: '5px 8px', borderBottom: '1px solid #e8e8e8', verticalAlign: 'top' };
-                var cellHd = { ...cell, fontSize: 12, fontWeight: 700, color: '#444', background: '#f0f4f8', textTransform: 'uppercase', letterSpacing: '0.5px', padding: '4px 8px' };
+                var shY = { ...sh, color: '#b45309', borderBottomColor: '#b45309' };
+                var shG = { ...sh, color: '#1b5e20', borderBottomColor: '#1b5e20' };
+                var cell   = { fontSize: 11, padding: '4px 7px', borderBottom: '1px solid #e8e8e8', verticalAlign: 'top' };
+                var cellHd = { ...cell, fontSize: 10, fontWeight: 700, color: '#444', background: '#f0f4f8', textTransform: 'uppercase', letterSpacing: '0.5px', padding: '4px 7px' };
                 var mono   = { fontFamily: '"Roboto Mono",monospace' };
-                // Per-airport weather card — break-inside:avoid is applied via className="bs"
-                // (the print CSS in handlePrint maps .bs → break-inside:avoid)
                 function catChip(cat) {
                     if (!cat || cat === '—') return <span style={{color:'#555'}}>—</span>;
-                    return <span style={{background:catBg(cat),color:catClr(cat),borderRadius:3,padding:'1px 6px',fontSize:12,fontWeight:700,whiteSpace:'nowrap',...mono}}>{cat}</span>;
+                    return <span style={{background:catBg(cat),color:catClr(cat),borderRadius:3,padding:'1px 5px',fontSize:10,fontWeight:700,whiteSpace:'nowrap',...mono}}>{cat}</span>;
                 }
-                // Compute NavLog rows — leg distance, cumulative distance, leg ETE, ETA
+                // NavLog rows — leg distance, cumulative, ETE, ETA, full wx fields
                 var cumNm = 0;
                 var navRows = allRoutePts.map((icao, idx) => {
                     var apt = getAirport(icao);
@@ -4606,7 +4697,6 @@
                     var legMin = legNm > 0 ? Math.round(legNm / ac.kts * 60) : 0;
                     var eta = null;
                     if (tripTargetUtc && idx > 0) {
-                        // cumulative ETE from departure
                         var cumMin = allRoutePts.slice(0, idx+1).reduce((sum, c, i) => {
                             if (i === 0) return sum;
                             var a1 = getAirport(allRoutePts[i-1]), a2 = getAirport(c);
@@ -4618,7 +4708,10 @@
                     var wx = effectiveWxData ? effectiveWxData.find(e => e.icao === icao) : null;
                     var wr = windRows.find(r => r.icao === icao);
                     var windStr = wr && wr.w ? (wr.w.lv ? 'LT&VRB' : `${String(wr.w.wdir).padStart(3,'0')}/${wr.w.wspd}`) : '—';
-                    return { icao, apt, legNm, cumNm: cumNm, legMin, eta, wx, windStr };
+                    var m = wx ? wx.effectiveWx : null;
+                    var tdp = parseTempDp(m ? m.temp : null);
+                    var altInHg = parseAltInHg(m ? m.alt : null);
+                    return { icao, apt, legNm, cumNm, legMin, eta, wx, windStr, m, tdp, altInHg };
                 });
 
                 // Opens the printable brief in a standalone tab so that
@@ -4678,160 +4771,417 @@
                         </div>
 
                         {/* ══════════════════════════════════════════════════
-                             PRINTABLE REGION — every section fully expanded,
-                             no tabs, no accordions, no pagination.
+                             PRINTABLE REGION — FAR 91.103 preflight brief,
+                             every section fully expanded for print/PDF.
                             ══════════════════════════════════════════════════ */}
                         <div id="export-printable" style={{ background:'#fff', color:'#1a1a1a', fontFamily:'Roboto, Arial, sans-serif', border:'1px solid #ddd', borderRadius:10, overflow:'hidden', boxShadow:'0 4px 24px rgba(0,0,0,0.08)' }}>
 
                             {/* ══ 1. HEADER ══════════════════════════════════ */}
                             <div className="brief-header bs" style={{ background:'linear-gradient(135deg,#0b57d0 0%,#1a73e8 100%)', color:'#fff', padding:'14px 20px' }}>
                                 <div style={{ display:'flex', alignItems:'flex-start', justifyContent:'space-between', gap:12 }}>
-                                    {/* Left — branding + route */}
                                     <div>
-                                        <div style={{ fontSize:12, fontWeight:700, letterSpacing:'2px', textTransform:'uppercase', opacity:0.7 }}>FlightScore · Official Use for Reference Only</div>
-                                        <div style={{ fontSize:26, fontWeight:900, letterSpacing:'0.5px', lineHeight:1, ...mono, marginTop:2 }}>
+                                        <div style={{ fontSize:10, fontWeight:700, letterSpacing:'2px', textTransform:'uppercase', opacity:0.7 }}>SkyView · Preflight Brief · FAR 91.103 Compliant · For Reference Only</div>
+                                        <div style={{ fontSize:24, fontWeight:900, letterSpacing:'0.5px', lineHeight:1, ...mono, marginTop:2 }}>
                                             {allRoutePts.join(' → ')}
                                         </div>
-                                        {trip.name && <div style={{ fontSize:12, opacity:0.8, marginTop:2 }}>{trip.name}</div>}
+                                        {trip.name && <div style={{ fontSize:11, opacity:0.8, marginTop:2 }}>{trip.name}</div>}
                                     </div>
-                                    {/* Right — score + verdict */}
                                     {detailedScore && verd && (
                                         <div style={{ display:'flex', alignItems:'center', gap:10, flexShrink:0 }}>
                                             <div style={{ textAlign:'right' }}>
-                                                <div style={{ fontSize:38, fontWeight:900, lineHeight:1, ...mono }}>{combinedScore ?? detailedScore.total}</div>
-                                                <div style={{ fontSize:12, fontWeight:700, opacity:0.65, letterSpacing:'1.5px', textTransform:'uppercase' }}>/ 100</div>
+                                                <div style={{ fontSize:34, fontWeight:900, lineHeight:1, ...mono }}>{combinedScore ?? detailedScore.total}</div>
+                                                <div style={{ fontSize:10, fontWeight:700, opacity:0.65, letterSpacing:'1.5px', textTransform:'uppercase' }}>/ 100</div>
                                             </div>
-                                            <div style={{ background:vBg, color:vClr, borderRadius:8, padding:'6px 14px', textAlign:'center', minWidth:72 }}>
-                                                <MdIcon name={verd.verdictIcon} style={{ fontSize:20, display:'block', margin:'0 auto 2px' }} />
-                                                <div style={{ fontSize:13, fontWeight:900, letterSpacing:'1px' }}>{verd.verdict}</div>
+                                            <div style={{ background:vBg, color:vClr, borderRadius:8, padding:'6px 12px', textAlign:'center', minWidth:68 }}>
+                                                <MdIcon name={verd.verdictIcon} style={{ fontSize:18, display:'block', margin:'0 auto 2px' }} />
+                                                <div style={{ fontSize:12, fontWeight:900, letterSpacing:'1px' }}>{verd.verdict}</div>
                                             </div>
                                         </div>
                                     )}
                                 </div>
-
-                                {/* Trip meta — dense grid */}
-                                <div style={{ display:'grid', gridTemplateColumns:'repeat(6,auto)', gap:'0 20px', marginTop:10, paddingTop:10, borderTop:'1px solid rgba(255,255,255,0.25)', flexWrap:'wrap' }}>
+                                <div style={{ display:'grid', gridTemplateColumns:'repeat(7,auto)', gap:'0 18px', marginTop:10, paddingTop:10, borderTop:'1px solid rgba(255,255,255,0.25)' }}>
                                     {[
-                                        ['Aircraft',   ac.name],
-                                        ['Date',       trip.date],
-                                        ['Departs',    `${trip.time} · ${depUtcStr}`],
-                                        ['ETE',        eteStr],
-                                        ['Distance',   `${routeDist} NM`],
-                                        ['Cruise',     `${(altFt/1000).toFixed(1)}k ft`],
+                                        ['Aircraft',  ac.name],
+                                        ['Category',  ac.cat],
+                                        ['Date',      trip.date],
+                                        ['Departs',   `${trip.time} · ${depUtcStr}`],
+                                        ['ETE',       eteStr],
+                                        ['Distance',  `${routeDist} NM`],
+                                        ['Cruise',    `${(altFt/1000).toFixed(1)}k ft MSL`],
                                     ].map(([lbl, val]) => (
                                         <div key={lbl}>
-                                            <div style={{ fontSize:12, fontWeight:700, textTransform:'uppercase', letterSpacing:'0.5px', opacity:0.65 }}>{lbl}</div>
-                                            <div style={{ fontSize:12, fontWeight:600, ...mono, marginTop:1 }}>{val}</div>
+                                            <div style={{ fontSize:10, fontWeight:700, textTransform:'uppercase', letterSpacing:'0.5px', opacity:0.65 }}>{lbl}</div>
+                                            <div style={{ fontSize:11, fontWeight:600, ...mono, marginTop:1 }}>{val}</div>
                                         </div>
                                     ))}
                                 </div>
                             </div>
 
-                            {/* ══ 2. ACTIVE ADVISORIES (if any) ══════════════ */}
-                            {advisoryCount > 0 && (
-                                <div className="bs" style={{ background:'#fff3f3', borderBottom:'2px solid #b71c1c', padding:'10px 20px' }}>
-                                    <div style={{ ...shR, marginBottom:6 }}>Active Advisories ({advisoryCount})</div>
+                            {/* ══ 2. ADVERSE CONDITIONS — mandatory FAR 91.103 ══
+                                 Always shown. "NONE ACTIVE" when sky is clear.  */}
+                            <div className="bs" style={{ background: advisoryCount > 0 ? '#fff3f3' : '#f0fdf4', borderBottom: `2px solid ${advisoryCount > 0 ? '#b71c1c' : '#1b5e20'}`, padding:'10px 20px' }}>
+                                <div style={{ ...( advisoryCount > 0 ? shR : shG ), marginBottom: advisoryCount > 0 ? 8 : 0 }}>
+                                    {advisoryCount > 0
+                                        ? `⚠ Adverse Conditions — ${advisoryCount} Active (FAR 91.103)`
+                                        : '✓ Adverse Conditions — None Active (FAR 91.103)'}
+                                </div>
+                                {advisoryCount === 0 && (
+                                    <div style={{ fontSize:11, color:'#1b5e20', lineHeight:1.5 }}>
+                                        No active SIGMETs, AIRMETs, or Center Weather Advisories found along the route at time of briefing ({nowUtcStr}).
+                                        Verify at <span style={{...mono}}>aviationweather.gov/sigmet</span> within 1 hour of departure.
+                                    </div>
+                                )}
+                                {advisoryCount > 0 && (
                                     <div style={{ display:'flex', flexDirection:'column', gap:5 }}>
                                         {sigmets.map((s, i) => (
-                                            <div key={i} style={{ display:'flex', gap:8, fontSize:12, color:'#b71c1c', lineHeight:1.45 }}>
-                                                <span style={{ fontWeight:700, flexShrink:0 }}>SIGMET</span>
-                                                <span style={{ ...mono, wordBreak:'break-all' }}>{s.rawAirSigmet || s.airSigmetId || `SIGMET ${i+1} active`}</span>
-                                            </div>
-                                        ))}
-                                        {gairmets.map((g, i) => (
-                                            <div key={i} style={{ display:'flex', gap:8, fontSize:12, color:'#b45309', lineHeight:1.45 }}>
-                                                <span style={{ fontWeight:700, flexShrink:0 }}>G‑AIRMET</span>
-                                                <span style={{ ...mono, wordBreak:'break-all' }}>{g.hazard || g.severity || `G-AIRMET ${i+1} — review for IFR, turbulence, or icing`}</span>
+                                            <div key={i} style={{ display:'flex', gap:8, fontSize:11, color:'#b71c1c', lineHeight:1.45 }}>
+                                                <span style={{ fontWeight:800, flexShrink:0, minWidth:60 }}>SIGMET</span>
+                                                <span style={{ ...mono, wordBreak:'break-all' }}>{s.rawAirSigmet || s.airSigmetId || `SIGMET ${i+1} — convective/severe weather active`}</span>
                                             </div>
                                         ))}
                                         {cwas.map((c, i) => (
-                                            <div key={i} style={{ display:'flex', gap:8, fontSize:12, color:'#b71c1c', lineHeight:1.45 }}>
-                                                <span style={{ fontWeight:700, flexShrink:0 }}>CWA</span>
-                                                <span style={{ ...mono, wordBreak:'break-all' }}>{c.cwaText || c.cwaSeries || `CWA ${i+1} — check for convective activity`}</span>
+                                            <div key={i} style={{ display:'flex', gap:8, fontSize:11, color:'#b71c1c', lineHeight:1.45 }}>
+                                                <span style={{ fontWeight:800, flexShrink:0, minWidth:60 }}>CWA</span>
+                                                <span style={{ ...mono, wordBreak:'break-all' }}>{c.cwaText || c.cwaSeries || `CWA ${i+1} — center weather advisory active`}</span>
+                                            </div>
+                                        ))}
+                                        {gairmets.filter(g => (g.hazard||'').includes('ICE') || (g.hazardType||'').includes('ICE')).map((g, i) => (
+                                            <div key={'ice'+i} style={{ display:'flex', gap:8, fontSize:11, color:'#1565c0', lineHeight:1.45 }}>
+                                                <span style={{ fontWeight:800, flexShrink:0, minWidth:60 }}>AIRMET S</span>
+                                                <span style={{ ...mono, wordBreak:'break-all' }}>{g.hazard || 'Icing — Sierra AIRMET active along route'}</span>
+                                            </div>
+                                        ))}
+                                        {gairmets.filter(g => (g.hazard||'').includes('TURB') || (g.hazardType||'').includes('TURB')).map((g, i) => (
+                                            <div key={'turb'+i} style={{ display:'flex', gap:8, fontSize:11, color:'#b45309', lineHeight:1.45 }}>
+                                                <span style={{ fontWeight:800, flexShrink:0, minWidth:60 }}>AIRMET T</span>
+                                                <span style={{ ...mono, wordBreak:'break-all' }}>{g.hazard || 'Turbulence — Tango AIRMET active along route'}</span>
+                                            </div>
+                                        ))}
+                                        {gairmets.filter(g => !(g.hazard||'').includes('ICE') && !(g.hazard||'').includes('TURB')).map((g, i) => (
+                                            <div key={'ga'+i} style={{ display:'flex', gap:8, fontSize:11, color:'#b45309', lineHeight:1.45 }}>
+                                                <span style={{ fontWeight:800, flexShrink:0, minWidth:60 }}>G-AIRMET</span>
+                                                <span style={{ ...mono, wordBreak:'break-all' }}>{g.hazard || g.severity || `G-AIRMET ${i+1} — review for IFR/turbulence/icing`}</span>
                                             </div>
                                         ))}
                                     </div>
-                                </div>
-                            )}
+                                )}
+                            </div>
+
+                            {/* ══ 3. NOTAMs & TFRs ══════════════════════════ */}
+                            <div className="bs" style={{ background:'#fffbf0', borderBottom:'2px solid #b45309', padding:'10px 20px' }}>
+                                <div style={{ ...shY, marginBottom:6 }}>NOTAMs &amp; TFRs — Departure / En Route / Destination</div>
+                                {!notamsLoaded ? (
+                                    <div style={{ fontSize:11, color:'#b45309', fontStyle:'italic' }}>Loading NOTAMs… view in the NOTAMs tab for live data.</div>
+                                ) : (
+                                    allRoutePts.map(icao => {
+                                        var aNotams = notamsByAirport[icao] || [];
+                                        var apt = getAirport(icao);
+                                        var role = icao === trip.dep ? 'Departure' : icao === trip.arr ? 'Destination' : 'En Route';
+                                        var tfrs  = aNotams.filter(n => n.type === 'TFR' || n.type === 'SECURITY');
+                                        var rwyNtm = aNotams.filter(n => n.type === 'RWY' || n.type === 'TWY');
+                                        var other  = aNotams.filter(n => n.type !== 'TFR' && n.type !== 'SECURITY' && n.type !== 'RWY' && n.type !== 'TWY');
+                                        return (
+                                            <div key={icao} style={{ marginBottom:8 }}>
+                                                <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:3 }}>
+                                                    <span style={{ ...mono, fontWeight:800, fontSize:12, color:'#0b57d0' }}>{icao}</span>
+                                                    <span style={{ fontSize:10, color:'#555' }}>{apt ? apt.name : ''} · {role}</span>
+                                                    {aNotams.length === 0 && <span style={{ fontSize:10, color:'#1b5e20', fontWeight:600 }}>No active NOTAMs</span>}
+                                                </div>
+                                                {tfrs.map((n, i) => (
+                                                    <div key={'tfr'+i} style={{ display:'flex', gap:6, fontSize:11, color:'#b71c1c', lineHeight:1.4, paddingLeft:8, marginBottom:2 }}>
+                                                        <span style={{ fontWeight:800, flexShrink:0, minWidth:42 }}>TFR</span>
+                                                        <span style={{ ...mono, wordBreak:'break-word' }}>{n.text.substring(0,220)}{n.text.length>220?'…':''}</span>
+                                                    </div>
+                                                ))}
+                                                {rwyNtm.map((n, i) => (
+                                                    <div key={'rwy'+i} style={{ display:'flex', gap:6, fontSize:11, color:'#b45309', lineHeight:1.4, paddingLeft:8, marginBottom:2 }}>
+                                                        <span style={{ fontWeight:800, flexShrink:0, minWidth:42 }}>{n.type}</span>
+                                                        <span style={{ ...mono, wordBreak:'break-word' }}>{n.text.substring(0,200)}{n.text.length>200?'…':''}</span>
+                                                    </div>
+                                                ))}
+                                                {other.slice(0,3).map((n, i) => (
+                                                    <div key={'ot'+i} style={{ display:'flex', gap:6, fontSize:11, color:'#444', lineHeight:1.4, paddingLeft:8, marginBottom:2 }}>
+                                                        <span style={{ fontWeight:700, flexShrink:0, minWidth:42, color:'#555' }}>{n.type}</span>
+                                                        <span style={{ ...mono, wordBreak:'break-word' }}>{n.text.substring(0,180)}{n.text.length>180?'…':''}</span>
+                                                    </div>
+                                                ))}
+                                                {other.length > 3 && <div style={{ fontSize:10, color:'#666', paddingLeft:8 }}>+{other.length-3} more NOTAMs — see NOTAMs tab for full list.</div>}
+                                            </div>
+                                        );
+                                    })
+                                )}
+                            </div>
 
                             {/* ══ Body ════════════════════════════════════════ */}
-                            <div style={{ padding:'14px 20px', display:'flex', flexDirection:'column', gap:18 }}>
+                            <div style={{ padding:'12px 20px', display:'flex', flexDirection:'column', gap:16 }}>
 
-                                {/* ── 3. NAVLOG ─────────────────────────────── */}
+                                {/* ── 4. NAVLOG ─────────────────────────────── */}
                                 <div className="bs">
-                                    <div style={sh}>NavLog — {allRoutePts.join(' → ')}</div>
+                                    <div style={sh}>Navigation Log — {allRoutePts.join(' → ')}</div>
                                     <table style={{ width:'100%', borderCollapse:'collapse' }}>
                                         <thead>
                                             <tr>
-                                                {['ICAO','Airport','Role','Leg NM','Cum NM','ETE Leg','ETA (UTC)','Winds @ '+Math.round(altFt/1000)+'K','Cat','Wind','Vis','Sky'].map(h =>
+                                                {['ICAO','Airport / Role','Leg NM','Cum NM','ETE','ETA (UTC)',`Winds @${Math.round(altFt/1000)}K`,'Cat','Wind (Sfc)','Vis','Sky','Temp/DP','Altim'].map(h =>
                                                     <th key={h} style={{ ...cellHd, textAlign:'left' }}>{h}</th>
                                                 )}
                                             </tr>
                                         </thead>
                                         <tbody>
                                             {navRows.map((row, idx) => {
-                                                var m  = row.wx ? row.wx.effectiveWx : null;
-                                                var cat = m ? m.cat : null;
-                                                var role = idx===0 ? 'Depart' : idx===navRows.length-1 ? 'Dest' : `WP${idx}`;
+                                                var cat = row.m ? row.m.cat : null;
+                                                var role = idx===0 ? 'DEP' : idx===navRows.length-1 ? 'DEST' : `WP${idx}`;
                                                 var legEte = row.legMin > 0 ? `${Math.floor(row.legMin/60)}:${String(row.legMin%60).padStart(2,'0')}` : '—';
+                                                var tempDisplay = row.m && row.m.temp ? row.m.temp : '—';
+                                                var altDisplay  = row.m && row.m.alt  ? row.m.alt  : '—';
                                                 return (
                                                     <tr key={row.icao} style={{ background: idx%2===0?'#fff':'#f8faff' }}>
-                                                        <td style={{ ...cell, ...mono, fontWeight:800, fontSize:13, color:'#0b57d0' }}>{row.icao}</td>
-                                                        <td style={{ ...cell, fontSize:12, maxWidth:120 }}>{row.apt ? row.apt.name : '—'}</td>
-                                                        <td style={{ ...cell, fontSize:12, color:'#555' }}>{role}</td>
+                                                        <td style={{ ...cell, ...mono, fontWeight:800, color:'#0b57d0' }}>{row.icao}</td>
+                                                        <td style={{ ...cell, maxWidth:110 }}>
+                                                            <span style={{ fontSize:10, color:'#555', fontWeight:700 }}>[{role}]</span>
+                                                            <span style={{ fontSize:10, display:'block', color:'#333' }}>{row.apt ? row.apt.name : '—'}</span>
+                                                        </td>
                                                         <td style={{ ...cell, ...mono, textAlign:'right' }}>{row.legNm > 0 ? row.legNm : '—'}</td>
                                                         <td style={{ ...cell, ...mono, textAlign:'right' }}>{row.cumNm || '—'}</td>
                                                         <td style={{ ...cell, ...mono, textAlign:'right' }}>{legEte}</td>
                                                         <td style={{ ...cell, ...mono }}>{row.eta || (idx===0 ? depUtcStr : '—')}</td>
-                                                        <td style={{ ...cell, ...mono, fontSize:12 }}>{row.windStr}</td>
+                                                        <td style={{ ...cell, ...mono }}>{row.windStr}</td>
                                                         <td style={{ ...cell }}>{catChip(cat)}</td>
-                                                        <td style={{ ...cell, ...mono, fontSize:12 }}>{m ? m.wind : '—'}</td>
-                                                        <td style={{ ...cell, ...mono, fontSize:12 }}>{m ? m.vis  : '—'}</td>
-                                                        <td style={{ ...cell, ...mono, fontSize:12 }}>{m ? m.sky  : '—'}</td>
+                                                        <td style={{ ...cell, ...mono }}>{row.m ? row.m.wind : '—'}</td>
+                                                        <td style={{ ...cell, ...mono }}>{row.m ? row.m.vis  : '—'}</td>
+                                                        <td style={{ ...cell, ...mono }}>{row.m ? row.m.sky  : '—'}</td>
+                                                        <td style={{ ...cell, ...mono }}>{tempDisplay}</td>
+                                                        <td style={{ ...cell, ...mono }}>{altDisplay}</td>
                                                     </tr>
                                                 );
                                             })}
                                         </tbody>
                                     </table>
-                                    <div style={{ fontSize:12, color:'#444', marginTop:5 }}>
-                                        {ac.name} · {ac.kts} kts · Cruise {(altFt/1000).toFixed(1)}k ft · Total {routeDist} NM · ETE {eteStr}
+                                    <div style={{ fontSize:10, color:'#444', marginTop:4 }}>
+                                        {ac.name} · {ac.kts} kts TAS · Cruise {(altFt/1000).toFixed(1)}k ft MSL · {routeDist} NM total · ETE {eteStr} · Winds from FD forecast
                                     </div>
                                 </div>
 
-                                {/* ── 4. SCORE BREAKDOWN ──────────────────────── */}
-                                {detailedScore && (
-                                    <div className="bs">
-                                        <div style={sh}>Composite Safety Score — {combinedScore ?? detailedScore.total} / 100</div>
-                                        <div style={{ display:'flex', flexDirection:'column', gap:7 }}>
-                                            {detailedScore.breakdown.map((b, i) => (
-                                                <div key={i} style={{ display:'grid', gridTemplateColumns:'130px 1fr 52px 120px', alignItems:'center', gap:8 }}>
-                                                    <span style={{ fontSize:12, fontWeight:600, color:'#333' }}>{b.label}</span>
-                                                    <div style={{ height:8, background:'#e8e8e8', borderRadius:4, overflow:'hidden' }}>
-                                                        <div style={{ height:'100%', width:(b.score/b.max*100)+'%', background:scoreClr(b.score/b.max), borderRadius:4 }} />
-                                                    </div>
-                                                    <span style={{ ...mono, fontSize:12, fontWeight:700, textAlign:'right', color:scoreClr(b.score/b.max) }}>{b.score}/{b.max}</span>
-                                                    <span style={{ fontSize:12, color:'#444', textAlign:'right' }}>{b.detail}</span>
-                                                </div>
-                                            ))}
+                                {/* ── 5. NWKRAFT FLIGHT PLANNING ──────────────
+                                     FAR 91.103 — pilot must be familiar with:
+                                     N-otams · W-eather · K-nown ATC delays ·
+                                     R-unway lengths · A-lternates · F-uel ·
+                                     T-akeoff/Landing performance            */}
+                                <div className="bs">
+                                    <div style={sh}>NWKRAFT — Flight Planning Requirements (FAR 91.103)</div>
+                                    <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'0 24px' }}>
+
+                                        {/* Left column: Fuel + Alternates */}
+                                        <div>
+                                            {/* F — Fuel */}
+                                            <div style={{ fontSize:10, fontWeight:700, textTransform:'uppercase', letterSpacing:'0.8px', color:'#0b57d0', marginBottom:4 }}>F — Fuel Requirements (FAR 91.151)</div>
+                                            {ac.gph ? (
+                                                <table style={{ width:'100%', borderCollapse:'collapse', marginBottom:10 }}>
+                                                    {[
+                                                        ['Aircraft',           ac.name],
+                                                        ['Usable fuel',        `${ac.fuel} gal`],
+                                                        ['Burn rate (cruise)', `${ac.gph} gph`],
+                                                        ['Trip fuel (ETE '+eteStr+')', tripFuelGal!=null ? `${tripFuelGal} gal` : '—'],
+                                                        ['30-min reserve (FAR 91.151)', reserveGal!=null ? `${reserveGal} gal` : '—'],
+                                                        ['Taxi allowance (12 min)',     taxiGal!=null ? `${taxiGal} gal` : '—'],
+                                                        ['TOTAL REQUIRED',     totalReqGal!=null ? `${totalReqGal} gal` : '—'],
+                                                        ['Fuel remaining at dest', fuelRemainingGal!=null ? `${fuelRemainingGal} gal (${remainingEnduranceMin!=null ? remainingEnduranceMin+'min' : '?'} reserve)` : '—'],
+                                                        ['Total endurance',    totalEnduranceMin!=null ? `${Math.floor(totalEnduranceMin/60)}h ${totalEnduranceMin%60}m` : '—'],
+                                                    ].map(([lbl,val],i) => (
+                                                        <tr key={i} style={{ background: lbl.startsWith('TOTAL') ? '#e8f5e9' : (i%2===0?'#fff':'#f8faff') }}>
+                                                            <td style={{ ...cell, fontWeight: lbl.startsWith('TOTAL') ? 700 : 400, color: lbl.startsWith('TOTAL') ? '#1b5e20' : '#333', width:'55%' }}>{lbl}</td>
+                                                            <td style={{ ...cell, ...mono, fontWeight: lbl.startsWith('TOTAL') ? 700 : 600, color: lbl.startsWith('TOTAL') ? '#1b5e20' : '#222', textAlign:'right' }}>{val}</td>
+                                                        </tr>
+                                                    ))}
+                                                </table>
+                                            ) : <div style={{ fontSize:11, color:'#555', marginBottom:10 }}>No performance data — reference aircraft POH.</div>}
+
+                                            {/* A — Alternates */}
+                                            <div style={{ fontSize:10, fontWeight:700, textTransform:'uppercase', letterSpacing:'0.8px', color:'#0b57d0', marginBottom:4 }}>A — Alternate Airport Requirements</div>
+                                            <div style={{ fontSize:11, color:'#333', lineHeight:1.6, marginBottom:4 }}>
+                                                {(() => {
+                                                    var arrWxM = arrWxEntry ? arrWxEntry.effectiveWx : null;
+                                                    var destCat = arrWxM ? arrWxM.cat : null;
+                                                    var needAlt = destCat === 'IFR' || destCat === 'LIFR';
+                                                    return needAlt
+                                                        ? <span style={{ color:'#b71c1c', fontWeight:600 }}>⚠ Destination category {destCat} — alternate strongly recommended. For IFR: FAR 91.169 requires alternate when ceiling &lt;2,000 ft or vis &lt;3 SM within ±1h of ETA.</span>
+                                                        : <span>VFR: Alternates not legally required (FAR 91.151). However, consider alternates if destination weather deteriorates below VFR minimums (ceiling &lt;1,000 ft AGL, vis &lt;3 SM). Nearest airports: check <span style={{...mono}}>skyvector.com</span> or <span style={{...mono}}>airnav.com</span> for nearest suitable airports.</span>;
+                                                })()}
+                                            </div>
+
+                                            {/* K — Known ATC delays */}
+                                            <div style={{ fontSize:10, fontWeight:700, textTransform:'uppercase', letterSpacing:'0.8px', color:'#0b57d0', marginBottom:4, marginTop:6 }}>K — Known ATC Delays</div>
+                                            <div style={{ fontSize:11, color:'#444', lineHeight:1.5 }}>
+                                                Check <span style={{...mono}}>fly.faa.gov/ois</span> (NASSTATUS) for real-time Ground Delay Programs, Ground Stops, and en route delays before departure.
+                                            </div>
                                         </div>
-                                        {verd && <div style={{ marginTop:8, padding:'8px 12px', background:vBg, borderRadius:6, border:`1px solid ${vClr}33`, fontSize:12, color:vClr, lineHeight:1.5 }}>{verd.verdictDesc}</div>}
+
+                                        {/* Right column: Runway + Performance */}
+                                        <div>
+                                            {/* R — Runway Lengths */}
+                                            <div style={{ fontSize:10, fontWeight:700, textTransform:'uppercase', letterSpacing:'0.8px', color:'#0b57d0', marginBottom:4 }}>R — Runway Analysis</div>
+                                            <table style={{ width:'100%', borderCollapse:'collapse', marginBottom:10 }}>
+                                                <thead>
+                                                    <tr>
+                                                        {['Airport','Role','Runways','Longest'].map(h => <th key={h} style={{...cellHd, textAlign:'left'}}>{h}</th>)}
+                                                    </tr>
+                                                </thead>
+                                                <tbody>
+                                                    {[{icao:trip.dep, role:'Departure'},{icao:trip.arr, role:'Destination'}].map(({icao,role},i) => {
+                                                        var a = getAirport(icao);
+                                                        var maxR = getMaxRwy(icao);
+                                                        return (
+                                                            <tr key={icao} style={{ background:i%2===0?'#fff':'#f8faff' }}>
+                                                                <td style={{ ...cell, ...mono, fontWeight:700, color:'#0b57d0' }}>{icao}</td>
+                                                                <td style={{ ...cell }}>{role}</td>
+                                                                <td style={{ ...cell, ...mono, fontSize:10 }}>{a && a.rwy ? a.rwy.join(', ') : '—'}</td>
+                                                                <td style={{ ...cell, ...mono, fontWeight:600, color: maxR ? '#1b5e20' : '#555' }}>
+                                                                    {maxR ? `${maxR.toLocaleString()} ft` : 'See A/FD'}
+                                                                </td>
+                                                            </tr>
+                                                        );
+                                                    })}
+                                                </tbody>
+                                            </table>
+
+                                            {/* T — Takeoff & Landing Performance */}
+                                            <div style={{ fontSize:10, fontWeight:700, textTransform:'uppercase', letterSpacing:'0.8px', color:'#0b57d0', marginBottom:4 }}>T — Takeoff &amp; Landing Performance</div>
+                                            {ac.toRoll ? (
+                                                <>
+                                                <table style={{ width:'100%', borderCollapse:'collapse', marginBottom:6 }}>
+                                                    <thead>
+                                                        <tr>
+                                                            {['Phase','Airport','DA (ft)','Ground Roll','Over 50 ft'].map(h => <th key={h} style={{...cellHd, textAlign:'left'}}>{h}</th>)}
+                                                        </tr>
+                                                    </thead>
+                                                    <tbody>
+                                                        <tr style={{ background:'#fff' }}>
+                                                            <td style={{ ...cell, fontWeight:600 }}>Takeoff</td>
+                                                            <td style={{ ...cell, ...mono, fontWeight:700, color:'#0b57d0' }}>{trip.dep}</td>
+                                                            <td style={{ ...cell, ...mono }}>{depDA.toLocaleString()}</td>
+                                                            <td style={{ ...cell, ...mono, color: adjToRoll > (depMaxRwy||99999) ? '#b71c1c' : '#222', fontWeight:600 }}>{adjToRoll ? adjToRoll.toLocaleString()+' ft' : '—'}</td>
+                                                            <td style={{ ...cell, ...mono, color: adjToOver50 > (depMaxRwy||99999) ? '#b71c1c' : '#222', fontWeight:600 }}>{adjToOver50 ? adjToOver50.toLocaleString()+' ft' : '—'}</td>
+                                                        </tr>
+                                                        <tr style={{ background:'#f8faff' }}>
+                                                            <td style={{ ...cell, fontWeight:600 }}>Landing</td>
+                                                            <td style={{ ...cell, ...mono, fontWeight:700, color:'#0b57d0' }}>{trip.arr}</td>
+                                                            <td style={{ ...cell, ...mono }}>{arrDA.toLocaleString()}</td>
+                                                            <td style={{ ...cell, ...mono, color: adjLdgRoll > (arrMaxRwy||99999) ? '#b71c1c' : '#222', fontWeight:600 }}>{adjLdgRoll ? adjLdgRoll.toLocaleString()+' ft' : '—'}</td>
+                                                            <td style={{ ...cell, ...mono, color: adjLdgOver50 > (arrMaxRwy||99999) ? '#b71c1c' : '#222', fontWeight:600 }}>{adjLdgOver50 ? adjLdgOver50.toLocaleString()+' ft' : '—'}</td>
+                                                        </tr>
+                                                    </tbody>
+                                                </table>
+                                                <div style={{ fontSize:10, color:'#666', lineHeight:1.5 }}>
+                                                    DA adjusted at 10% per 1,000 ft (TO) / 5% per 1,000 ft (LDG) above SL. Standard conditions; actual values per POH charts.
+                                                    {(adjToRoll && depMaxRwy && adjToRoll > depMaxRwy) || (adjLdgRoll && arrMaxRwy && adjLdgRoll > arrMaxRwy)
+                                                        ? <span style={{ color:'#b71c1c', fontWeight:700 }}> ⚠ Estimated distance exceeds available runway — verify with POH!</span>
+                                                        : ''}
+                                                </div>
+                                                </>
+                                            ) : <div style={{ fontSize:11, color:'#555' }}>Reference aircraft POH for performance data.</div>}
+                                        </div>
+                                    </div>
+                                </div>
+
+                                {/* ── 6. WINDS & TEMPERATURES ALOFT ───────────
+                                     Multi-altitude FD forecast per route station */}
+                                {windsAloft.length > 0 && (
+                                    <div className="bs">
+                                        <div style={sh}>Winds &amp; Temperatures Aloft — FD Forecast (Zulu)</div>
+                                        <table style={{ width:'100%', borderCollapse:'collapse' }}>
+                                            <thead>
+                                                <tr>
+                                                    <th style={{ ...cellHd, textAlign:'left' }}>Airport</th>
+                                                    <th style={{ ...cellHd, textAlign:'left' }}>Station</th>
+                                                    {windLevels.map(ft => (
+                                                        <th key={ft} colSpan={2} style={{ ...cellHd, textAlign:'center', background:'#e8f0fe' }}>
+                                                            {Math.round(ft/1000)}K ft
+                                                        </th>
+                                                    ))}
+                                                </tr>
+                                                <tr>
+                                                    <th style={{ ...cellHd }}></th>
+                                                    <th style={{ ...cellHd }}></th>
+                                                    {windLevels.map(ft => (
+                                                        <React.Fragment key={ft}>
+                                                            <th style={{ ...cellHd, background:'#f0f4f8' }}>Dir/Spd</th>
+                                                            <th style={{ ...cellHd, background:'#f0f4f8' }}>Temp°C</th>
+                                                        </React.Fragment>
+                                                    ))}
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                {(() => {
+                                                    var depAp = getAirport(allRoutePts[0]);
+                                                    var arrAp = getAirport(allRoutePts[allRoutePts.length-1]);
+                                                    var routeBearing = (depAp && arrAp)
+                                                        ? Math.round((Math.atan2(arrAp.lon-depAp.lon, arrAp.lat-depAp.lat)*180/Math.PI+360)%360)
+                                                        : null;
+                                                    return windRows.map(({icao, stn, w}, idx) => {
+                                                        var isInRange = altFt >= 3000;
+                                                        return (
+                                                            <tr key={icao} style={{ background:idx%2===0?'#fff':'#f8faff' }}>
+                                                                <td style={{ ...cell, ...mono, fontWeight:700, color:'#0b57d0' }}>{icao}</td>
+                                                                <td style={{ ...cell, fontSize:10, color:'#555' }}>{stn ? (stn.stationId || stn.wmoId || '—') : 'No data'}</td>
+                                                                {windLevels.map(ft => {
+                                                                    var wl = stn ? getWindAtAlt(stn, ft) : null;
+                                                                    var dirSpd = wl ? (wl.lv ? 'LT&VRB' : `${String(wl.wdir).padStart(3,'0')}°/${wl.wspd}kt`) : '—';
+                                                                    var tempStr = (wl && wl.temp!=null) ? `${wl.temp>0?'+':''}${wl.temp}` : '—';
+                                                                    var isCruise = Math.abs(ft - altFt) < 1500;
+                                                                    var bgStyle = isCruise ? '#fff9c4' : (idx%2===0?'#fff':'#f8faff');
+                                                                    return (
+                                                                        <React.Fragment key={ft}>
+                                                                            <td style={{ ...cell, ...mono, background: bgStyle, fontWeight: isCruise ? 700 : 400 }}>{dirSpd}</td>
+                                                                            <td style={{ ...cell, ...mono, background: bgStyle, color: wl && wl.temp!=null && wl.temp <= 0 ? '#1565c0' : '#333' }}>{tempStr}</td>
+                                                                        </React.Fragment>
+                                                                    );
+                                                                })}
+                                                            </tr>
+                                                        );
+                                                    });
+                                                })()}
+                                            </tbody>
+                                        </table>
+                                        <div style={{ fontSize:10, color:'#555', marginTop:4 }}>
+                                            Highlighted columns = cruise altitude. Blue temp = at or below freezing — icing possible if visible moisture present.
+                                            Source: aviationweather.gov winds aloft (FB Winds). Verify at <span style={{...mono}}>aviationweather.gov/windtemp</span>.
+                                        </div>
                                     </div>
                                 )}
 
-                                {/* ── 5. KEY CONCERNS ────────────────────────── */}
+                                {/* ── 7. COMPOSITE SAFETY SCORE ───────────────── */}
+                                {detailedScore && (
+                                    <div className="bs">
+                                        <div style={sh}>Composite Safety Score — {combinedScore ?? detailedScore.total} / 100</div>
+                                        <div style={{ display:'flex', flexDirection:'column', gap:6 }}>
+                                            {detailedScore.breakdown.map((b, i) => (
+                                                <div key={i} style={{ display:'grid', gridTemplateColumns:'130px 1fr 50px 110px', alignItems:'center', gap:8 }}>
+                                                    <span style={{ fontSize:11, fontWeight:600, color:'#333' }}>{b.label}</span>
+                                                    <div style={{ height:7, background:'#e8e8e8', borderRadius:4, overflow:'hidden' }}>
+                                                        <div style={{ height:'100%', width:(b.score/b.max*100)+'%', background:scoreClr(b.score/b.max), borderRadius:4 }} />
+                                                    </div>
+                                                    <span style={{ ...mono, fontSize:11, fontWeight:700, textAlign:'right', color:scoreClr(b.score/b.max) }}>{b.score}/{b.max}</span>
+                                                    <span style={{ fontSize:10, color:'#444', textAlign:'right' }}>{b.detail}</span>
+                                                </div>
+                                            ))}
+                                        </div>
+                                        {verd && <div style={{ marginTop:8, padding:'7px 10px', background:vBg, borderRadius:6, border:`1px solid ${vClr}33`, fontSize:11, color:vClr, lineHeight:1.5 }}>{verd.verdictDesc}</div>}
+                                    </div>
+                                )}
+
+                                {/* ── 8. KEY CONCERNS ────────────────────────── */}
                                 {finalVerdict && (
                                     <div className="bs">
                                         <div style={sh}>Key Concerns</div>
                                         {finalVerdict.concerns.length === 0 ? (
-                                            <div style={{ display:'flex', alignItems:'center', gap:8, color:'#2e7d32', fontSize:12, fontWeight:500 }}>
-                                                <MdIcon name="check_circle" style={{ fontSize:16 }} />
+                                            <div style={{ display:'flex', alignItems:'center', gap:8, color:'#2e7d32', fontSize:11, fontWeight:500 }}>
+                                                <MdIcon name="check_circle" style={{ fontSize:14 }} />
                                                 No flight concerns — conditions look good across all route airports.
                                             </div>
                                         ) : (
-                                            <div style={{ display:'flex', flexDirection:'column', gap:5 }}>
+                                            <div style={{ display:'flex', flexDirection:'column', gap:4 }}>
                                                 {finalVerdict.concerns.map((c, i) => (
-                                                    <div key={i} style={{ display:'flex', alignItems:'flex-start', gap:7, fontSize:12, color: c.level==='high'?'#b71c1c':'#b45309', lineHeight:1.4 }}>
-                                                        <MdIcon name={c.icon} style={{ fontSize:14, marginTop:1, flexShrink:0 }} />
+                                                    <div key={i} style={{ display:'flex', alignItems:'flex-start', gap:6, fontSize:11, color: c.level==='high'?'#b71c1c':'#b45309', lineHeight:1.4 }}>
+                                                        <MdIcon name={c.icon} style={{ fontSize:13, marginTop:1, flexShrink:0 }} />
                                                         <span>{c.text}</span>
                                                     </div>
                                                 ))}
@@ -4840,51 +5190,60 @@
                                     </div>
                                 )}
 
-                                {/* ── 6. WEATHER PER AIRPORT (expanded cards) ─── */}
+                                {/* ── 9. STATION WEATHER — METAR / TAF ─────────
+                                     All fields including Temp/DP and Altimeter    */}
                                 {effectiveWxData && effectiveWxData.length > 0 && (
                                     <div>
-                                        <div style={sh}>Weather — Station Details & Raw Reports</div>
+                                        <div style={sh}>Station Weather — METAR &amp; TAF</div>
                                         <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
                                             {effectiveWxData.map(e => {
                                                 var m   = e.effectiveWx;
                                                 var apt = getAirport(e.icao);
                                                 var cat = m ? m.cat : null;
+                                                var td  = parseTempDp(m ? m.temp : null);
+                                                var altH = parseAltInHg(m ? m.alt : null);
+                                                var elev = apt ? apt.elev : 0;
+                                                var wxDA = (td.t != null) ? calculateDensityAltitude(td.t, altH || 29.92, elev || 0) : null;
                                                 return (
                                                     <div key={e.icao} className="bs" style={{ border:'1px solid #e0e0e0', borderRadius:6, overflow:'hidden' }}>
-                                                        {/* Card header */}
-                                                        <div style={{ background: cat ? catBg(cat) : '#f5f5f5', padding:'5px 10px', display:'flex', alignItems:'center', justifyContent:'space-between', gap:8 }}>
+                                                        <div style={{ background: cat ? catBg(cat) : '#f5f5f5', padding:'4px 10px', display:'flex', alignItems:'center', justifyContent:'space-between', gap:8 }}>
                                                             <div style={{ display:'flex', alignItems:'center', gap:8 }}>
-                                                                <span style={{ ...mono, fontWeight:800, fontSize:14, color:'#0b57d0' }}>{e.icao}</span>
-                                                                {apt && <span style={{ fontSize:12, color:'#444' }}>{apt.name} · {apt.city}, {apt.state} · {apt.elev} ft MSL</span>}
+                                                                <span style={{ ...mono, fontWeight:800, fontSize:13, color:'#0b57d0' }}>{e.icao}</span>
+                                                                {apt && <span style={{ fontSize:11, color:'#444' }}>{apt.name} · {apt.city}, {apt.state} · Elev {(apt.elev||0).toLocaleString()} ft MSL</span>}
                                                             </div>
                                                             <div style={{ display:'flex', alignItems:'center', gap:6 }}>
                                                                 {catChip(cat)}
-                                                                <span style={{ fontSize:12, color:'#444' }}>{e.sourceLabel}</span>
+                                                                <span style={{ fontSize:10, color:'#444' }}>{e.sourceLabel}</span>
                                                             </div>
                                                         </div>
-                                                        {/* Summary row */}
                                                         {m && (
-                                                            <div style={{ display:'grid', gridTemplateColumns:'repeat(6,1fr)', gap:'0 4px', padding:'5px 10px', background:'#fafafa', borderBottom:'1px solid #eee' }}>
-                                                                {[['Wind',m.wind],['Visibility',m.vis],['Sky',m.sky],['Temp / DP',m.temp],['Altimeter',m.alt],['Dewpoint',m.dew||'—']].map(([k,v])=>(
+                                                            <div style={{ display:'grid', gridTemplateColumns:'repeat(7,1fr)', gap:'0 2px', padding:'4px 10px', background:'#fafafa', borderBottom:'1px solid #eee' }}>
+                                                                {[
+                                                                    ['Wind',    m.wind || '—'],
+                                                                    ['Vis',     m.vis  || '—'],
+                                                                    ['Sky',     m.sky  || '—'],
+                                                                    ['Temp',    td.t != null ? `${td.t}°C` : '—'],
+                                                                    ['Dewpoint',td.dp != null ? `${td.dp}°C` : '—'],
+                                                                    ['Altimeter', altH != null ? `${altH.toFixed(2)}"` : (m.alt || '—')],
+                                                                    ['Density Alt', wxDA != null ? `${wxDA.toLocaleString()} ft` : '—'],
+                                                                ].map(([k,v])=>(
                                                                     <div key={k}>
-                                                                        <div style={{ fontSize:12, color:'#444', fontWeight:700, textTransform:'uppercase', letterSpacing:'0.3px' }}>{k}</div>
-                                                                        <div style={{ fontSize:12, fontWeight:600, ...mono }}>{v}</div>
+                                                                        <div style={{ fontSize:9, color:'#444', fontWeight:700, textTransform:'uppercase', letterSpacing:'0.3px' }}>{k}</div>
+                                                                        <div style={{ fontSize:11, fontWeight:600, ...mono }}>{v || '—'}</div>
                                                                     </div>
                                                                 ))}
                                                             </div>
                                                         )}
-                                                        {/* Raw METAR */}
                                                         {m && m.raw && (
-                                                            <div style={{ padding:'4px 10px', background:'#fff' }}>
-                                                                <div style={{ fontSize:12, color:'#444', fontWeight:700, textTransform:'uppercase', letterSpacing:'0.5px', marginBottom:2 }}>METAR</div>
-                                                                <div style={{ ...mono, fontSize:12, color:'#222', lineHeight:1.5, wordBreak:'break-all', whiteSpace:'pre-wrap' }}>{m.raw}</div>
+                                                            <div style={{ padding:'3px 10px', background:'#fff' }}>
+                                                                <div style={{ fontSize:10, color:'#444', fontWeight:700, textTransform:'uppercase', letterSpacing:'0.5px', marginBottom:1 }}>METAR</div>
+                                                                <div style={{ ...mono, fontSize:11, color:'#222', lineHeight:1.5, wordBreak:'break-all', whiteSpace:'pre-wrap' }}>{m.raw}</div>
                                                             </div>
                                                         )}
-                                                        {/* TAF (if available) */}
                                                         {m && m.taf && (
-                                                            <div style={{ padding:'4px 10px 6px', background:'#fff', borderTop:'1px solid #f0f0f0' }}>
-                                                                <div style={{ fontSize:12, color:'#444', fontWeight:700, textTransform:'uppercase', letterSpacing:'0.5px', marginBottom:2 }}>TAF</div>
-                                                                <div style={{ ...mono, fontSize:12, color:'#333', lineHeight:1.5, wordBreak:'break-all', whiteSpace:'pre-wrap' }}>{m.taf}</div>
+                                                            <div style={{ padding:'3px 10px 5px', background:'#fff', borderTop:'1px solid #f0f0f0' }}>
+                                                                <div style={{ fontSize:10, color:'#444', fontWeight:700, textTransform:'uppercase', letterSpacing:'0.5px', marginBottom:1 }}>TAF</div>
+                                                                <div style={{ ...mono, fontSize:11, color:'#333', lineHeight:1.5, wordBreak:'break-all', whiteSpace:'pre-wrap' }}>{m.taf}</div>
                                                             </div>
                                                         )}
                                                     </div>
@@ -4894,52 +5253,13 @@
                                     </div>
                                 )}
 
-                                {/* ── 7. WINDS ALOFT TABLE ────────────────────── */}
-                                {windsAloft.length > 0 && windRows.some(r=>r.w) && (
-                                    <div className="bs">
-                                        <div style={sh}>Winds Aloft — {Math.round(altFt/1000)}K ft (FD Forecast)</div>
-                                        <table style={{ width:'100%', borderCollapse:'collapse' }}>
-                                            <thead>
-                                                <tr>{['Airport','Dir','Speed','Temp (°C)','Component'].map(h=><th key={h} style={{...cellHd,textAlign:'left'}}>{h}</th>)}</tr>
-                                            </thead>
-                                            <tbody>
-                                                {windRows.map(({icao,w},idx) => {
-                                                    // Compute head/tail wind component using trip bearing if two airports
-                                                    var dep = getAirport(allRoutePts[0]);
-                                                    var arr = getAirport(allRoutePts[allRoutePts.length-1]);
-                                                    var bearing = '—';
-                                                    if (dep && arr) {
-                                                        var dlat = arr.lat - dep.lat, dlon = arr.lon - dep.lon;
-                                                        bearing = Math.round((Math.atan2(dlon, dlat) * 180 / Math.PI + 360) % 360);
-                                                    }
-                                                    var comp = '—';
-                                                    if (w && !w.lv && bearing !== '—') {
-                                                        var angle = (w.wdir - bearing + 360) % 360;
-                                                        var hw = Math.round(w.wspd * Math.cos(angle * Math.PI / 180));
-                                                        comp = hw >= 0 ? `H/W ${hw} kt` : `T/W ${Math.abs(hw)} kt`;
-                                                    }
-                                                    return (
-                                                        <tr key={icao} style={{ background:idx%2===0?'#fff':'#f8faff' }}>
-                                                            <td style={{ ...cell, ...mono, fontWeight:700, color:'#0b57d0' }}>{icao}</td>
-                                                            <td style={{ ...cell, ...mono }}>{w ? (w.lv ? 'LGT & VRB' : `${String(w.wdir).padStart(3,'0')}°`) : 'No data'}</td>
-                                                            <td style={{ ...cell, ...mono }}>{w && !w.lv ? `${w.wspd} kt` : '—'}</td>
-                                                            <td style={{ ...cell, ...mono }}>{w && w.temp!=null ? `${w.temp>0?'+':''}${w.temp}` : '—'}</td>
-                                                            <td style={{ ...cell, fontSize:12, color: comp.startsWith('H') ? '#b71c1c' : comp.startsWith('T') ? '#2e7d32' : '#555' }}>{comp}</td>
-                                                        </tr>
-                                                    );
-                                                })}
-                                            </tbody>
-                                        </table>
-                                    </div>
-                                )}
-
-                                {/* ── 8. PILOT RECOMMENDATIONS ────────────────── */}
+                                {/* ── 10. PILOT RECOMMENDATIONS ───────────────── */}
                                 {finalVerdict && finalVerdict.recs && finalVerdict.recs.length > 0 && (
                                     <div className="bs">
                                         <div style={sh}>Pilot Recommendations</div>
-                                        <div style={{ display:'flex', flexDirection:'column', gap:5 }}>
+                                        <div style={{ display:'flex', flexDirection:'column', gap:4 }}>
                                             {finalVerdict.recs.map((r, i) => (
-                                                <div key={i} style={{ display:'flex', alignItems:'flex-start', gap:8, fontSize:12, color:'#1a1a1a', lineHeight:1.45 }}>
+                                                <div key={i} style={{ display:'flex', alignItems:'flex-start', gap:6, fontSize:11, color:'#1a1a1a', lineHeight:1.45 }}>
                                                     <span style={{ color:r.startsWith('⚠') ? '#b71c1c' : '#0b57d0', fontWeight:700, flexShrink:0, marginTop:1 }}>
                                                         {r.startsWith('⚠') ? '⚠' : '•'}
                                                     </span>
@@ -4950,24 +5270,24 @@
                                     </div>
                                 )}
 
-                                {/* ── 9. EN ROUTE PIREPs note ─────────────────── */}
-                                <div className="bs" style={{ background:'#f8faff', border:'1px solid #c5d8f7', borderRadius:6, padding:'8px 12px' }}>
-                                    <div style={{ fontSize:12, fontWeight:700, textTransform:'uppercase', letterSpacing:'1px', color:'#0b57d0', marginBottom:4 }}>En Route PIREPs</div>
-                                    <div style={{ fontSize:12, color:'#444', lineHeight:1.5 }}>
-                                        Live PIREPs are fetched dynamically — view current reports within 200 NM in the <strong>Brief</strong> tab before departure.
-                                        Reference: <span style={{ ...mono }}>aviationweather.gov/pirep</span>
+                                {/* ── 11. EN ROUTE PIREPs ──────────────────────── */}
+                                <div className="bs" style={{ background:'#f8faff', border:'1px solid #c5d8f7', borderRadius:6, padding:'7px 10px' }}>
+                                    <div style={{ fontSize:10, fontWeight:700, textTransform:'uppercase', letterSpacing:'1px', color:'#0b57d0', marginBottom:3 }}>En Route PIREPs (FAR 91.103)</div>
+                                    <div style={{ fontSize:11, color:'#444', lineHeight:1.5 }}>
+                                        View live pilot reports within 200 NM in the <strong>Brief</strong> tab before departure.
+                                        Reference: <span style={{ ...mono }}>aviationweather.gov/pirep</span> · Turbulence intensities: Light &lt;1/2g · Moderate 1/2–1g · Severe &gt;1g
                                     </div>
                                 </div>
 
                             </div>{/* end body */}
 
                             {/* ══ FOOTER ══════════════════════════════════════ */}
-                            <div style={{ background:'#f5f7fa', borderTop:'1px solid #e0e0e0', padding:'8px 20px', display:'flex', justifyContent:'space-between', alignItems:'center', flexWrap:'wrap', gap:6 }}>
-                                <div style={{ fontSize:12, color:'#444' }}>
-                                    Generated by <strong>FlightScore</strong> · {nowUtcStr}
+                            <div style={{ background:'#f5f7fa', borderTop:'1px solid #e0e0e0', padding:'7px 20px', display:'flex', justifyContent:'space-between', alignItems:'center', flexWrap:'wrap', gap:6 }}>
+                                <div style={{ fontSize:10, color:'#444' }}>
+                                    Generated by <strong>SkyView</strong> · {nowUtcStr} · FAR 91.103 preflight brief
                                 </div>
-                                <div style={{ fontSize:12, color:'#444', textAlign:'right', maxWidth:400, lineHeight:1.4 }}>
-                                    For flight planning reference only. Always obtain an official briefing at <strong>1800wxbrief.com</strong> before departure.
+                                <div style={{ fontSize:10, color:'#b71c1c', textAlign:'right', maxWidth:420, lineHeight:1.4, fontWeight:600 }}>
+                                    ⚠ For flight planning reference only. Always obtain an official weather briefing at <strong>1800wxbrief.com</strong> before departure. Not a substitute for a standard briefing (FAR 91.103).
                                 </div>
                             </div>
 
