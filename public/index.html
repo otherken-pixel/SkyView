@@ -821,8 +821,8 @@
         const { useState, useEffect, useCallback, useMemo, useRef } = React;
 
         // ── Centralised AI model constant (Step 2.1) ─────────────────────────
-        // Update this one string to switch the Claude model everywhere.
-        var CLAUDE_MODEL = 'claude-haiku-4-5-20251001';
+        // Update this one string to switch the Gemini model everywhere.
+        var GEMINI_MODEL = 'gemini-2.5-flash';
 
         // ── Module-ready promise for Firebase (Step 3.4) ─────────────────────
         // The Firebase <script type="module"> resolves this promise once
@@ -843,24 +843,26 @@
         function _fbDb()   { return window.firebaseAuth && window.firebaseAuth.db;   }
         function _fbFns()  { return window.firebaseAuth || {}; }
 
-        // ── Anthropic API helper (Step 1.4) ──────────────────────────────────
+        // ── Gemini API helper (Step 1.4) ─────────────────────────────────────
         // Calls the server-side Firebase Function proxy when available so the
-        // Anthropic API key never touches the browser.  Falls back to direct
+        // Gemini API key never touches the browser.  Falls back to direct
         // browser calls (with the user's own key) when the proxy is not deployed
         // or when running locally against the emulator.
-        async function callAnthropicApi({ system, messages, max_tokens, apiKey }) {
+        //
+        // Accepts Anthropic-style { system, messages, max_tokens } for
+        // compatibility and converts to Gemini's format internally.
+        // Returns normalised shape: { content: [{ text: "..." }] }
+        async function callGeminiApi({ system, messages, max_tokens, apiKey }) {
             var fns = _fbFns();
             // Prefer the server proxy — key stays server-side
             if (fns.httpsCallable && fns.functions) {
                 try {
-                    var callProxy = fns.httpsCallable(fns.functions, 'anthropicProxy');
-                    var result = await callProxy({ model: CLAUDE_MODEL, system, messages, max_tokens: max_tokens || 1800, temperature: 0.0 });
+                    var callProxy = fns.httpsCallable(fns.functions, 'geminiProxy');
+                    var result = await callProxy({ model: GEMINI_MODEL, system, messages, max_tokens: max_tokens || 1800, temperature: 0.0 });
                     return result.data;          // { content: [{ text: "..." }] }
                 } catch(proxyErr) {
-                    console.warn('[FlightScore] anthropicProxy error:', proxyErr.message);
+                    console.warn('[FlightScore] geminiProxy error:', proxyErr.message);
                     if (!apiKey) {
-                        // Surface a meaningful message — proxyErr.message is often just "internal"
-                        // when the Firebase secret is not configured.
                         var msg = proxyErr.message && proxyErr.message !== 'internal'
                             ? proxyErr.message
                             : 'AI service unavailable. The server-side API key may not be configured yet.';
@@ -868,47 +870,59 @@
                     }
                 }
             }
-            // Direct browser-to-Anthropic call (requires user-supplied apiKey)
-            if (!apiKey) throw new Error('No Anthropic API key. Deploy the Firebase Function or enter your key below.');
-            var res = await fetch('https://api.anthropic.com/v1/messages', {
+            // Direct browser-to-Gemini call (requires user-supplied apiKey)
+            if (!apiKey) throw new Error('No Gemini API key. Deploy the Firebase Function or enter your key below.');
+            // Convert messages from Anthropic format to Gemini format
+            var contents = messages.map(function(m) {
+                return { role: m.role === 'assistant' ? 'model' : 'user', parts: [{ text: m.content }] };
+            });
+            var payload = {
+                contents: contents,
+                generationConfig: { maxOutputTokens: max_tokens || 1800, temperature: 0.0 }
+            };
+            if (system) {
+                payload.systemInstruction = { parts: [{ text: system }] };
+            }
+            var url = 'https://generativelanguage.googleapis.com/v1beta/models/' + GEMINI_MODEL + ':generateContent?key=' + apiKey;
+            var res = await fetch(url, {
                 method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'x-api-key': apiKey,
-                    'anthropic-version': '2023-06-01',
-                    'anthropic-dangerous-direct-browser-access': 'true'
-                },
-                body: JSON.stringify({ model: CLAUDE_MODEL, max_tokens: max_tokens || 1800, temperature: 0.0, system: system || '', messages })
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
             });
             if (!res.ok) {
                 var errBody = await res.json().catch(function() { return {}; });
                 throw new Error((errBody.error && errBody.error.message) || 'HTTP ' + res.status);
             }
-            return await res.json();             // { content: [{ text: "..." }] }
+            var data = await res.json();
+            // Normalise Gemini response to match expected shape: { content: [{ text }] }
+            var text = (data.candidates && data.candidates[0] && data.candidates[0].content &&
+                        data.candidates[0].content.parts && data.candidates[0].content.parts[0] &&
+                        data.candidates[0].content.parts[0].text) || '';
+            return { content: [{ text: text }] };
         }
 
         // Streaming variant (Step 2.4) — yields text deltas via onChunk callback.
-        // Only available when calling the Anthropic API directly (not via the proxy,
+        // Only available when calling the Gemini API directly (not via the proxy,
         // which uses callable functions that don't support SSE streaming).
         // onChunk(text) is called with each incremental text fragment.
         // Returns the full accumulated text string when complete.
-        async function callAnthropicApiStreaming({ system, messages, max_tokens, apiKey, onChunk }) {
+        async function callGeminiApiStreaming({ system, messages, max_tokens, apiKey, onChunk }) {
             if (!apiKey) throw new Error('Streaming requires a direct API key.');
-            var res = await fetch('https://api.anthropic.com/v1/messages', {
+            var contents = messages.map(function(m) {
+                return { role: m.role === 'assistant' ? 'model' : 'user', parts: [{ text: m.content }] };
+            });
+            var payload = {
+                contents: contents,
+                generationConfig: { maxOutputTokens: max_tokens || 1800, temperature: 0.0 }
+            };
+            if (system) {
+                payload.systemInstruction = { parts: [{ text: system }] };
+            }
+            var url = 'https://generativelanguage.googleapis.com/v1beta/models/' + GEMINI_MODEL + ':streamGenerateContent?alt=sse&key=' + apiKey;
+            var res = await fetch(url, {
                 method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'x-api-key': apiKey,
-                    'anthropic-version': '2023-06-01',
-                    'anthropic-dangerous-direct-browser-access': 'true'
-                },
-                body: JSON.stringify({
-                    model: CLAUDE_MODEL,
-                    max_tokens: max_tokens || 1800,
-                    system: system || '',
-                    messages,
-                    stream: true
-                })
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
             });
             if (!res.ok) {
                 var errBody = await res.json().catch(function() { return {}; });
@@ -928,11 +942,12 @@
                     line = line.trim();
                     if (!line.startsWith('data:')) continue;
                     var jsonStr = line.slice(5).trim();
-                    if (jsonStr === '[DONE]') break;
+                    if (jsonStr === '[DONE]') continue;
                     try {
                         var evt = JSON.parse(jsonStr);
-                        if (evt.type === 'content_block_delta' && evt.delta && evt.delta.text) {
-                            accumulated += evt.delta.text;
+                        if (evt.candidates && evt.candidates[0] && evt.candidates[0].content &&
+                            evt.candidates[0].content.parts && evt.candidates[0].content.parts[0]) {
+                            accumulated += evt.candidates[0].content.parts[0].text;
                             if (onChunk) onChunk(accumulated);
                         }
                     } catch(e) { /* ignore malformed SSE lines */ }
@@ -5571,7 +5586,7 @@
                             var text;
                             {
                                 // Non-streaming proxy path (key is server-side)
-                                const data = await callAnthropicApi({
+                                const data = await callGeminiApi({
                                     system: BRIEFING_SYSTEM,
                                     messages: [{ role: "user", content: prompt }],
                                     max_tokens: 4000,
@@ -5579,7 +5594,7 @@
                                 });
                                 text = data.content?.[0]?.text;
                             }
-                            if (!text) throw new Error("Empty response from Claude");
+                            if (!text) throw new Error("Empty response from Gemini");
                             return text;
                         } catch (err) {
                             if (i === retries) throw err;
@@ -5620,7 +5635,7 @@
                     'Current weather: ' + wxSummary + '. ' +
                     'Answer concisely and specifically about this flight. Always recommend consulting official sources before flight.';
                 try {
-                    var chatData = await callAnthropicApi({
+                    var chatData = await callGeminiApi({
                         system: systemCtx,
                         messages: updated.map(function(m) { return { role:m.role, content:m.content }; }),
                         max_tokens: 1200,
@@ -7752,14 +7767,14 @@
                 'Output ONLY the JSON object. No other text.'
             ].join('\n');
 
-            var data = await callAnthropicApi({
+            var data = await callGeminiApi({
                 system,
                 messages: [{ role: 'user', content: inputText }],
                 max_tokens: 300,
                 apiKey
             });
             var raw = (data.content && data.content[0] && data.content[0].text) || '';
-            if (!raw.trim()) throw new Error('Empty response from Claude');
+            if (!raw.trim()) throw new Error('Empty response from Gemini');
             // Strip any accidental markdown fences
             var cleaned = raw.trim().replace(/^```(?:json)?\s*/i, '').replace(/\s*```\s*$/, '');
             var parsed = JSON.parse(cleaned);

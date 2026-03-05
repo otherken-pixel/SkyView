@@ -1,8 +1,8 @@
 /**
  * FlightScore Cloud Functions
  *
- * anthropicProxy — callable function that forwards requests to the Anthropic
- * Messages API.  Keeping the API key server-side means it is never exposed
+ * geminiProxy — callable function that forwards requests to the Google
+ * Gemini API.  Keeping the API key server-side means it is never exposed
  * in the browser bundle or developer tools.
  *
  * weatherProxy — callable function that fetches METAR/TAF data from
@@ -10,9 +10,9 @@
  * restrictions and enabling global airport coverage.
  *
  * Set the key before deploying:
- *   firebase functions:secrets:set ANTHROPIC_API_KEY
+ *   firebase functions:secrets:set GEMINI_API_KEY
  * Or via environment config for the emulator:
- *   export ANTHROPIC_API_KEY=sk-ant-...
+ *   export GEMINI_API_KEY=...
  */
 
 const { setGlobalOptions } = require("firebase-functions");
@@ -23,31 +23,32 @@ const https = require("https");
 
 setGlobalOptions({ maxInstances: 10 });
 
-// The Anthropic key is stored as a Firebase Secret (never in source).
-const anthropicApiKey = defineSecret("ANTHROPIC_API_KEY");
+// The Gemini key is stored as a Firebase Secret (never in source).
+const geminiApiKey = defineSecret("GEMINI_API_KEY");
 
 /**
- * anthropicProxy — Firebase callable function
+ * geminiProxy — Firebase callable function
  *
- * Accepts: { model, system, messages, max_tokens, stream }
- * Returns: { content: [{ text: "..." }] }  (same shape as Anthropic's API)
+ * Accepts: { model, system, messages, max_tokens, temperature }
+ *   - messages use Anthropic-style { role, content } for compatibility
+ * Returns: { content: [{ text: "..." }] }  (normalised shape)
  *
  * Called from the browser via:
- *   const fn = httpsCallable(functions, 'anthropicProxy');
+ *   const fn = httpsCallable(functions, 'geminiProxy');
  *   const result = await fn({ model, system, messages, max_tokens });
  */
-exports.anthropicProxy = onCall(
-    { secrets: [anthropicApiKey], cors: true, invoker: "public" },
+exports.geminiProxy = onCall(
+    { secrets: [geminiApiKey], cors: true, invoker: "public" },
     async (request) => {
         let key;
         try {
-            key = anthropicApiKey.value();
+            key = geminiApiKey.value();
         } catch (secretErr) {
-            logger.error("[anthropicProxy] failed to read ANTHROPIC_API_KEY secret", secretErr);
-            throw new HttpsError("failed-precondition", "ANTHROPIC_API_KEY secret is not configured. Run: firebase functions:secrets:set ANTHROPIC_API_KEY");
+            logger.error("[geminiProxy] failed to read GEMINI_API_KEY secret", secretErr);
+            throw new HttpsError("failed-precondition", "GEMINI_API_KEY secret is not configured. Run: firebase functions:secrets:set GEMINI_API_KEY");
         }
         if (!key) {
-            throw new HttpsError("failed-precondition", "ANTHROPIC_API_KEY secret is not set. Run: firebase functions:secrets:set ANTHROPIC_API_KEY");
+            throw new HttpsError("failed-precondition", "GEMINI_API_KEY secret is not set. Run: firebase functions:secrets:set GEMINI_API_KEY");
         }
 
         const { model, system, messages, max_tokens, temperature } = request.data || {};
@@ -56,29 +57,41 @@ exports.anthropicProxy = onCall(
             throw new HttpsError("invalid-argument", "messages must be a non-empty array.");
         }
 
-        const payload = JSON.stringify({
-            model: model || "claude-haiku-4-5-20251001",
-            max_tokens: max_tokens || 1800,
-            temperature: temperature != null ? temperature : 0.0,
-            system: system || "",
-            messages,
+        const geminiModel = model || "gemini-2.5-flash";
+
+        // Convert Anthropic-style messages to Gemini format
+        const contents = messages.map((m) => ({
+            role: m.role === "assistant" ? "model" : "user",
+            parts: [{ text: m.content }],
+        }));
+
+        const payload = {
+            contents,
+            generationConfig: {
+                maxOutputTokens: max_tokens || 1800,
+                temperature: temperature != null ? temperature : 0.0,
+            },
+        };
+
+        if (system) {
+            payload.systemInstruction = { parts: [{ text: system }] };
+        }
+
+        const payloadStr = JSON.stringify(payload);
+
+        logger.info("[geminiProxy] forwarding request", {
+            model: geminiModel, max_tokens, messageCount: messages.length,
         });
 
-        logger.info("[anthropicProxy] forwarding request", {
-            model, max_tokens, messageCount: messages.length,
-        });
-
-        // Forward to Anthropic via Node https (no external SDK dependency)
+        // Forward to Gemini via Node https (no external SDK dependency)
         return new Promise((resolve, reject) => {
             const options = {
-                hostname: "api.anthropic.com",
-                path: "/v1/messages",
+                hostname: "generativelanguage.googleapis.com",
+                path: `/v1beta/models/${geminiModel}:generateContent?key=${key}`,
                 method: "POST",
                 headers: {
                     "Content-Type": "application/json",
-                    "x-api-key": key,
-                    "anthropic-version": "2023-06-01",
-                    "Content-Length": Buffer.byteLength(payload),
+                    "Content-Length": Buffer.byteLength(payloadStr),
                 },
             };
 
@@ -90,23 +103,27 @@ exports.anthropicProxy = onCall(
                         const data = JSON.parse(body);
                         if (res.statusCode >= 400) {
                             const msg = (data.error && data.error.message) || `HTTP ${res.statusCode}`;
-                            logger.warn("[anthropicProxy] Anthropic error", { status: res.statusCode, msg });
+                            logger.warn("[geminiProxy] Gemini error", { status: res.statusCode, msg });
                             reject(new HttpsError("internal", msg));
                         } else {
-                            resolve({ content: data.content });
+                            // Normalise to { content: [{ text }] }
+                            const text = (data.candidates && data.candidates[0] &&
+                                          data.candidates[0].content && data.candidates[0].content.parts &&
+                                          data.candidates[0].content.parts[0] && data.candidates[0].content.parts[0].text) || "";
+                            resolve({ content: [{ text }] });
                         }
                     } catch (e) {
-                        reject(new HttpsError("internal", "Failed to parse Anthropic response."));
+                        reject(new HttpsError("internal", "Failed to parse Gemini response."));
                     }
                 });
             });
 
             req.on("error", (e) => {
-                logger.error("[anthropicProxy] network error", e);
+                logger.error("[geminiProxy] network error", e);
                 reject(new HttpsError("unavailable", e.message));
             });
 
-            req.write(payload);
+            req.write(payloadStr);
             req.end();
         });
     }
