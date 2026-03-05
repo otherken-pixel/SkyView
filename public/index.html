@@ -5242,9 +5242,14 @@
                     if (windLines.length) advisoryCtx += '\n=== WINDS ALOFT ===\n' + windLines.join('\n') + '\n';
                 }
 
+                var routeStr = allRoutePts.map(function(code) {
+                    var apt = getAirport(code);
+                    return apt ? code + ' (' + apt.name + ', ' + apt.city + ' ' + apt.state + ')' : code;
+                }).join(' -> ');
+
                 var prompt = `TRIP: ${ac.name} (${ac.cat}) cruise ${ac.kts}kt\n` +
                     `DEPARTURE: ${trip.date} at ${trip.time} Local Time\n` +
-                    `ROUTE: ${allRoutePts.join(" -> ")}\n` +
+                    `ROUTE: ${routeStr}\n` +
                     `Distance: ${Math.round(distance)}nm  ETE: ${Math.floor(ete)}h${Math.round((ete % 1) * 60)}m\n` +
                     scoreCtx +
                     `\n=== LIVE WEATHER DATA ===\n${wxLines || "No live weather available."}` +
@@ -5339,11 +5344,6 @@
             // an expensive briefing API call (Step 2.3).
             }, [trip, wxData]);
 
-            // Auto-generate briefing when weather loads (no manual trigger needed)
-            useEffect(function() {
-                if (aiResult || aiLoading || !wxData || loadingWx) return;
-                runAiBriefing();
-            }, [wxData, loadingWx]); // aiResult/aiLoading/runAiBriefing intentionally omitted — guards prevent re-runs
 
             // --- Conversational AI Chat ---
             var sendChat = useCallback(async function() {
@@ -6655,6 +6655,11 @@
                                     {aiResult && !aiLoading && (
                                         <span style={{ fontSize: 10, fontWeight: 700, background: 'var(--accent-dim)', color: 'var(--accent)', borderRadius: 6, padding: '3px 9px', letterSpacing: '0.5px', flexShrink: 0 }}>LIVE</span>
                                     )}
+                                    {aiResult && (
+                                        <button onClick={function(e) { e.stopPropagation(); runAiBriefing(); }} disabled={aiLoading || loadingWx} title="Refresh briefing" style={{ background: 'none', border: 'none', cursor: aiLoading || loadingWx ? 'default' : 'pointer', padding: 4, borderRadius: 8, color: 'var(--text-tertiary)', display: 'flex', alignItems: 'center', flexShrink: 0, opacity: aiLoading || loadingWx ? 0.4 : 1 }}>
+                                            <MdIcon name="refresh" style={{ fontSize: 18, animation: aiLoading ? 'spin 1s linear infinite' : 'none' }} />
+                                        </button>
+                                    )}
                                     <MdIcon name={showAI ? 'expand_less' : 'expand_more'} style={{ fontSize: 20, color: 'var(--text-tertiary)', flexShrink: 0 }} />
                                 </button>
 
@@ -6669,11 +6674,23 @@
                                             </div>
                                         )}
 
-                                        {/* Waiting for weather — transient state before wx loads */}
+                                        {/* Empty state — prompt user to generate */}
                                         {!aiResult && !aiLoading && (
-                                            <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '20px 4px', color: 'var(--md-sys-color-on-surface-variant)', fontSize: 13 }}>
-                                                <MdIcon name="cloud_download" style={{ fontSize: 20, flexShrink: 0 }} />
-                                                {loadingWx ? 'Loading weather data…' : 'Waiting for weather data to generate briefing.'}
+                                            <div style={{ padding: '20px 4px', textAlign: 'center' }}>
+                                                {loadingWx ? (
+                                                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10, color: 'var(--text-tertiary)', fontSize: 13 }}>
+                                                        <MdIcon name="cloud_download" style={{ fontSize: 18 }} />
+                                                        Loading weather data…
+                                                    </div>
+                                                ) : (
+                                                    <>
+                                                        <div style={{ color: 'var(--text-tertiary)', fontSize: 12, marginBottom: 12 }}>Weather loaded — tap to generate your AI preflight briefing</div>
+                                                        <button onClick={runAiBriefing} style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, width: '100%', background: 'var(--accent)', color: '#fff', border: 'none', borderRadius: 12, padding: '13px', fontSize: 14, fontWeight: 600, cursor: 'pointer', fontFamily: 'var(--font-sans)' }}>
+                                                            <MdIcon name="auto_awesome" style={{ fontSize: 18 }} />
+                                                            Generate Briefing
+                                                        </button>
+                                                    </>
+                                                )}
                                             </div>
                                         )}
 
