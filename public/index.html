@@ -3719,7 +3719,7 @@
                             }
                             return { ...w, effectiveWx: w.metar, source: 'metar', sourceLabel: 'METAR (no fcst)' + simSuffix };
                         }
-                        // 2–30 h: TAF at departure time; METAR fallback.
+                        // 2–30 h: TAF at departure time; NWS Grid fallback; METAR last resort.
                         if (w.taf) {
                             var tafWx = parseTafForTime(w.taf, tripTargetUtc);
                             if (tafWx) {
@@ -3728,6 +3728,11 @@
                                     : `TAF ${hh}${mm}Z`;
                                 return { ...w, effectiveWx: tafWx, source: 'taf', sourceLabel: tafLbl };
                             }
+                        }
+                        var nwsNear = nwsData[w.icao];
+                        if (nwsNear) {
+                            var nwsNearWx = nwsDayToEffectiveWx(pickNwsDay(nwsNear, tripTargetUtc), w.icao);
+                            if (nwsNearWx) return { ...w, effectiveWx: nwsNearWx, source: 'nws', sourceLabel: 'NWS Grid' };
                         }
                         return { ...w, effectiveWx: w.metar, source: 'metar', sourceLabel: 'METAR (no TAF)' + simSuffix };
                     }
