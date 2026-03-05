@@ -5184,69 +5184,6 @@
                             <MdButton variant="text" icon="close" onClick={onClose} style={{ padding:8 }} />
                         </div>
 
-                        {/* ── OpenAIP ── */}
-                        <div>
-                            <div style={sectionHead}>OpenAIP API Key</div>
-                            <div style={fieldWrap}>
-                                <div style={{ fontSize:12, color:'var(--md-sys-color-on-surface-variant)', lineHeight:1.5 }}>
-                                    Used for airport frequencies and airspace enrichment.
-                                    Get a free key at <strong>openaip.net</strong>. Stored in your browser and sent directly to OpenAIP — use a free-tier key, not one with billing attached.
-                                </div>
-                                <input
-                                    type="password"
-                                    value={apiKey}
-                                    onChange={function(e) { setApiKey(e.target.value); setTestStatus(null); }}
-                                    placeholder="Enter OpenAIP API key…"
-                                    style={inputStyle}
-                                    autoComplete="off"
-                                    spellCheck={false}
-                                />
-                                <div style={{ display:'flex', gap:8, flexWrap:'wrap' }}>
-                                    <MdButton variant="tonal" icon="save" onClick={saveKey} style={{ fontSize:13 }}>Save Key</MdButton>
-                                    <MdButton variant="text" icon="wifi_tethering" onClick={testKey} disabled={testStatus === 'testing'} style={{ fontSize:13 }}>
-                                        {testStatus === 'testing' ? 'Testing…' : 'Test Connection'}
-                                    </MdButton>
-                                </div>
-                                {testStatus && testStatus !== 'testing' && (
-                                    <div style={{
-                                        display:'flex', alignItems:'center', gap:7,
-                                        fontSize:12, lineHeight:1.4,
-                                        color: testStatus.ok ? 'var(--cat-vfr-color)' : 'var(--md-sys-color-error)'
-                                    }}>
-                                        <MdIcon name={testStatus.ok ? 'check_circle' : 'error'} style={{ fontSize:15 }} />
-                                        {testStatus.msg}
-                                    </div>
-                                )}
-                            </div>
-                        </div>
-
-                        {/* ── OurAirports ── */}
-                        <div>
-                            <div style={sectionHead}>Airport Database (OurAirports)</div>
-                            <div style={fieldWrap}>
-                                <div style={{ fontSize:12, color:'var(--md-sys-color-on-surface-variant)', lineHeight:1.5 }}>
-                                    Powers airport autocomplete with ~12,000 airports worldwide. Loaded once from <strong>ourairports.com</strong> open data and cached locally for 30 days.
-                                </div>
-                                <div style={{ display:'flex', alignItems:'center', gap:8, flexWrap:'wrap' }}>
-                                    <div style={{
-                                        fontSize:12, fontWeight:500,
-                                        color: oaCount > 0 ? 'var(--cat-vfr-color)' : 'var(--md-sys-color-on-surface-variant)',
-                                        display:'flex', alignItems:'center', gap:5
-                                    }}>
-                                        <MdIcon name={oaCount > 0 ? 'database' : 'cloud_off'} style={{ fontSize:16 }} />
-                                        {oaStatusLabel}
-                                    </div>
-                                    <MdButton
-                                        variant="text" icon={oaRefresh ? 'sync' : 'refresh'}
-                                        onClick={refreshOA} disabled={oaRefresh}
-                                        style={{ fontSize:13, animation: oaRefresh ? 'spin 1s linear infinite' : 'none' }}
-                                    >
-                                        {oaRefresh ? 'Refreshing…' : 'Force Refresh'}
-                                    </MdButton>
-                                </div>
-                            </div>
-                        </div>
-
                         {/* ── About / Data Sources ── */}
                         <div style={{ fontSize:12, color:'var(--md-sys-color-on-surface-variant)', lineHeight:1.6, borderTop:'1px solid var(--md-sys-color-outline-variant)', paddingTop:14 }}>
                             <strong>Weather:</strong> NOAA AviationWeather.gov (free, no key) ·
