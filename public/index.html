@@ -6110,18 +6110,24 @@
                         } catch(e) {}
                     } else {
                         // Firestore has no trips — either first sign-in or user deleted everything.
-                        // If localStorage has been set before (even as []), the user has used the
-                        // app before and intentionally has no trips; keep it empty.
-                        // Only show DEFAULT_TRIPS for a genuine first-time sign-in.
+                        // Use a per-UID localStorage flag to distinguish: if the user has signed in
+                        // before we trust the empty Firestore result; otherwise show DEFAULT_TRIPS.
                         migrateLocalStorageTrips(user.uid).then(function(migrated) {
                             skipNextFirestoreWrite.current = true;
+                            var seenKey = 'flightscore_uid_seen_' + user.uid;
                             var hasLocalData = (function() {
                                 try { return localStorage.getItem('flightscore_trips') !== null; }
                                 catch(e) { return false; }
                             })();
+                            var seenBefore = (function() {
+                                try { return !!localStorage.getItem(seenKey); }
+                                catch(e) { return false; }
+                            })();
                             var initial = migrated.length > 0 ? migrated
-                                        : hasLocalData    ? []
+                                        : (hasLocalData || seenBefore) ? []
                                         :                   DEFAULT_TRIPS;
+                            // Mark this UID as initialized so future empty-collection loads show []
+                            try { localStorage.setItem(seenKey, '1'); } catch(e) {}
                             setTrips(initial);
                             setTripsLoaded(true);
                             prevTripIds.current = new Set(initial.map(function(t) { return String(t.id); }));

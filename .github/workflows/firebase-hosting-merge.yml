@@ -32,9 +32,9 @@ jobs:
         with:
           node-version: '24'
 
-      - name: Deploy Firebase Functions
+      - name: Deploy Firebase Functions and Firestore Rules
         env:
           FIREBASE_TOKEN: ${{ secrets.FIREBASE_TOKEN }}
         run: |
           cd functions && npm install && cd ..
-          npx --yes firebase-tools deploy --only functions --project flightscore-ca7e0 --non-interactive --token "$FIREBASE_TOKEN"
+          npx --yes firebase-tools deploy --only functions,firestore:rules --project flightscore-ca7e0 --non-interactive --token "$FIREBASE_TOKEN"
