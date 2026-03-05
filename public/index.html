@@ -3772,7 +3772,19 @@
             }, [fratAnswers, fratSkipped, user]);
 
             // --- AI Enhanced section state ---
-            var [aiResult, setAiResult] = useState(null);
+            var briefingKey = 'skyview_ai_briefing_' + trip.id;
+            var [aiResult, setAiResult] = useState(function() {
+                try {
+                    var s = JSON.parse(localStorage.getItem(briefingKey) || 'null');
+                    return s && s.result ? s.result : null;
+                } catch(e) { return null; }
+            });
+            var [aiSavedAt, setAiSavedAt] = useState(function() {
+                try {
+                    var s = JSON.parse(localStorage.getItem(briefingKey) || 'null');
+                    return s && s.savedAt ? s.savedAt : null;
+                } catch(e) { return null; }
+            });
             var [aiLoading, setAiLoading] = useState(false);
             var [aiError, setAiError] = useState(null);
             var [apiKey, setApiKey] = useState("");
@@ -3800,6 +3812,30 @@
                     }
                 }, 200);
             }, [pendingAiPrompt]);
+
+            // Persist AI briefing to localStorage whenever it's updated
+            useEffect(function() {
+                if (!aiResult) return;
+                var savedAt = Date.now();
+                try {
+                    localStorage.setItem(briefingKey, JSON.stringify({ result: aiResult, savedAt: savedAt }));
+                    setAiSavedAt(savedAt);
+                } catch(e) {}
+            }, [aiResult]);
+
+            // Reload AI briefing from localStorage when switching trips
+            useEffect(function() {
+                try {
+                    var s = JSON.parse(localStorage.getItem('skyview_ai_briefing_' + trip.id) || 'null');
+                    setAiResult(s && s.result ? s.result : null);
+                    setAiSavedAt(s && s.savedAt ? s.savedAt : null);
+                } catch(e) {
+                    setAiResult(null);
+                    setAiSavedAt(null);
+                }
+                setAiError(null);
+                setAiFeedback(null);
+            }, [trip.id]);
 
             // --- Voice output ---
             var [speaking, setSpeaking] = useState(false);
@@ -4333,29 +4369,41 @@
                     advisoryCtx;
 
                 const BRIEFING_SYSTEM = [
-                    "You are an expert aviation weather analyst (CFI-I level) providing a detailed pre-flight briefing for a private pilot.",
+                    "You are a veteran aviation meteorologist with 30+ years of experience supporting both general aviation and commercial flight operations.",
+                    "You have deep expertise in synoptic and mesoscale meteorology, SIGMETS/AIRMETS, TAFs, METARs, PIREPs, prog charts, and all standard aviation weather products.",
+                    "You communicate with the precision of a professional briefer but can translate complex weather into plain language when needed.",
                     "",
-                    "CRITICAL: Begin EVERY briefing with a **GO / NO-GO CHECKLIST** section. Evaluate the provided METAR/TAF data against these private-pilot minimums and present the results as a markdown table:",
+                    "Your role is to provide a thorough preflight weather briefing for the flight route provided. Use the weather data supplied in the user message as your primary data source.",
                     "",
-                    "| Factor | Observed | Limit | Status |",
-                    "|--------|----------|-------|--------|",
-                    "| Crosswind component | (calculated) | ≤ 15 kt | GO / NO-GO |",
-                    "| Ceiling | (observed) | ≥ 2,000 ft AGL | GO / NO-GO |",
-                    "| Visibility | (observed) | ≥ 5 SM | GO / NO-GO |",
-                    "| Gust factor | (observed) | ≤ 20 kt | GO / NO-GO |",
-                    "| Thunderstorms (TSRA/CB) | (present/absent) | None | GO / NO-GO |",
-                    "| Icing / Freezing precip | (present/absent) | None | GO / NO-GO |",
+                    "Structure your response using EXACTLY these section headers (with ** markers on their own line):",
+                    "**ROUTE OVERVIEW**",
+                    "**SYNOPTIC OVERVIEW**",
+                    "**DEPARTURE CONDITIONS**",
+                    "**EN ROUTE CONDITIONS**",
+                    "**DESTINATION CONDITIONS**",
+                    "**WINDS ALOFT**",
+                    "**HAZARDS SUMMARY**",
+                    "**GO/NO-GO ASSESSMENT**",
+                    "**RECOMMENDED ACTIONS / CONTINGENCIES**",
                     "",
-                    "Mark any failing row NO-GO and flag the overall verdict as NO-GO if ANY row fails.",
+                    "Section guidance:",
+                    "ROUTE OVERVIEW: Summarize the proposed route, altitude(s), estimated departure time, and flight duration from the data provided.",
+                    "SYNOPTIC OVERVIEW: Describe the big-picture weather pattern — pressure systems, frontal boundaries, jet stream position, and how they affect the route.",
+                    "DEPARTURE CONDITIONS: Assess ceiling, visibility, winds (surface and aloft), temperature/dewpoint spread, and any significant phenomena at the departure airport. Reference the METAR/TAF by name.",
+                    "EN ROUTE CONDITIONS: Cover conditions along the full route, including turbulence (CAT and convective), icing levels and types, mountain wave activity if applicable, convective activity, and any relevant AIRMETs/SIGMETs.",
+                    "DESTINATION CONDITIONS: Assess forecast conditions at the destination, including TAF breakdown, alternate airport requirements, and any deteriorating trends.",
+                    "WINDS ALOFT: Provide winds and temperatures aloft at relevant flight levels along the route. Flag any significant wind shear or jet stream encounters.",
+                    "HAZARDS SUMMARY: Bullet the top weather hazards in order of severity: convection, icing, turbulence, low IFR, wind shear, etc. Be direct — do not sugarcoat hazards.",
+                    "GO/NO-GO ASSESSMENT: Give a direct professional recommendation — GO, GO WITH CAUTION, or NO-GO — with a clear rationale. If 'GO WITH CAUTION,' specify what conditions to monitor and at what point the flight should be aborted or diverted.",
+                    "RECOMMENDED ACTIONS / CONTINGENCIES: Suggest altitude adjustments, route deviations, departure time changes, alternate airports, or other mitigations to improve safety margins.",
                     "",
-                    "After the checklist, provide a **PLAIN ENGLISH SUMMARY** that translates all METAR/TAF abbreviations into plain language a student pilot would understand.",
-                    "",
-                    "Then continue with these sections (use EXACTLY these headers with ** markers):",
-                    "**WEATHER SYNOPSIS**, **DEPARTURE WINDOW**, **EN ROUTE HAZARDS**, **RUNWAY ANALYSIS**, **NOTAM IMPACT**, **ALTERNATE RECOMMENDATIONS**, **FREQUENCY GUIDE**",
-                    "",
-                    "Be specific with numbers — cite thresholds (e.g., 'ceiling 1200ft OVC = MVFR', 'winds 18G25KT = moderate crosswind risk').",
-                    "For high-elevation airports, estimate density altitude (DA ≈ Elevation + 120 × (OAT_°C − ISA_°C)).",
-                    "Flag icing risk, convective activity, TFRs, and airspace concerns. Use concise bullet points."
+                    "Standards:",
+                    "- Use standard aviation weather terminology: LIFR, IFR, MVFR, VFR; light/moderate/severe turbulence; trace/light/moderate/heavy icing.",
+                    "- Reference real weather products by name (TAF, METAR, SIGMET, G-AIRMET, PIREP, FA, etc.) and explain what they indicate.",
+                    "- Be specific with numbers — cite actual observed values and thresholds (e.g., 'ceiling 1200ft OVC = MVFR', 'winds 18G25KT = moderate crosswind risk').",
+                    "- If conditions are dangerous, say so clearly and explain why.",
+                    "- When weather is marginal, explain the specific thresholds being approached (VFR minimums, icing certification limits, turbulence intensity scales).",
+                    "- For high-elevation airports, estimate density altitude (DA ≈ Elevation + 120 × (OAT_°C − ISA_°C))."
                 ].join("\n");
 
                 // Cache key: trip signature + wx fingerprint so navigating away and
@@ -4382,7 +4430,7 @@
                                 text = await callAnthropicApiStreaming({
                                     system: BRIEFING_SYSTEM,
                                     messages: [{ role: "user", content: prompt }],
-                                    max_tokens: 1800,
+                                    max_tokens: 4000,
                                     apiKey,
                                     onChunk: function(partial) { setAiResult(partial); }
                                 });
@@ -4391,7 +4439,7 @@
                                 const data = await callAnthropicApi({
                                     system: BRIEFING_SYSTEM,
                                     messages: [{ role: "user", content: prompt }],
-                                    max_tokens: 1800,
+                                    max_tokens: 4000,
                                     apiKey: null
                                 });
                                 text = data.content?.[0]?.text;
@@ -4465,7 +4513,11 @@
             var aiSections = useMemo(() => {
                 if (!aiResult) return [];
                 var out = []; var current = null;
-                var validHeaders = ["GO/NO-GO RECOMMENDATION", "WEATHER SYNOPSIS", "DEPARTURE WINDOW", "EN ROUTE HAZARDS", "RUNWAY ANALYSIS", "NOTAM IMPACT", "ALTERNATE RECOMMENDATIONS", "FREQUENCY GUIDE"];
+                var validHeaders = [
+                    "ROUTE OVERVIEW", "SYNOPTIC OVERVIEW", "DEPARTURE CONDITIONS",
+                    "EN ROUTE CONDITIONS", "DESTINATION CONDITIONS", "WINDS ALOFT",
+                    "HAZARDS SUMMARY", "GO/NO-GO ASSESSMENT", "RECOMMENDED ACTIONS / CONTINGENCIES"
+                ];
                 aiResult.split("\n").forEach(line => {
                     var cleanLine = line.replace(/\*/g, "").trim();
                     if (validHeaders.includes(cleanLine)) {
@@ -4480,14 +4532,15 @@
             }, [aiResult]);
 
             var sectionMeta = {
-                "GO/NO-GO RECOMMENDATION": { icon: "check_circle", color: "var(--md-sys-color-primary)", bg: "var(--md-sys-color-primary-container)", onBg: "var(--md-sys-color-on-primary-container)" },
-                "WEATHER SYNOPSIS": { icon: "routine", color: "var(--md-sys-color-secondary)" },
-                "DEPARTURE WINDOW": { icon: "schedule", color: "var(--md-sys-color-tertiary)" },
-                "EN ROUTE HAZARDS": { icon: "warning", color: "var(--md-sys-color-error)" },
-                "RUNWAY ANALYSIS": { icon: "flight_takeoff", color: "var(--md-sys-color-primary)" },
-                "NOTAM IMPACT": { icon: "report", color: "var(--md-sys-color-warning)" },
-                "ALTERNATE RECOMMENDATIONS": { icon: "alt_route", color: "var(--md-sys-color-tertiary)" },
-                "FREQUENCY GUIDE": { icon: "podcasts", color: "var(--md-sys-color-secondary)" }
+                "ROUTE OVERVIEW":    { icon: "route",           color: "var(--md-sys-color-tertiary)" },
+                "SYNOPTIC OVERVIEW": { icon: "public",          color: "var(--md-sys-color-secondary)" },
+                "DEPARTURE CONDITIONS":  { icon: "flight_takeoff", color: "var(--md-sys-color-primary)" },
+                "EN ROUTE CONDITIONS":   { icon: "linear_scale",   color: "var(--md-sys-color-secondary)" },
+                "DESTINATION CONDITIONS":{ icon: "flight_land",    color: "var(--md-sys-color-tertiary)" },
+                "WINDS ALOFT":       { icon: "air",             color: "var(--md-sys-color-secondary)" },
+                "HAZARDS SUMMARY":   { icon: "warning",         color: "var(--md-sys-color-error)", bg: "var(--md-sys-color-error-container)", onBg: "var(--md-sys-color-on-error-container)" },
+                "GO/NO-GO ASSESSMENT": { icon: "check_circle",  color: "var(--md-sys-color-primary)", bg: "var(--md-sys-color-primary-container)", onBg: "var(--md-sys-color-on-primary-container)" },
+                "RECOMMENDED ACTIONS / CONTINGENCIES": { icon: "tips_and_updates", color: "var(--md-sys-color-tertiary)" }
             };
 
             var levelColor = { high: 'var(--md-sys-color-error)', medium: 'var(--cat-mvfr-color)' };
@@ -5285,6 +5338,149 @@
                                 );
                             })()}
 
+                            {/* ---- AI Preflight Weather Briefing — veteran aviation meteorologist ---- */}
+                            <div style={{ background: 'var(--md-sys-color-surface-container)', borderRadius: 16, marginBottom: 16, overflow: 'hidden' }}>
+                                {/* Section header — always visible, acts as toggle */}
+                                <button onClick={() => setShowAI(!showAI)} style={{ display: 'flex', alignItems: 'center', gap: 10, width: '100%', background: 'none', border: 'none', cursor: 'pointer', padding: '14px 16px', color: 'var(--md-sys-color-on-surface)' }}>
+                                    <MdIcon name="flight" style={{ color: 'var(--md-sys-color-primary)', fontSize: 20 }} />
+                                    <div style={{ flex: 1, textAlign: 'left' }}>
+                                        <div style={{ fontWeight: 700, fontSize: 13, textTransform: 'uppercase', letterSpacing: '0.5px', color: 'var(--md-sys-color-primary)' }}>AI Preflight Weather Briefing</div>
+                                        {aiSavedAt && !aiLoading && (
+                                            <div style={{ fontSize: 11, color: 'var(--md-sys-color-on-surface-variant)', marginTop: 2 }}>
+                                                Last assessed {new Date(aiSavedAt).toLocaleString()} · tap to {showAI ? 'collapse' : 'expand'}
+                                            </div>
+                                        )}
+                                        {!aiSavedAt && !aiLoading && (
+                                            <div style={{ fontSize: 11, color: 'var(--md-sys-color-on-surface-variant)', marginTop: 2 }}>Veteran aviation meteorologist · 30+ years experience</div>
+                                        )}
+                                    </div>
+                                    {aiResult && !aiLoading && (
+                                        <span style={{ fontSize: 11, fontWeight: 700, background: 'var(--md-sys-color-primary-container)', color: 'var(--md-sys-color-on-primary-container)', borderRadius: 6, padding: '2px 8px', marginRight: 4 }}>SAVED</span>
+                                    )}
+                                    <MdIcon name={showAI ? 'expand_less' : 'expand_more'} style={{ fontSize: 20, color: 'var(--md-sys-color-on-surface-variant)' }} />
+                                </button>
+
+                                {/* Collapsed-state prompt button — only shown when section is collapsed and no briefing exists */}
+                                {!showAI && !aiResult && (
+                                    <div style={{ padding: '0 16px 16px' }}>
+                                        <button
+                                            onClick={() => { setShowAI(true); }}
+                                            style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10, padding: '12px 16px', background: 'var(--md-sys-color-primary)', color: '#fff', border: 'none', borderRadius: 12, cursor: 'pointer', fontSize: 14, fontWeight: 600 }}
+                                        >
+                                            <MdIcon name="auto_awesome" style={{ fontSize: 18 }} />
+                                            Get AI Preflight Briefing
+                                        </button>
+                                    </div>
+                                )}
+
+                                {showAI && (
+                                    <div style={{ padding: '0 16px 16px', borderTop: '1px solid var(--md-sys-color-outline-variant)' }}>
+                                        {/* API Key input */}
+                                        <div style={{ marginTop: 14, marginBottom: 8, fontSize: 12, color: 'var(--md-sys-color-on-surface-variant)', lineHeight: 1.5, display: 'flex', alignItems: 'flex-start', gap: 6 }}>
+                                            <MdIcon name="lock" style={{ fontSize: 13, marginTop: 1, flexShrink: 0 }} />
+                                            Key is sent directly from your browser to Anthropic. Use a key with a spending limit — never your primary production key.
+                                        </div>
+                                        <div style={{ marginBottom: 12 }}>
+                                            <MdInput label="Anthropic API Key (optional)" value={apiKey} onChange={e => setApiKey(e.target.value)} placeholder="sk-ant-… (leave blank to use server key)" type="password" />
+                                        </div>
+
+                                        {/* Primary action buttons */}
+                                        <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
+                                            <MdButton
+                                                variant={aiLoading ? "tonal" : "sparkle"}
+                                                onClick={runAiBriefing}
+                                                disabled={aiLoading || loadingWx}
+                                                icon="auto_awesome"
+                                                style={{ flex: 1, padding: '12px', fontSize: '14px' }}
+                                            >
+                                                {aiLoading ? "Generating briefing…" : aiResult ? "Update Briefing" : "Generate Briefing"}
+                                            </MdButton>
+                                            {window.speechSynthesis && aiResult && (
+                                                <MdButton variant="tonal" icon={speaking ? 'stop_circle' : 'volume_up'} onClick={speakBriefing} title={speaking ? 'Stop reading' : 'Read briefing aloud'} style={{ padding: '12px 16px' }}>
+                                                    {speaking ? 'Stop' : 'Read'}
+                                                </MdButton>
+                                            )}
+                                        </div>
+
+                                        {aiError && <MdCard style={{ background: 'var(--md-sys-color-error-container)', color: 'var(--md-sys-color-on-error-container)', marginBottom: 16 }}><MdIcon name="error" style={{ marginRight: 8 }} />{aiError}</MdCard>}
+
+                                        {/* Briefing sections */}
+                                        {aiSections.map((s, i) => {
+                                            var meta = sectionMeta[s.title] || { icon: 'info', color: 'var(--md-sys-color-primary)' };
+                                            return (
+                                                <div key={i} style={{ background: meta.bg || 'var(--md-sys-color-surface-container-high)', borderRadius: 14, padding: '16px 18px', marginBottom: 12, color: meta.onBg || 'var(--md-sys-color-on-surface)' }}>
+                                                    <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 }}>
+                                                        <MdIcon name={meta.icon} style={{ color: meta.color, fontSize: 20 }} />
+                                                        <h3 style={{ margin: 0, fontSize: 13, fontWeight: 700, color: meta.color, letterSpacing: '0.5px', textTransform: 'uppercase' }}>{s.title}</h3>
+                                                    </div>
+                                                    <div style={{ fontSize: 13, lineHeight: 1.65, whiteSpace: 'pre-wrap', color: meta.onBg || 'var(--md-sys-color-on-surface-variant)' }}>
+                                                        {s.body.trim()}
+                                                    </div>
+                                                </div>
+                                            );
+                                        })}
+
+                                        {/* Empty state */}
+                                        {!aiResult && !aiLoading && (
+                                            <div style={{ textAlign: 'center', padding: '20px', color: 'var(--md-sys-color-on-surface-variant)', fontSize: 13, lineHeight: 1.6 }}>
+                                                A veteran aviation meteorologist will analyze this route using live METAR/TAF data, SIGMETs, AIRMETs, winds aloft, and the current safety score to produce a structured 9-section preflight briefing. The assessment is saved with this trip.
+                                            </div>
+                                        )}
+
+                                        {/* Feedback + saved timestamp */}
+                                        {aiResult && !aiLoading && (
+                                            <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 0 4px', borderTop: '1px solid var(--md-sys-color-outline-variant)', marginTop: 4, flexWrap: 'wrap' }}>
+                                                <span style={{ fontSize: 12, color: 'var(--md-sys-color-on-surface-variant)', flex: 1 }}>
+                                                    {aiSavedAt ? <>Saved {new Date(aiSavedAt).toLocaleString()} · </> : ''}Tap <strong>Update Briefing</strong> to regenerate before flight.
+                                                </span>
+                                                <button aria-label="Thumbs up — briefing was helpful" onClick={() => setAiFeedback('up')} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 4, display: 'inline-flex' }}>
+                                                    <MdIcon name="thumb_up" style={{ fontSize: 18, color: aiFeedback === 'up' ? 'var(--cat-vfr-color)' : 'var(--md-sys-color-outline)' }} aria-hidden="true" />
+                                                </button>
+                                                <button aria-label="Thumbs down — briefing was not helpful" onClick={() => setAiFeedback('down')} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 4, display: 'inline-flex' }}>
+                                                    <MdIcon name="thumb_down" style={{ fontSize: 18, color: aiFeedback === 'down' ? 'var(--md-sys-color-error)' : 'var(--md-sys-color-outline)' }} aria-hidden="true" />
+                                                </button>
+                                                {aiFeedback && <span style={{ fontSize: 12, color: 'var(--md-sys-color-on-surface-variant)' }}>{aiFeedback === 'up' ? 'Thanks!' : 'Thanks for the feedback.'}</span>}
+                                            </div>
+                                        )}
+
+                                        {/* Conversational AI Chat */}
+                                        {apiKey && (
+                                            <div style={{ marginTop: 14, border: '1px solid var(--md-sys-color-outline-variant)', borderRadius: 14, overflow: 'hidden' }}>
+                                                <div style={{ padding: '10px 14px', background: 'var(--md-sys-color-surface-container-high)', borderBottom: chatMessages.length ? '1px solid var(--md-sys-color-outline-variant)' : 'none', display: 'flex', alignItems: 'center', gap: 8 }}>
+                                                    <MdIcon name="chat" style={{ fontSize: 15, color: 'var(--md-sys-color-primary)' }} />
+                                                    <span style={{ fontWeight: 600, fontSize: 13, color: 'var(--md-sys-color-on-surface)', flex: 1 }}>Ask the meteorologist about this flight</span>
+                                                    {chatMessages.length > 0 && (
+                                                        <button onClick={() => setChatMessages([])} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 12, color: 'var(--md-sys-color-on-surface-variant)', padding: '2px 6px' }}>Clear</button>
+                                                    )}
+                                                </div>
+                                                {chatMessages.length > 0 && (
+                                                    <div style={{ maxHeight: 300, overflowY: 'auto', padding: '12px 14px', display: 'flex', flexDirection: 'column', gap: 8, background: 'var(--md-sys-color-background)' }}>
+                                                        {chatMessages.map((m, i) => (
+                                                            <div key={i} className={m.role === 'user' ? 'chat-bubble-user' : 'chat-bubble-ai'}>{m.content}</div>
+                                                        ))}
+                                                        {chatLoading && <div className="chat-bubble-ai" style={{ color: 'var(--md-sys-color-on-surface-variant)', fontStyle: 'italic' }}>Thinking…</div>}
+                                                        <div ref={chatEndRef} />
+                                                    </div>
+                                                )}
+                                                <div style={{ display: 'flex', gap: 8, padding: '10px 14px', borderTop: chatMessages.length ? '1px solid var(--md-sys-color-outline-variant)' : 'none', alignItems: 'flex-end', background: 'var(--md-sys-color-surface-container-high)' }}>
+                                                    <textarea
+                                                        ref={chatInputRef}
+                                                        aria-label="Ask the aviation meteorologist about this flight"
+                                                        value={chatInput}
+                                                        onChange={e => setChatInput(e.target.value)}
+                                                        onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendChat(); } }}
+                                                        placeholder={'Ask about this flight — e.g. "What if I leave at noon?" or "Suggest alternates if ' + (trip.arr || 'destination') + ' goes IFR"'}
+                                                        rows={2}
+                                                        style={{ flex: 1, background: 'var(--md-sys-color-background)', border: '1px solid var(--md-sys-color-outline-variant)', borderRadius: 10, padding: '8px 12px', fontSize: 13, color: 'var(--md-sys-color-on-surface)', resize: 'none', fontFamily: 'inherit', outline: 'none' }}
+                                                    />
+                                                    <MdButton variant="tonal" icon="send" onClick={sendChat} disabled={!chatInput.trim() || chatLoading} style={{ padding: '10px 14px', flexShrink: 0 }} />
+                                                </div>
+                                            </div>
+                                        )}
+                                    </div>
+                                )}
+                            </div>
+
                             {/* ---- Data-source context banner — makes live vs forecast explicit ---- */}
                             {(() => {
                                 var isLive = !finalVerdict.isFutureFlight;
@@ -5457,114 +5653,6 @@
                         </>
                     )}
 
-                    {/* ---- Enhanced AI Analysis (collapsible) ---- */}
-                    <div style={{ borderTop: '1px solid var(--md-sys-color-outline-variant)', paddingTop: 16 }}>
-                        <button onClick={() => setShowAI(!showAI)} style={{ display: 'flex', alignItems: 'center', gap: 10, width: '100%', background: 'none', border: 'none', cursor: 'pointer', padding: '4px 0 12px', color: 'var(--md-sys-color-on-surface)' }}>
-                            <MdIcon name="auto_awesome" style={{ color: 'var(--md-sys-color-primary)', fontSize: 20 }} />
-                            <span style={{ fontWeight: 600, fontSize: 14, flex: 1, textAlign: 'left' }}>Enhanced AI Analysis</span>
-                            <MdIcon name={showAI ? 'expand_less' : 'expand_more'} style={{ fontSize: 20, color: 'var(--md-sys-color-on-surface-variant)' }} />
-                        </button>
-
-                        {showAI && (
-                            <>
-                                <div style={{ marginBottom: 8, fontSize: 12, color: 'var(--md-sys-color-on-surface-variant)', lineHeight: 1.5, display: 'flex', alignItems: 'flex-start', gap: 6 }}>
-                                    <MdIcon name="lock" style={{ fontSize: 13, marginTop: 1, flexShrink: 0 }} />
-                                    Key is sent directly from your browser to Anthropic. Use a key with a spending limit set — never your primary production key.
-                                </div>
-                                <div style={{ marginBottom: 12 }}>
-                                    <MdInput label="Anthropic API Key" value={apiKey} onChange={e => setApiKey(e.target.value)} placeholder="sk-ant-..." type="password" />
-                                </div>
-                                <div style={{ display: 'flex', gap: 8, marginBottom: 20 }}>
-                                    <MdButton
-                                        variant={aiLoading ? "tonal" : "sparkle"}
-                                        onClick={runAiBriefing}
-                                        disabled={aiLoading || !apiKey || loadingWx}
-                                        icon="auto_awesome"
-                                        style={{ flex: 1, padding: '14px', fontSize: '15px' }}
-                                    >
-                                        {aiLoading ? "Analyzing with Claude…" : "Generate AI Briefing"}
-                                    </MdButton>
-                                    {window.speechSynthesis && (aiResult || analysis) && (
-                                        <MdButton variant="tonal" icon={speaking ? 'stop_circle' : 'volume_up'} onClick={speakBriefing} title={speaking ? 'Stop reading' : 'Read briefing aloud'} style={{ padding: '14px 16px' }}>
-                                            {speaking ? 'Stop' : 'Read'}
-                                        </MdButton>
-                                    )}
-                                </div>
-
-                                {aiError && <MdCard style={{ background: 'var(--md-sys-color-error-container)', color: 'var(--md-sys-color-on-error-container)', marginBottom: 16 }}><MdIcon name="error" style={{ marginRight: 8 }} />{aiError}</MdCard>}
-
-                                {aiSections.map((s, i) => {
-                                    var meta = sectionMeta[s.title] || { icon: 'info', color: 'var(--md-sys-color-primary)' };
-                                    return (
-                                        <div key={i} style={{ background: meta.bg || 'var(--md-sys-color-surface-container)', borderRadius: 16, padding: 20, marginBottom: 16, color: meta.onBg || 'var(--md-sys-color-on-surface)' }}>
-                                            <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 12 }}>
-                                                <MdIcon name={meta.icon} style={{ color: meta.color, fontSize: 24 }} />
-                                                <h3 style={{ margin: 0, fontSize: 15, fontWeight: 700, color: meta.color, letterSpacing: '0.5px' }}>{s.title}</h3>
-                                            </div>
-                                            <div style={{ fontSize: 14, lineHeight: 1.6, whiteSpace: 'pre-wrap', color: meta.onBg || 'var(--md-sys-color-on-surface-variant)' }}>
-                                                {s.body.trim().replace(/-/g, '\u2022')}
-                                            </div>
-                                        </div>
-                                    );
-                                })}
-
-                                {/* AI Feedback */}
-                                {aiResult && !aiLoading && (
-                                    <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '8px 0 16px', borderBottom: '1px solid var(--md-sys-color-outline-variant)' }}>
-                                        <span style={{ fontSize: 12, color: 'var(--md-sys-color-on-surface-variant)' }}>Was this briefing helpful?</span>
-                                        <button aria-label="Thumbs up — briefing was helpful" onClick={() => setAiFeedback('up')} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 4, display: 'inline-flex' }}>
-                                            <MdIcon name="thumb_up" style={{ fontSize: 20, color: aiFeedback === 'up' ? 'var(--cat-vfr-color)' : 'var(--md-sys-color-outline)' }} aria-hidden="true" />
-                                        </button>
-                                        <button aria-label="Thumbs down — briefing was not helpful" onClick={() => setAiFeedback('down')} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 4, display: 'inline-flex' }}>
-                                            <MdIcon name="thumb_down" style={{ fontSize: 20, color: aiFeedback === 'down' ? 'var(--md-sys-color-error)' : 'var(--md-sys-color-outline)' }} aria-hidden="true" />
-                                        </button>
-                                        {aiFeedback && <span style={{ fontSize: 12, color: 'var(--md-sys-color-on-surface-variant)' }}>{aiFeedback === 'up' ? 'Thanks! Feedback helps improve AI responses.' : 'Thanks for the feedback.'}</span>}
-                                    </div>
-                                )}
-
-                                {!aiResult && !aiLoading && (
-                                    <div style={{ textAlign: 'center', padding: '24px', color: 'var(--md-sys-color-on-surface-variant)', fontSize: 13 }}>
-                                        Claude will analyze live weather + the safety score above to generate a detailed narrative briefing with quantitative risk thresholds.
-                                    </div>
-                                )}
-
-                                {/* Conversational AI Chat */}
-                                {apiKey && (
-                                    <div style={{ marginTop: 16, border: '1px solid var(--md-sys-color-outline-variant)', borderRadius: 16, overflow: 'hidden' }}>
-                                        <div style={{ padding: '10px 14px', background: 'var(--md-sys-color-surface-container)', borderBottom: chatMessages.length ? '1px solid var(--md-sys-color-outline-variant)' : 'none', display: 'flex', alignItems: 'center', gap: 8 }}>
-                                            <MdIcon name="chat" style={{ fontSize: 16, color: 'var(--md-sys-color-primary)' }} />
-                                            <span style={{ fontWeight: 600, fontSize: 13, color: 'var(--md-sys-color-on-surface)', flex: 1 }}>Ask AI about this flight</span>
-                                            {chatMessages.length > 0 && (
-                                                <button onClick={() => setChatMessages([])} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 12, color: 'var(--md-sys-color-on-surface-variant)', padding: '2px 6px' }}>Clear</button>
-                                            )}
-                                        </div>
-                                        {chatMessages.length > 0 && (
-                                            <div style={{ maxHeight: 300, overflowY: 'auto', padding: '12px 14px', display: 'flex', flexDirection: 'column', gap: 8, background: 'var(--md-sys-color-background)' }}>
-                                                {chatMessages.map((m, i) => (
-                                                    <div key={i} className={m.role === 'user' ? 'chat-bubble-user' : 'chat-bubble-ai'}>{m.content}</div>
-                                                ))}
-                                                {chatLoading && <div className="chat-bubble-ai" style={{ color: 'var(--md-sys-color-on-surface-variant)', fontStyle: 'italic' }}>Thinking…</div>}
-                                                <div ref={chatEndRef} />
-                                            </div>
-                                        )}
-                                        <div style={{ display: 'flex', gap: 8, padding: '10px 14px', borderTop: chatMessages.length ? '1px solid var(--md-sys-color-outline-variant)' : 'none', alignItems: 'flex-end', background: 'var(--md-sys-color-surface-container)' }}>
-                                            <textarea
-                                                ref={chatInputRef}
-                                                aria-label="Ask AI about this flight"
-                                                value={chatInput}
-                                                onChange={e => setChatInput(e.target.value)}
-                                                onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendChat(); } }}
-                                                placeholder={'Ask about this flight — e.g. "What if I leave at noon?" or "Suggest alternates if ' + (trip.arr || 'destination') + ' goes IFR"'}
-                                                rows={2}
-                                                style={{ flex: 1, background: 'var(--md-sys-color-background)', border: '1px solid var(--md-sys-color-outline-variant)', borderRadius: 12, padding: '8px 12px', fontSize: 13, color: 'var(--md-sys-color-on-surface)', resize: 'none', fontFamily: 'inherit', outline: 'none' }}
-                                            />
-                                            <MdButton variant="tonal" icon="send" onClick={sendChat} disabled={!chatInput.trim() || chatLoading} style={{ padding: '10px 14px', flexShrink: 0 }} />
-                                        </div>
-                                    </div>
-                                )}
-                            </>
-                        )}
-                    </div>
                 </div>
             );
         }
