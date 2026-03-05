@@ -180,6 +180,60 @@
         /* dark-theme class = same as :root (always dark by default) */
         body.dark-theme { /* inherits :root — nothing to override */ }
 
+        /* ── Night Mode — cockpit red/black for night flying ── */
+        body.night-theme {
+            --bg:               #000000;
+            --bg-elevated:      #000000;
+            --card:             #0A0000;
+            --card-mid:         #120000;
+            --card-high:        #1A0000;
+            --card-border:      rgba(204,0,0,0.20);
+            --card-border-soft: rgba(204,0,0,0.10);
+            --text-primary:     #CC0000;
+            --text-secondary:   rgba(204,0,0,0.65);
+            --text-tertiary:    rgba(204,0,0,0.40);
+            --text-mono:        #CC0000;
+            --accent:           #CC0000;
+            --accent-dim:       rgba(204,0,0,0.15);
+            --accent-glow:      0 0 12px rgba(204,0,0,0.30);
+            --header-bg:        rgba(0,0,0,0.90);
+            --header-border:    rgba(204,0,0,0.15);
+            --vfr-glow:         none;
+            --lifr-glow:        none;
+            /* MD3 aliases for night mode */
+            --md-sys-color-background:  #000000;
+            --md-sys-color-on-background: #CC0000;
+            --md-sys-color-surface:     #0A0000;
+            --md-sys-color-on-surface:  #CC0000;
+            --md-sys-color-surface-variant:    #1A0000;
+            --md-sys-color-on-surface-variant: rgba(204,0,0,0.65);
+            --md-sys-color-surface-container-lowest:  #000000;
+            --md-sys-color-surface-container-low:     #0A0000;
+            --md-sys-color-surface-container:         #120000;
+            --md-sys-color-surface-container-high:    #1A0000;
+            --md-sys-color-surface-container-highest: #220000;
+            --md-sys-color-outline:         rgba(204,0,0,0.30);
+            --md-sys-color-outline-variant: rgba(204,0,0,0.15);
+            --md-sys-color-primary:                  #CC0000;
+            --md-sys-color-on-primary:               #000;
+            --md-sys-color-primary-container:        rgba(204,0,0,0.15);
+            --md-sys-color-on-primary-container:     #CC0000;
+            --md-sys-color-secondary:                rgba(204,0,0,0.55);
+            --md-sys-color-on-secondary:             #000;
+            --md-sys-color-secondary-container:      #1A0000;
+            --md-sys-color-on-secondary-container:   #CC0000;
+        }
+        body.night-theme ::-webkit-scrollbar-thumb { background: rgba(204,0,0,0.20); }
+        body.night-theme ::-webkit-scrollbar-thumb:hover { background: rgba(204,0,0,0.35); }
+        body.night-theme .glass {
+            background: rgba(0,0,0,0.80);
+            border: 1px solid rgba(204,0,0,0.15);
+        }
+        body.night-theme .route-icao-label {
+            color: #CC0000;
+            text-shadow: 0 0 6px rgba(0,0,0,0.9);
+        }
+
         /* ── Base ── */
         body {
             margin: 0; padding: 0;
@@ -425,6 +479,36 @@
         body.light-theme .fab-new-flight { box-shadow: 0 4px 18px rgba(0,122,255,0.35); }
 
         /* Print styles live in the standalone tab opened by handlePrint(). */
+
+        /* ── ATIS / Clearance Scratchpad ── */
+        .scratchpad-fab {
+            position: fixed; bottom: 24px; right: 24px; z-index: 200;
+            width: 48px; height: 48px; border-radius: 14px;
+            background: var(--card-high); color: var(--text-secondary);
+            border: 1px solid var(--card-border); cursor: pointer;
+            display: flex; align-items: center; justify-content: center;
+            box-shadow: 0 4px 16px rgba(0,0,0,0.35);
+            transition: transform 0.15s, box-shadow 0.15s;
+        }
+        .scratchpad-fab:hover { transform: translateY(-2px); box-shadow: 0 6px 24px rgba(0,0,0,0.45); }
+        .scratchpad-panel {
+            position: fixed; bottom: 24px; right: 24px; z-index: 200;
+            width: 320px; max-height: 360px;
+            background: var(--card); border: 1px solid var(--card-border);
+            border-radius: 16px; box-shadow: 0 8px 40px rgba(0,0,0,0.5);
+            display: flex; flex-direction: column; animation: fadeIn 0.2s ease;
+        }
+        .scratchpad-panel textarea {
+            flex: 1; min-height: 180px; resize: none; padding: 12px 14px;
+            background: transparent; color: var(--text-primary);
+            border: none; outline: none;
+            font-family: var(--font-mono); font-size: 13px; line-height: 1.6;
+        }
+        .scratchpad-panel textarea::placeholder { color: var(--text-tertiary); }
+        @media (max-width: 640px) {
+            .scratchpad-panel { width: calc(100vw - 32px); left: 16px; right: 16px; bottom: 80px; }
+            .scratchpad-fab { bottom: 80px; }
+        }
     </style>
     <!-- ═══════════════════════════════════════════════════════════════════
          FIREBASE v10 — Authentication + Firestore
@@ -1248,6 +1332,29 @@
             if ((c !== null && c < 1000) || v < 3) return 'IFR';
             if ((c !== null && c < 3000) || v < 5) return 'MVFR';
             return 'VFR';
+        }
+
+        // Return standard aviation hex color for a flight category string.
+        function getCategoryColor(flightCategory) {
+            switch ((flightCategory || '').toUpperCase()) {
+                case 'VFR':  return '#34C759';  // green
+                case 'MVFR': return '#0A84FF';  // blue
+                case 'IFR':  return '#FF3B30';  // red
+                case 'LIFR': return '#BF5AF2';  // magenta/purple
+                default:     return '#8E8E93';  // unknown — grey
+            }
+        }
+
+        // Calculate Density Altitude from temperature, altimeter setting, and field elevation.
+        // Uses standard aviation formulas:
+        //   Pressure Altitude = (29.92 − altimeterInHg) × 1000 + elevationFt
+        //   ISA temp at PA     = 15 − (0.001981 × PA_ft) °C
+        //   Density Altitude   = PA + 120 × (OAT_°C − ISA_°C)
+        function calculateDensityAltitude(tempC, altimeterInHg, elevationFt) {
+            var pa = (29.92 - (altimeterInHg || 29.92)) * 1000 + (elevationFt || 0);
+            var isaTemp = 15 - 0.001981 * pa;
+            var da = pa + 120 * ((tempC != null ? tempC : 15) - isaTemp);
+            return Math.round(da);
         }
 
         // Fetch live METAR via the weatherProxy Firebase Callable Function.
@@ -2721,6 +2828,27 @@
             );
         }
 
+        // Density Altitude badge — shows DA next to temperature data.
+        // Highlights yellow when DA is 2000+ ft above field elevation.
+        function DensityAltBadge({ tempC, altimeterInHg, elevationFt }) {
+            if (tempC == null) return null;
+            var da = calculateDensityAltitude(tempC, altimeterInHg, elevationFt);
+            var diff = da - (elevationFt || 0);
+            var warn = diff >= 2000;
+            return (
+                <span className="font-mono" style={{
+                    display: 'inline-flex', alignItems: 'center', gap: 4, padding: '2px 8px', borderRadius: '10px',
+                    fontSize: '11px', fontWeight: '600',
+                    background: warn ? 'rgba(255,204,0,0.15)' : 'var(--card-high)',
+                    color: warn ? '#FFCC00' : 'var(--text-secondary)',
+                    border: warn ? '1px solid rgba(255,204,0,0.30)' : '1px solid transparent'
+                }} title={'Density Altitude: ' + da.toLocaleString() + ' ft (' + (diff >= 0 ? '+' : '') + diff + ' ft vs field)'}>
+                    <MdIcon name={warn ? 'warning' : 'thermostat'} style={{ fontSize: 12 }} aria-hidden="true" />
+                    DA {da.toLocaleString()}ft
+                </span>
+            );
+        }
+
         /* =========================================
            APP COMPONENTS
         ========================================= */
@@ -3267,7 +3395,17 @@
                                     </div>
                                     <div style={{ gridColumn: '1 / -1' }}>
                                         <span style={{ color: "var(--md-sys-color-on-surface-variant)", fontSize: 11, fontWeight: 700, display: 'block', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: 2 }}>Temperature / Dewpoint</span>
-                                        <span style={{ fontWeight: 600 }}>{_decodeMetarTemp(metar.temp)}</span>
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                                            <span style={{ fontWeight: 600 }}>{_decodeMetarTemp(metar.temp)}</span>
+                                            {(() => {
+                                                var tParts = metar.temp ? metar.temp.split('/') : [];
+                                                var tC = tParts[0] ? (tParts[0].startsWith('M') ? -parseInt(tParts[0].slice(1)) : parseInt(tParts[0])) : null;
+                                                var aM = metar.alt ? metar.alt.match(/^A(\d{4})$/) : null;
+                                                var aInHg = aM ? parseInt(aM[1]) / 100 : 29.92;
+                                                var elev = apt ? (apt.elev || apt.elevation || 0) : 0;
+                                                return tC != null ? <DensityAltBadge tempC={tC} altimeterInHg={aInHg} elevationFt={elev} /> : null;
+                                            })()}
+                                        </div>
                                     </div>
                                     <div>
                                         <span style={{ color: "var(--md-sys-color-on-surface-variant)", fontSize: 11, fontWeight: 700, display: 'block', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: 2 }}>Altimeter</span>
@@ -4194,7 +4332,31 @@
                     `\n=== LIVE WEATHER DATA ===\n${wxLines || "No live weather available."}` +
                     advisoryCtx;
 
-                const BRIEFING_SYSTEM = "You are an expert aviation weather analyst (CFI-I level) providing a detailed pre-flight briefing. Be specific with numbers — cite thresholds (e.g., 'ceiling 1200ft OVC = MVFR', 'winds 18G25KT = moderate crosswind risk'). For high-elevation airports, estimate density altitude (DA ≈ Elevation + 120 × (OAT_°C − ISA_°C)). Flag icing risk, convective activity, TFRs, and airspace concerns. Use concise bullet points. Provide the briefing using EXACTLY these headers on their own lines (with ** markers): **GO/NO-GO RECOMMENDATION**, **WEATHER SYNOPSIS**, **DEPARTURE WINDOW**, **EN ROUTE HAZARDS**, **RUNWAY ANALYSIS**, **NOTAM IMPACT**, **ALTERNATE RECOMMENDATIONS**, **FREQUENCY GUIDE**";
+                const BRIEFING_SYSTEM = [
+                    "You are an expert aviation weather analyst (CFI-I level) providing a detailed pre-flight briefing for a private pilot.",
+                    "",
+                    "CRITICAL: Begin EVERY briefing with a **GO / NO-GO CHECKLIST** section. Evaluate the provided METAR/TAF data against these private-pilot minimums and present the results as a markdown table:",
+                    "",
+                    "| Factor | Observed | Limit | Status |",
+                    "|--------|----------|-------|--------|",
+                    "| Crosswind component | (calculated) | ≤ 15 kt | GO / NO-GO |",
+                    "| Ceiling | (observed) | ≥ 2,000 ft AGL | GO / NO-GO |",
+                    "| Visibility | (observed) | ≥ 5 SM | GO / NO-GO |",
+                    "| Gust factor | (observed) | ≤ 20 kt | GO / NO-GO |",
+                    "| Thunderstorms (TSRA/CB) | (present/absent) | None | GO / NO-GO |",
+                    "| Icing / Freezing precip | (present/absent) | None | GO / NO-GO |",
+                    "",
+                    "Mark any failing row NO-GO and flag the overall verdict as NO-GO if ANY row fails.",
+                    "",
+                    "After the checklist, provide a **PLAIN ENGLISH SUMMARY** that translates all METAR/TAF abbreviations into plain language a student pilot would understand.",
+                    "",
+                    "Then continue with these sections (use EXACTLY these headers with ** markers):",
+                    "**WEATHER SYNOPSIS**, **DEPARTURE WINDOW**, **EN ROUTE HAZARDS**, **RUNWAY ANALYSIS**, **NOTAM IMPACT**, **ALTERNATE RECOMMENDATIONS**, **FREQUENCY GUIDE**",
+                    "",
+                    "Be specific with numbers — cite thresholds (e.g., 'ceiling 1200ft OVC = MVFR', 'winds 18G25KT = moderate crosswind risk').",
+                    "For high-elevation airports, estimate density altitude (DA ≈ Elevation + 120 × (OAT_°C − ISA_°C)).",
+                    "Flag icing risk, convective activity, TFRs, and airspace concerns. Use concise bullet points."
+                ].join("\n");
 
                 // Cache key: trip signature + wx fingerprint so navigating away and
                 // back doesn't refire the expensive API call (Step 2.2)
@@ -5952,6 +6114,50 @@
         }
 
         /* =========================================
+           ATIS / CLEARANCE SCRATCHPAD
+        ========================================= */
+        var _SCRATCH_LS_KEY = 'flightscore_scratchpad';
+        function Scratchpad() {
+            var [open, setOpen] = useState(false);
+            var [text, setText] = useState(function() {
+                try { return localStorage.getItem(_SCRATCH_LS_KEY) || ''; } catch(e) { return ''; }
+            });
+            function handleChange(e) {
+                var v = e.target.value;
+                setText(v);
+                try { localStorage.setItem(_SCRATCH_LS_KEY, v); } catch(e) {}
+            }
+            function handleClear() {
+                setText('');
+                try { localStorage.removeItem(_SCRATCH_LS_KEY); } catch(e) {}
+            }
+            if (!open) {
+                return (
+                    <button className="scratchpad-fab" onClick={function() { setOpen(true); }} title="Open Scratchpad">
+                        <MdIcon name="edit_note" style={{ fontSize: 24 }} />
+                    </button>
+                );
+            }
+            return (
+                <div className="scratchpad-panel">
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 14px 6px', borderBottom: '1px solid var(--card-border-soft)' }}>
+                        <span style={{ fontSize: 13, fontWeight: 700, letterSpacing: '0.3px', color: 'var(--text-secondary)' }}>
+                            <MdIcon name="edit_note" style={{ fontSize: 16, verticalAlign: 'middle', marginRight: 4 }} />
+                            Scratchpad
+                        </span>
+                        <div style={{ display: 'flex', gap: 4 }}>
+                            <button onClick={handleClear} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-tertiary)', fontSize: 12, fontWeight: 600, padding: '4px 8px', borderRadius: 6 }} title="Clear notes">Clear</button>
+                            <button onClick={function() { setOpen(false); }} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-tertiary)', padding: '4px', borderRadius: 6, display: 'flex', alignItems: 'center' }} title="Minimize">
+                                <MdIcon name="close" style={{ fontSize: 18 }} />
+                            </button>
+                        </div>
+                    </div>
+                    <textarea value={text} onChange={handleChange} placeholder={"ATIS Info: ___\nRunway: ___\nAltimeter: ___\nClearance: ___\nSquawk: ___\nFreq: ___"} autoFocus />
+                </div>
+            );
+        }
+
+        /* =========================================
            MAIN APPLICATION COMPONENT
         ========================================= */
         function App() {
@@ -5989,27 +6195,35 @@
             }, [user]);
 
 
-            // Dark mode: follows system preference by default; manual toggle saves an explicit override.
-            // Uses a separate 'flightscore_theme_manual' key so an explicit choice is
-            // distinguished from the auto-detected initial value — preventing old saves
-            // from permanently overriding the current system preference.
-            var [darkMode, setDarkMode] = useState(function() {
+            // Theme: 3-way toggle — 'dark' (default), 'light', 'night' (red/black cockpit mode).
+            // Uses 'flightscore_theme_manual' key so an explicit choice is distinguished
+            // from the auto-detected initial value.
+            var THEME_CYCLE = ['dark', 'light', 'night'];
+            var THEME_ICONS = { dark: 'light_mode', light: 'nightlight', night: 'dark_mode' };
+            var THEME_LABELS = { dark: 'Light Mode', light: 'Night Mode', night: 'Dark Mode' };
+            var [theme, setTheme] = useState(function() {
                 var manual = localStorage.getItem('flightscore_theme_manual');
-                if (manual === 'dark')  return true;
-                if (manual === 'light') return false;
+                if (manual === 'dark' || manual === 'light' || manual === 'night') return manual;
                 // No explicit preference — follow system
-                return !!(window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches);
+                var prefersDark = !!(window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches);
+                return prefersDark ? 'dark' : 'light';
             });
+            function cycleTheme() {
+                var idx = THEME_CYCLE.indexOf(theme);
+                var next = THEME_CYCLE[(idx + 1) % THEME_CYCLE.length];
+                setTheme(next);
+                localStorage.setItem('flightscore_theme_manual', next);
+            }
             useEffect(function() {
-                document.body.classList.toggle('dark-theme', darkMode);
-                document.body.classList.toggle('light-theme', !darkMode);
-            }, [darkMode]);
+                document.body.classList.remove('dark-theme', 'light-theme', 'night-theme');
+                document.body.classList.add(theme + '-theme');
+            }, [theme]);
             // Auto-follow system preference changes (only when no manual override is saved)
             useEffect(function() {
                 if (!window.matchMedia) return;
                 var mq = window.matchMedia('(prefers-color-scheme: dark)');
                 function onSystemChange(e) {
-                    if (!localStorage.getItem('flightscore_theme_manual')) setDarkMode(e.matches);
+                    if (!localStorage.getItem('flightscore_theme_manual')) setTheme(e.matches ? 'dark' : 'light');
                 }
                 mq.addEventListener('change', onSystemChange);
                 return function() { mq.removeEventListener('change', onSystemChange); };
@@ -6474,11 +6688,7 @@
                         <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
                             {/* Desktop icon buttons — hidden on mobile via CSS */}
                             <div className="header-icon-btns">
-                                <IconBtn icon={darkMode ? 'light_mode' : 'dark_mode'} title={darkMode ? 'Light Mode' : 'Dark Mode'} onClick={() => {
-                                    var next = !darkMode;
-                                    setDarkMode(next);
-                                    localStorage.setItem('flightscore_theme_manual', next ? 'dark' : 'light');
-                                }} />
+                                <IconBtn icon={THEME_ICONS[theme]} title={THEME_LABELS[theme]} onClick={cycleTheme} />
                                 <IconBtn icon="translate" title={isDecodedWx ? 'Show Raw METAR' : 'Decoded Weather'} active={isDecodedWx} onClick={() => setIsDecodedWx(function(v) { return !v; })} />
                                 <IconBtn icon="import_export" title="Export / Import trips" onClick={() => setShowDataModal(true)} />
                                 <IconBtn icon="tune" title="Settings" onClick={() => setShowSettingsModal(true)} />
@@ -6525,12 +6735,11 @@
                                 {showHamburger && (
                                     <div className="hamburger-dropdown">
                                         <button className="hamburger-dropdown-item" onClick={() => {
-                                            var next = !darkMode; setDarkMode(next);
-                                            localStorage.setItem('flightscore_theme_manual', next ? 'dark' : 'light');
+                                            cycleTheme();
                                             setShowHamburger(false);
                                         }}>
-                                            <MdIcon name={darkMode ? 'light_mode' : 'dark_mode'} style={{ fontSize: 20, color: 'var(--text-secondary)' }} />
-                                            {darkMode ? 'Light Mode' : 'Dark Mode'}
+                                            <MdIcon name={THEME_ICONS[theme]} style={{ fontSize: 20, color: 'var(--text-secondary)' }} />
+                                            {THEME_LABELS[theme]}
                                         </button>
                                         <button className="hamburger-dropdown-item" onClick={() => { setShowDataModal(true); setShowHamburger(false); }}>
                                             <MdIcon name="import_export" style={{ fontSize: 20, color: 'var(--text-secondary)' }} />
@@ -7179,12 +7388,28 @@
                             New Flight
                         </button>
                     )}
+
+                    {/* ── ATIS / Clearance Scratchpad (always available) ── */}
+                    <Scratchpad />
                 </div>
             );
         }
 
         const root = ReactDOM.createRoot(document.getElementById('root'));
         root.render(<App />);
+    </script>
+
+    <!-- Service Worker registration — enables offline support on the ramp -->
+    <script>
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', function() {
+                navigator.serviceWorker.register('/sw.js').then(function(reg) {
+                    console.log('[SW] registered, scope:', reg.scope);
+                }).catch(function(err) {
+                    console.warn('[SW] registration failed:', err);
+                });
+            });
+        }
     </script>
 </body>
 </html>
