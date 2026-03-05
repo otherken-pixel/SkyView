@@ -1642,8 +1642,16 @@
             return "TAF " + icao + " " + dd + hh + "00Z 24012KT P6SM FEW040 SCT250 TEMPO 28015G22KT BKN030 FM" + h12 + "00 18008KT P6SM SCT060 BECMG " + h18 + "00 VRB05KT FEW250";
         }
 
+        // Parse a NOTAM date string "YYYY/MM/DD HH:MM" (UTC) → ms timestamp.
+        function parseNotamDate(s) {
+            if (!s) return null;
+            var m = String(s).match(/^(\d{4})\/(\d{2})\/(\d{2})\s+(\d{2}):(\d{2})/);
+            if (!m) return null;
+            return Date.UTC(+m[1], +m[2]-1, +m[3], +m[4], +m[5]);
+        }
+
         // Fetch live NOTAMs from AviationWeather.gov.
-        // Returns an array of { type, severity, text } objects (empty array on failure).
+        // Returns an array of { type, severity, text, notamNum, startMs, endMs } objects.
         async function fetchLiveNotams(icao) {
             if (!icao) return [];
             icao = icao.trim().toUpperCase();
@@ -1661,7 +1669,7 @@
                     : Array.isArray(data.data)   ? data.data
                     : [];
                 if (items.length === 0) return [];
-                return items.slice(0, 20).map(function(n) {
+                return items.slice(0, 50).map(function(n) {
                     // AWC JSON uses keyword/featureName for category; icaoMessage/traditionalMessage for text
                     var kw = (n.keyword || n.featureName || n.facilityType || 'NOTAM').toUpperCase();
                     var text = n.icaoMessage || n.traditionalMessage || n.notamText
@@ -1671,7 +1679,10 @@
                     var sev = (kw === 'TFR' || kw === 'SECURITY') ? 'error'
                             : (kw === 'RWY' || kw === 'TWY')      ? 'warning'
                             : 'tertiary';
-                    return { type: kw, severity: sev, text: text.trim() };
+                    var notamNum = n.notamNumber || '';
+                    var startMs  = parseNotamDate(n.startDate || n.effectiveStart || n.issued || '');
+                    var endMs    = parseNotamDate(n.endDate   || n.effectiveEnd   || '');
+                    return { type: kw, severity: sev, text: text.trim(), notamNum, startMs, endMs };
                 }).filter(function(n) { return n.text; });
             } catch(e) { console.warn('[SkyView] NOTAM fetch error:', e); return []; }
         }
@@ -4265,6 +4276,35 @@
                 error: "var(--nogo)"
             };
 
+            // Format a UTC ms timestamp as "Mar 3, 10:46 AM UTC (Active)" / "(in 29 days)"
+            function fmtNotamDate(ms, isEnd) {
+                if (!ms) return null;
+                var d = new Date(ms);
+                var now = Date.now();
+                var diffMs = ms - now;
+                var diffDays = Math.round(Math.abs(diffMs) / 86400000);
+                var rel = diffMs < 0
+                    ? (diffDays === 0 ? 'Active' : diffDays + ' days ago')
+                    : (diffDays === 0 ? 'today' : 'in ' + diffDays + ' days');
+                var dateStr = d.toLocaleString('en-US', {
+                    month: 'short', day: 'numeric',
+                    hour: '2-digit', minute: '2-digit',
+                    timeZone: 'UTC', timeZoneName: 'short'
+                });
+                return dateStr + ' (' + rel + ')';
+            }
+
+            // Highlight critical phrases in NOTAM text
+            function highlightText(text) {
+                var pattern = /(OUT OF SERVICE|CLOSED|UNSERVICEABLE|NOT AVAILABLE|UNUSABLE)/g;
+                var parts = text.split(pattern);
+                return parts.map(function(part, i) {
+                    return pattern.test(part)
+                        ? React.createElement('span', { key: i, style: { color: 'var(--md-sys-color-error)', fontWeight: 700 } }, part)
+                        : part;
+                });
+            }
+
             if (loading) return (
                 <div style={{ padding: '24px', textAlign: 'center', color: 'var(--md-sys-color-on-surface-variant)' }}>
                     <MdIcon name="sync" style={{ animation: 'spin 1s linear infinite', fontSize: 24 }} />
@@ -4279,25 +4319,59 @@
                 </div>
             );
 
+            // Group by how recently the NOTAM became effective
+            var now = Date.now();
+            var DAY = 86400000;
+            var groups = [
+                { label: 'Last 7 Days',  items: notams.filter(n => n.startMs && (now - n.startMs) <= 7 * DAY) },
+                { label: 'Last 30 Days', items: notams.filter(n => n.startMs && (now - n.startMs) > 7 * DAY && (now - n.startMs) <= 30 * DAY) },
+                { label: 'Older',        items: notams.filter(n => !n.startMs || (now - n.startMs) > 30 * DAY) },
+            ].filter(g => g.items.length > 0);
+
+            function NotamCard({ n }) {
+                var icon = n.type === 'RWY' || n.type === 'TWY' ? 'edit_road'
+                         : n.type === 'TFR' || n.type === 'SECURITY' ? 'block'
+                         : n.type === 'NAV' ? 'navigation'
+                         : 'warning';
+                var color = sevColors[n.severity] || 'var(--md-sys-color-outline)';
+                return (
+                    <div style={{
+                        background: 'var(--md-sys-color-surface-container)',
+                        borderRadius: '12px', padding: '12px',
+                        borderLeft: `4px solid ${color}`
+                    }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+                            <MdIcon name={icon} style={{ fontSize: 16, color }} />
+                            <span className="font-mono" style={{ fontSize: 12, fontWeight: 700, color }}>{n.type}</span>
+                            {n.notamNum && <span className="font-mono" style={{ fontSize: 11, color: 'var(--md-sys-color-on-surface-variant)' }}>{n.notamNum}</span>}
+                        </div>
+                        <div className="font-mono" style={{ fontSize: 12, color: 'var(--md-sys-color-on-surface)', lineHeight: 1.5 }}>{highlightText(n.text)}</div>
+                        {(n.startMs || n.endMs) && (
+                            <div style={{ marginTop: 8, display: 'flex', flexDirection: 'column', gap: 2 }}>
+                                {n.startMs && <div style={{ fontSize: 11, color: 'var(--md-sys-color-primary)' }}>Effective&nbsp;&nbsp;{fmtNotamDate(n.startMs, false)}</div>}
+                                {n.endMs   && <div style={{ fontSize: 11, color: 'var(--md-sys-color-on-surface-variant)' }}>Expires&nbsp;&nbsp;&nbsp;&nbsp;{fmtNotamDate(n.endMs, true)}</div>}
+                            </div>
+                        )}
+                    </div>
+                );
+            }
+
             return (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                    <div style={{ fontSize: 12, color: 'var(--cat-vfr-color)', marginBottom: 4, display: 'flex', alignItems: 'center', gap: 6 }}>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                    <div style={{ fontSize: 12, color: 'var(--cat-vfr-color)', display: 'flex', alignItems: 'center', gap: 6 }}>
                         <MdIcon name="verified" style={{ fontSize: 14 }} />
                         Live NOTAMs — AviationWeather.gov ({notams.length} active)
                     </div>
-                    {notams.map((n, i) => (
-                        <div key={i} style={{
-                            background: "var(--md-sys-color-surface-container)",
-                            borderRadius: "12px", padding: "12px",
-                            borderLeft: `4px solid ${sevColors[n.severity] || "var(--md-sys-color-outline)"}`
-                        }}>
-                            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
-                                <MdIcon name={n.type === 'RWY' || n.type === 'TWY' ? 'edit_road' : n.type === 'TFR' || n.type === 'SECURITY' ? 'block' : 'warning'} style={{ fontSize: 16, color: sevColors[n.severity] || "var(--md-sys-color-outline)" }} />
-                                <span className="font-mono" style={{ fontSize: 12, fontWeight: 700, color: sevColors[n.severity] || "var(--md-sys-color-outline)" }}>{n.type}</span>
+                    {groups.map(function(g) {
+                        return (
+                            <div key={g.label}>
+                                <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--md-sys-color-on-surface-variant)', textTransform: 'uppercase', letterSpacing: '0.8px', marginBottom: 8 }}>{g.label}</div>
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                                    {g.items.map(function(n, i) { return React.createElement(NotamCard, { key: i, n }); })}
+                                </div>
                             </div>
-                            <div className="font-mono" style={{ fontSize: 12, color: "var(--md-sys-color-on-surface)", lineHeight: 1.5 }}>{n.text}</div>
-                        </div>
-                    ))}
+                        );
+                    })}
                 </div>
             );
         }
