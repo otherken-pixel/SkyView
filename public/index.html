@@ -3797,7 +3797,7 @@
             });
             var [aiLoading, setAiLoading] = useState(false);
             var [aiError, setAiError] = useState(null);
-            var [showAI, setShowAI] = useState(false);
+            var [showAI, setShowAI] = useState(true);
             var [aiFeedback, setAiFeedback] = useState(null); // 'up' | 'down'
 
             // --- Conversational AI Chat ---
@@ -4484,6 +4484,12 @@
             // detailedScore intentionally excluded — score updates should not re-trigger
             // an expensive briefing API call (Step 2.3).
             }, [trip, wxData]);
+
+            // Auto-generate briefing when weather loads (no manual trigger needed)
+            useEffect(function() {
+                if (aiResult || aiLoading || !wxData || loadingWx) return;
+                runAiBriefing();
+            }, [wxData, loadingWx]); // aiResult/aiLoading/runAiBriefing intentionally omitted — guards prevent re-runs
 
             // --- Conversational AI Chat ---
             var sendChat = useCallback(async function() {
@@ -5759,41 +5765,35 @@
                                     <MdIcon name={showAI ? 'expand_less' : 'expand_more'} style={{ fontSize: 20, color: 'var(--md-sys-color-on-surface-variant)' }} />
                                 </button>
 
-                                {/* Collapsed-state prompt button — only shown when section is collapsed and no briefing exists */}
-                                {!showAI && !aiResult && (
-                                    <div style={{ padding: '0 16px 16px' }}>
-                                        <button
-                                            onClick={() => { setShowAI(true); }}
-                                            style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10, padding: '12px 16px', background: 'var(--md-sys-color-primary)', color: '#fff', border: 'none', borderRadius: 12, cursor: 'pointer', fontSize: 14, fontWeight: 600 }}
-                                        >
-                                            <MdIcon name="auto_awesome" style={{ fontSize: 18 }} />
-                                            Get AI Preflight Briefing
-                                        </button>
-                                    </div>
-                                )}
-
                                 {showAI && (
                                     <div style={{ padding: '0 16px 16px', borderTop: '1px solid var(--md-sys-color-outline-variant)' }}>
 
-                                        {/* Primary action buttons */}
-                                        <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
-                                            <MdButton
-                                                variant={aiLoading ? "tonal" : "sparkle"}
-                                                onClick={runAiBriefing}
-                                                disabled={aiLoading || loadingWx}
-                                                icon="auto_awesome"
-                                                style={{ flex: 1, padding: '12px', fontSize: '14px' }}
-                                            >
-                                                {aiLoading ? "Generating briefing…" : aiResult ? "Update Briefing" : "Generate Briefing"}
-                                            </MdButton>
-                                            {window.speechSynthesis && aiResult && (
-                                                <MdButton variant="tonal" icon={speaking ? 'stop_circle' : 'volume_up'} onClick={speakBriefing} title={speaking ? 'Stop reading' : 'Read briefing aloud'} style={{ padding: '12px 16px' }}>
-                                                    {speaking ? 'Stop' : 'Read'}
-                                                </MdButton>
-                                            )}
-                                        </div>
+                                        {/* Loading state — shown while auto-generating */}
+                                        {aiLoading && !aiResult && (
+                                            <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '20px 4px', color: 'var(--md-sys-color-on-surface-variant)', fontSize: 13 }}>
+                                                <MdIcon name="sync" style={{ fontSize: 20, animation: 'spin 1s linear infinite', flexShrink: 0 }} />
+                                                Generating preflight briefing…
+                                            </div>
+                                        )}
 
-                                        {aiError && <MdCard style={{ background: 'var(--md-sys-color-error-container)', color: 'var(--md-sys-color-on-error-container)', marginBottom: 16 }}><MdIcon name="error" style={{ marginRight: 8 }} />{aiError}</MdCard>}
+                                        {/* Waiting for weather — transient state before wx loads */}
+                                        {!aiResult && !aiLoading && (
+                                            <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '20px 4px', color: 'var(--md-sys-color-on-surface-variant)', fontSize: 13 }}>
+                                                <MdIcon name="cloud_download" style={{ fontSize: 20, flexShrink: 0 }} />
+                                                {loadingWx ? 'Loading weather data…' : 'Waiting for weather data to generate briefing.'}
+                                            </div>
+                                        )}
+
+                                        {aiError && (
+                                            <div style={{ marginBottom: 12 }}>
+                                                <MdCard style={{ background: 'var(--md-sys-color-error-container)', color: 'var(--md-sys-color-on-error-container)', marginBottom: 8 }}>
+                                                    <MdIcon name="error" style={{ marginRight: 8 }} />{aiError}
+                                                </MdCard>
+                                                <MdButton variant="tonal" onClick={runAiBriefing} disabled={aiLoading || loadingWx} icon="refresh" style={{ width: '100%', padding: '10px', fontSize: '13px' }}>
+                                                    Retry Briefing
+                                                </MdButton>
+                                            </div>
+                                        )}
 
                                         {/* Briefing sections */}
                                         {aiSections.map((s, i) => {
@@ -5811,10 +5811,17 @@
                                             );
                                         })}
 
-                                        {/* Empty state */}
-                                        {!aiResult && !aiLoading && (
-                                            <div style={{ textAlign: 'center', padding: '20px', color: 'var(--md-sys-color-on-surface-variant)', fontSize: 13, lineHeight: 1.6 }}>
-                                                A veteran aviation meteorologist will analyze this route using live METAR/TAF data, SIGMETs, AIRMETs, winds aloft, and the current safety score to produce a structured 9-section preflight briefing. The assessment is saved with this trip.
+                                        {/* Update + speech buttons — only shown after briefing exists */}
+                                        {aiResult && !aiLoading && (
+                                            <div style={{ display: 'flex', gap: 8, marginTop: 4, marginBottom: 12 }}>
+                                                <MdButton variant="tonal" onClick={runAiBriefing} disabled={loadingWx} icon="refresh" style={{ flex: 1, padding: '10px', fontSize: '13px' }}>
+                                                    Update Briefing
+                                                </MdButton>
+                                                {window.speechSynthesis && (
+                                                    <MdButton variant="tonal" icon={speaking ? 'stop_circle' : 'volume_up'} onClick={speakBriefing} title={speaking ? 'Stop reading' : 'Read briefing aloud'} style={{ padding: '10px 16px' }}>
+                                                        {speaking ? 'Stop' : 'Read'}
+                                                    </MdButton>
+                                                )}
                                             </div>
                                         )}
 
@@ -5822,7 +5829,7 @@
                                         {aiResult && !aiLoading && (
                                             <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 0 4px', borderTop: '1px solid var(--md-sys-color-outline-variant)', marginTop: 4, flexWrap: 'wrap' }}>
                                                 <span style={{ fontSize: 12, color: 'var(--md-sys-color-on-surface-variant)', flex: 1 }}>
-                                                    {aiSavedAt ? <>Saved {new Date(aiSavedAt).toLocaleString()} · </> : ''}Tap <strong>Update Briefing</strong> to regenerate before flight.
+                                                    {aiSavedAt ? <>Saved {new Date(aiSavedAt).toLocaleString()} · </> : ''}Tap <strong>Update Briefing</strong> above to refresh before flight.
                                                 </span>
                                                 <button aria-label="Thumbs up — briefing was helpful" onClick={() => setAiFeedback('up')} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 4, display: 'inline-flex' }}>
                                                     <MdIcon name="thumb_up" style={{ fontSize: 18, color: aiFeedback === 'up' ? 'var(--cat-vfr-color)' : 'var(--md-sys-color-outline)' }} aria-hidden="true" />
