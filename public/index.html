@@ -509,6 +509,238 @@
             .scratchpad-panel { width: calc(100vw - 32px); left: 16px; right: 16px; bottom: 80px; }
             .scratchpad-fab { bottom: 80px; }
         }
+
+        /* ══════════════════════════════════════════════════════════════════
+           EFB PREMIUM DESIGN SYSTEM — Glass Cockpit Extension Layer
+           Adds ForeFlight/Garmin-grade visual depth over the base theme.
+        ══════════════════════════════════════════════════════════════════ */
+
+        /* ── Enhanced glassmorphism variants ── */
+        .glass-modal {
+            background: rgba(13,17,23,0.88);
+            backdrop-filter: blur(32px) saturate(200%);
+            -webkit-backdrop-filter: blur(32px) saturate(200%);
+            border: 1px solid rgba(255,255,255,0.09);
+            border-radius: 20px;
+        }
+        body.light-theme .glass-modal {
+            background: rgba(255,255,255,0.90);
+            border: 1px solid rgba(0,0,0,0.08);
+        }
+
+        /* ── Aviation category glow rings ── */
+        .cat-badge {
+            display: inline-flex; align-items: center; gap: 5px;
+            padding: 3px 11px; border-radius: 99px;
+            font-family: var(--font-mono); font-size: 11px; font-weight: 800;
+            letter-spacing: 0.5px; border: 1px solid currentColor;
+            transition: box-shadow 0.2s;
+        }
+        .cat-badge.cat-vfr  { color:var(--vfr);  background:var(--vfr-bg);  box-shadow:0 0 10px rgba(52,199,89,0.30); }
+        .cat-badge.cat-mvfr { color:var(--mvfr); background:var(--mvfr-bg); box-shadow:0 0 10px rgba(10,132,255,0.25); }
+        .cat-badge.cat-ifr  { color:var(--ifr);  background:var(--ifr-bg);  box-shadow:0 0 10px rgba(255,59,48,0.30); }
+        .cat-badge.cat-lifr { color:var(--lifr); background:var(--lifr-bg); box-shadow:var(--lifr-glow); }
+
+        /* ── Verdict banner ── */
+        .verdict-banner {
+            border-radius: 18px; padding: 18px 22px;
+            display: flex; align-items: center; gap: 16px;
+            margin-bottom: 16px;
+            border: 1px solid transparent;
+            animation: fadeIn 0.3s ease;
+        }
+        .verdict-banner.go-banner {
+            background: var(--go-bg); border-color: rgba(52,199,89,0.30);
+            box-shadow: 0 0 24px rgba(52,199,89,0.12);
+        }
+        .verdict-banner.caution-banner {
+            background: var(--caution-bg); border-color: rgba(255,149,0,0.30);
+            box-shadow: 0 0 24px rgba(255,149,0,0.10);
+        }
+        .verdict-banner.nogo-banner {
+            background: var(--nogo-bg); border-color: rgba(255,59,48,0.30);
+            box-shadow: 0 0 24px rgba(255,59,48,0.12);
+        }
+        .verdict-icon-ring {
+            width: 52px; height: 52px; border-radius: 50%;
+            display: flex; align-items: center; justify-content: center;
+            flex-shrink: 0; border: 2px solid currentColor;
+            animation: scorePop 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
+        }
+
+        /* ── Route Timeline ── */
+        .route-timeline { display: flex; flex-direction: column; }
+        .timeline-node  { display: flex; gap: 0; align-items: stretch; }
+        .timeline-spine {
+            display: flex; flex-direction: column;
+            align-items: center; width: 44px; flex-shrink: 0;
+        }
+        .timeline-dot {
+            width: 22px; height: 22px; border-radius: 50%;
+            flex-shrink: 0; z-index: 1;
+            display: flex; align-items: center; justify-content: center;
+            transition: transform 0.2s, box-shadow 0.2s;
+            cursor: default;
+        }
+        .timeline-dot:hover { transform: scale(1.18); }
+        .timeline-line {
+            width: 2px; flex: 1; min-height: 10px;
+            background: linear-gradient(180deg, var(--card-border) 0%, var(--card-border-soft) 100%);
+        }
+        .timeline-station-card {
+            flex: 1; margin: 0 0 8px 0; padding: 14px 16px;
+            border-radius: 14px; border-left: 3px solid transparent;
+            background: var(--card-mid); border: 1px solid var(--card-border-soft);
+            border-left-width: 3px;
+            transition: transform 0.15s, box-shadow 0.15s, border-color 0.2s;
+            animation: fadeIn 0.3s ease;
+        }
+        .timeline-station-card:hover {
+            transform: translateX(3px);
+            box-shadow: 0 4px 20px rgba(0,0,0,0.35);
+        }
+        .timeline-leg-strip {
+            display: flex; align-items: center; gap: 8px;
+            padding: 2px 0; margin-left: 0;
+        }
+        .timeline-leg-line { flex: 1; height: 1px; background: var(--card-border-soft); }
+        .timeline-leg-label {
+            font-family: var(--font-mono); font-size: 10px;
+            color: var(--text-tertiary); font-weight: 600; white-space: nowrap;
+        }
+
+        /* ── Weather metric tiles ── */
+        .wx-metric-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(88px, 1fr));
+            gap: 6px;
+        }
+        .wx-metric-tile {
+            background: var(--card-high); border: 1px solid var(--card-border-soft);
+            border-radius: 10px; padding: 8px 10px;
+            display: flex; flex-direction: column; gap: 3px;
+            transition: border-color 0.15s, background 0.15s;
+        }
+        .wx-metric-tile:hover { background: var(--bg-elevated); border-color: var(--card-border); }
+        .wx-metric-label {
+            font-size: 9px; font-weight: 700; text-transform: uppercase;
+            letter-spacing: 0.7px; color: var(--text-tertiary);
+        }
+        .wx-metric-value {
+            font-family: var(--font-mono); font-size: 13px;
+            font-weight: 700; color: var(--text-primary); line-height: 1.2;
+        }
+
+        /* ── Score breakdown segmented bar ── */
+        .score-seg-track {
+            height: 7px; background: var(--card-high);
+            border-radius: 4px; overflow: hidden; margin-bottom: 3px;
+        }
+        .score-seg-fill {
+            height: 100%; border-radius: 4px;
+            transition: width 1.1s cubic-bezier(0.34, 1.56, 0.64, 1);
+            position: relative; overflow: hidden;
+        }
+        .score-seg-fill::after {
+            content: ''; position: absolute; inset: 0;
+            background: linear-gradient(90deg, transparent 0%, rgba(255,255,255,0.25) 50%, transparent 100%);
+            animation: shimmer 2.5s ease-in-out infinite;
+        }
+
+        /* ── AI section accordion cards ── */
+        .ai-section-accordion {
+            border-radius: 14px; overflow: hidden;
+            border: 1px solid var(--card-border-soft);
+            margin-bottom: 8px;
+            transition: border-color 0.2s, box-shadow 0.2s;
+            animation: fadeIn 0.25s ease;
+        }
+        .ai-section-accordion:hover { border-color: var(--card-border); }
+        .ai-section-trigger {
+            display: flex; align-items: center; gap: 10px;
+            padding: 13px 16px; cursor: pointer;
+            background: var(--card);
+            user-select: none; border: none; width: 100%;
+            text-align: left; transition: background 0.15s;
+            font-family: var(--font-sans);
+        }
+        .ai-section-trigger:hover { background: var(--card-mid); }
+        .ai-section-content {
+            padding: 0 16px 14px 16px; background: var(--card);
+            font-size: 13px; line-height: 1.75; color: var(--text-secondary);
+            white-space: pre-wrap; font-family: var(--font-sans);
+            border-top: 1px solid var(--card-border-soft);
+        }
+        .ai-section-icon-ring {
+            width: 30px; height: 30px; border-radius: 8px;
+            display: flex; align-items: center; justify-content: center;
+            flex-shrink: 0;
+        }
+
+        /* ── Inline log/terminal panel ── */
+        .log-panel {
+            background: var(--bg);
+            border: 1px solid rgba(255,255,255,0.07);
+            border-radius: 10px; padding: 10px 14px;
+            font-family: var(--font-mono); font-size: 11.5px;
+            line-height: 1.65; color: var(--text-secondary);
+            overflow-x: auto; max-height: 220px; overflow-y: auto;
+            animation: slideDown 0.22s ease;
+        }
+        body.light-theme .log-panel {
+            background: #f4f6fa; border-color: rgba(0,0,0,0.08);
+        }
+
+        /* ── SVG weather icons ── */
+        .wx-icon-svg { display: inline-block; vertical-align: middle; }
+
+        /* ── Wind barb ── */
+        .wind-barb-wrapper {
+            display: inline-flex; align-items: center; gap: 5px;
+            vertical-align: middle;
+        }
+
+        /* ── Keyframes ── */
+        @keyframes shimmer {
+            0%   { transform: translateX(-200%); }
+            100% { transform: translateX(200%); }
+        }
+        @keyframes slideDown {
+            from { opacity: 0; transform: translateY(-6px); }
+            to   { opacity: 1; transform: translateY(0); }
+        }
+        @keyframes glowPulse {
+            0%, 100% { opacity: 0.55; }
+            50%       { opacity: 1; }
+        }
+        @keyframes scorePop {
+            0%  { transform: scale(0.75); opacity: 0; }
+            75% { transform: scale(1.06); }
+            100%{ transform: scale(1);    opacity: 1; }
+        }
+        @keyframes ringDraw {
+            from { stroke-dashoffset: 628; }
+        }
+
+        /* ── GoScoreRing premium glow ── */
+        .score-ring-glow { filter: drop-shadow(0 0 6px currentColor); }
+
+        /* ── Details/summary accordion open state — rotate chevron ── */
+        details.ai-section-accordion[open] > summary.ai-section-trigger > .material-symbols-rounded:last-child,
+        details.ai-section-accordion[open] > summary.ai-section-trigger > .material-symbols-outlined:last-child {
+            transform: rotate(180deg);
+        }
+        details.ai-section-accordion > summary { list-style: none; }
+        details.ai-section-accordion > summary::-webkit-details-marker { display: none; }
+
+        /* ── Verdict banner theme adjustments ── */
+        body.light-theme .verdict-banner.go-banner     { box-shadow: 0 0 20px rgba(52,199,89,0.08); }
+        body.light-theme .verdict-banner.caution-banner{ box-shadow: 0 0 20px rgba(255,149,0,0.07); }
+        body.light-theme .verdict-banner.nogo-banner   { box-shadow: 0 0 20px rgba(255,59,48,0.08); }
+
+        /* ── Timeline — light theme adjustments ── */
+        body.light-theme .timeline-station-card { background: var(--card); }
+        body.light-theme .wx-metric-tile { background: var(--card-mid); }
     </style>
     <!-- ═══════════════════════════════════════════════════════════════════
          FIREBASE v10 — Authentication + Firestore
@@ -2597,6 +2829,314 @@
         /* =========================================
            SEMICIRCLE SAFETY GAUGE (SVG)
         ========================================= */
+        /* =========================================
+           WIND BARB — SVG directional wind indicator
+           deg = wind direction FROM (meteorological)
+           kts = wind speed in knots
+           Aviation standard: pennant=50kt, full=10kt, half=5kt
+        ========================================= */
+        function WindBarb({ deg, kts, size }) {
+            size = size || 36;
+            if (deg == null || kts == null || isNaN(deg) || isNaN(kts)) return null;
+            var cx = size / 2, cy = size / 2;
+            var shaftLen = size * 0.40;
+            var color = kts >= 25 ? 'var(--nogo)' : kts >= 15 ? 'var(--caution)' : 'var(--text-secondary)';
+
+            // Build barb marks along shaft
+            var barbs = [];
+            var remaining = kts;
+            var barbSpacing = size * 0.08;
+            var barbLen = size * 0.22;
+            var barbX = -shaftLen + barbSpacing; // relative to center
+            while (remaining >= 50) {
+                // Pennant (filled triangle)
+                barbs.push(
+                    <polygon key={'p'+barbs.length}
+                        points={`${cx+barbX},${cy} ${cx+barbX+barbSpacing},${cy-barbLen} ${cx+barbX+barbSpacing*2},${cy}`}
+                        fill={color} />
+                );
+                barbX += barbSpacing * 2.5;
+                remaining -= 50;
+            }
+            while (remaining >= 10) {
+                barbs.push(<line key={'f'+barbs.length} x1={cx+barbX} y1={cy} x2={cx+barbX+barbLen} y2={cy-barbLen*0.65} stroke={color} strokeWidth="1.8" strokeLinecap="round" />);
+                barbX += barbSpacing;
+                remaining -= 10;
+            }
+            if (remaining >= 5) {
+                barbs.push(<line key="h" x1={cx+barbX} y1={cy} x2={cx+barbX+barbLen*0.5} y2={cy-barbLen*0.32} stroke={color} strokeWidth="1.8" strokeLinecap="round" />);
+            }
+
+            return (
+                <div className="wind-barb-wrapper" title={`${kts}kt from ${deg}°`}>
+                    <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}
+                        style={{ transform: `rotate(${deg}deg)`, display:'block' }}
+                        className="wx-icon-svg">
+                        {/* Shaft */}
+                        <line x1={cx - shaftLen} y1={cy} x2={cx + shaftLen * 0.15} y2={cy}
+                            stroke={color} strokeWidth="1.8" strokeLinecap="round" />
+                        {/* Arrowhead */}
+                        <polygon points={`${cx+shaftLen*0.15},${cy-4} ${cx+shaftLen*0.40},${cy} ${cx+shaftLen*0.15},${cy+4}`}
+                            fill={color} />
+                        {kts < 3
+                            ? <circle cx={cx} cy={cy} r="4" fill="none" stroke={color} strokeWidth="1.8" />
+                            : barbs}
+                    </svg>
+                </div>
+            );
+        }
+
+        /* =========================================
+           WEATHER ICON — SVG sky condition icons
+           sky: e.g. "OVC012", "SCT018", "FEW020"
+           wx:  present weather e.g. "RA", "TS", "SN"
+        ========================================= */
+        function WeatherIcon({ sky, wx, size, color }) {
+            size = size || 32;
+            color = color || 'var(--text-secondary)';
+            var skyU = (sky || '').toUpperCase();
+            var wxU  = (wx  || '').toUpperCase();
+
+            var hasTS  = wxU.includes('TS');
+            var hasRA  = wxU.includes('RA') || wxU.includes('DZ') || wxU.includes('SH');
+            var hasSN  = wxU.includes('SN') || wxU.includes('SG') || wxU.includes('GS');
+            var hasFG  = wxU.includes('FG') || wxU.includes('BR') || wxU.includes('HZ') || wxU.includes('FU');
+            var hasOVC = skyU.includes('OVC') || skyU.includes('VV');
+            var hasBKN = !hasOVC && skyU.includes('BKN');
+            var hasSCT = !hasOVC && !hasBKN && skyU.includes('SCT');
+            var hasFEW = !hasOVC && !hasBKN && !hasSCT && skyU.includes('FEW');
+
+            if (hasTS) {
+                return (
+                    <svg width={size} height={size} viewBox="0 0 32 32" className="wx-icon-svg">
+                        <ellipse cx="14" cy="11" rx="9" ry="7" fill={color} opacity="0.85" />
+                        <ellipse cx="21" cy="15" rx="7" ry="5.5" fill={color} opacity="0.65" />
+                        <polygon points="16,18 11,27 15,22 10,31 21,21 16,26" fill="#FFD700" opacity="0.95" />
+                    </svg>
+                );
+            }
+            if (hasFG) {
+                return (
+                    <svg width={size} height={size} viewBox="0 0 32 32" className="wx-icon-svg">
+                        <rect x="2"  y="10" width="28" height="3" rx="1.5" fill={color} opacity="0.75" />
+                        <rect x="6"  y="16" width="20" height="3" rx="1.5" fill={color} opacity="0.55" />
+                        <rect x="4"  y="22" width="24" height="3" rx="1.5" fill={color} opacity="0.40" />
+                    </svg>
+                );
+            }
+            if (hasSN) {
+                return (
+                    <svg width={size} height={size} viewBox="0 0 32 32" className="wx-icon-svg">
+                        <ellipse cx="14" cy="12" rx="8" ry="6" fill={color} opacity="0.80" />
+                        <ellipse cx="21" cy="15" rx="6" ry="5" fill={color} opacity="0.65" />
+                        {[9,16,23].map(function(x,i) {
+                            return <text key={i} x={x} y="29" fontSize="9" fill="#aaccff" textAnchor="middle" fontFamily="sans-serif">❄</text>;
+                        })}
+                    </svg>
+                );
+            }
+            if (hasRA) {
+                return (
+                    <svg width={size} height={size} viewBox="0 0 32 32" className="wx-icon-svg">
+                        <ellipse cx="14" cy="12" rx="8" ry="6" fill={color} opacity="0.80" />
+                        <ellipse cx="22" cy="15" rx="6.5" ry="5" fill={color} opacity="0.65" />
+                        <line x1="10" y1="22" x2="8"  y2="29" stroke="#4fc3f7" strokeWidth="2" strokeLinecap="round" />
+                        <line x1="16" y1="22" x2="14" y2="29" stroke="#4fc3f7" strokeWidth="2" strokeLinecap="round" />
+                        <line x1="22" y1="22" x2="20" y2="29" stroke="#4fc3f7" strokeWidth="2" strokeLinecap="round" />
+                    </svg>
+                );
+            }
+            if (hasOVC) {
+                return (
+                    <svg width={size} height={size} viewBox="0 0 32 32" className="wx-icon-svg">
+                        <ellipse cx="12" cy="14" rx="9"   ry="7.5" fill={color} opacity="0.90" />
+                        <ellipse cx="22" cy="17" rx="8.5" ry="6.5" fill={color} opacity="0.80" />
+                        <rect    x="4"  y="19"  width="24" height="6" rx="3" fill={color} opacity="0.75" />
+                    </svg>
+                );
+            }
+            if (hasBKN) {
+                return (
+                    <svg width={size} height={size} viewBox="0 0 32 32" className="wx-icon-svg">
+                        <circle  cx="9"  cy="12" r="5.5" fill="#FFD700" opacity="0.75" />
+                        <ellipse cx="19" cy="16" rx="9"   ry="7"   fill={color} opacity="0.85" />
+                        <ellipse cx="26" cy="19" rx="6"   ry="4.5" fill={color} opacity="0.70" />
+                    </svg>
+                );
+            }
+            if (hasSCT) {
+                return (
+                    <svg width={size} height={size} viewBox="0 0 32 32" className="wx-icon-svg">
+                        <circle  cx="9"  cy="11" r="6"   fill="#FFD700" opacity="0.90" />
+                        <ellipse cx="20" cy="18" rx="8.5" ry="6"   fill={color} opacity="0.75" />
+                        <ellipse cx="26" cy="20" rx="5.5" ry="4"   fill={color} opacity="0.60" />
+                    </svg>
+                );
+            }
+            if (hasFEW) {
+                return (
+                    <svg width={size} height={size} viewBox="0 0 32 32" className="wx-icon-svg">
+                        <circle  cx="10" cy="11" r="7"   fill="#FFD700" opacity="0.95" />
+                        <ellipse cx="21" cy="19" rx="8"   ry="5.5" fill={color} opacity="0.60" />
+                    </svg>
+                );
+            }
+            // Clear / SKC / CLR
+            return (
+                <svg width={size} height={size} viewBox="0 0 32 32" className="wx-icon-svg">
+                    <circle cx="16" cy="16" r="8" fill="#FFD700" opacity="0.95" />
+                    {[0,45,90,135,180,225,270,315].map(function(a, i) {
+                        var rad = (a * Math.PI) / 180;
+                        var x1 = (16 + 11 * Math.cos(rad)).toFixed(1);
+                        var y1 = (16 + 11 * Math.sin(rad)).toFixed(1);
+                        var x2 = (16 + 14 * Math.cos(rad)).toFixed(1);
+                        var y2 = (16 + 14 * Math.sin(rad)).toFixed(1);
+                        return <line key={i} x1={x1} y1={y1} x2={x2} y2={y2} stroke="#FFD700" strokeWidth="2" strokeLinecap="round" />;
+                    })}
+                </svg>
+            );
+        }
+
+        /* =========================================
+           ROUTE TIMELINE — Vertical stepper showing
+           route airports with live weather data.
+           Used in the Briefing "Brief" tab.
+        ========================================= */
+        function RouteTimeline({ routePts, wxData, effectiveWxData }) {
+            function catColor(cat) {
+                return ({ VFR: 'var(--vfr)', MVFR: 'var(--mvfr)', IFR: 'var(--ifr)', LIFR: 'var(--lifr)' })[cat] || 'var(--text-tertiary)';
+            }
+            function catBgColor(cat) {
+                return ({ VFR: 'var(--vfr-bg)', MVFR: 'var(--mvfr-bg)', IFR: 'var(--ifr-bg)', LIFR: 'var(--lifr-bg)' })[cat] || 'var(--card-high)';
+            }
+            function parseDeg(windStr) {
+                if (!windStr) return null;
+                var m = windStr.match(/^(\d{3})@(\d+)/);
+                return m ? parseInt(m[1]) : null;
+            }
+            function parseKts(windStr) {
+                if (!windStr) return null;
+                var m = windStr.match(/^(\d{3})@(\d+)/);
+                return m ? parseInt(m[2]) : null;
+            }
+
+            return (
+                <div className="route-timeline" style={{ marginBottom: 20 }}>
+                    {routePts.map(function(icao, idx) {
+                        var isFirst = idx === 0;
+                        var isLast  = idx === routePts.length - 1;
+                        var apt = getAirport(icao);
+                        var wxEntry = wxData && wxData.find(function(w){ return w.icao === icao; });
+                        var effEntry = effectiveWxData && effectiveWxData.find(function(e){ return e.icao === icao; });
+                        var wx = effEntry ? effEntry.effectiveWx : (wxEntry ? wxEntry.metar : null);
+                        var cat = wx ? wx.cat : null;
+                        var nodeClr = cat ? catColor(cat) : 'var(--text-tertiary)';
+                        var nodeBg  = cat ? catBgColor(cat) : 'var(--card-high)';
+                        var role = isFirst ? 'DEP' : isLast ? 'DEST' : ('WP' + idx);
+
+                        // Wind direction and speed for barb
+                        var windDeg = wx ? parseDeg(wx.wind) : null;
+                        var windKts = wx ? parseKts(wx.wind) : null;
+
+                        // Next leg distance
+                        var legDist = null, legEte = null;
+                        if (!isLast) {
+                            var p1 = apt;
+                            var p2 = getAirport(routePts[idx + 1]);
+                            if (p1 && p2) {
+                                legDist = Math.round(calcDist(p1.lat, p1.lon, p2.lat, p2.lon));
+                            }
+                        }
+
+                        return (
+                            <div key={icao} className="timeline-node">
+                                {/* Spine column */}
+                                <div className="timeline-spine">
+                                    <div className="timeline-line" style={{ background: isFirst ? 'transparent' : 'var(--card-border)', minHeight: isFirst ? 8 : 12 }} />
+                                    <div className="timeline-dot" style={{ background: nodeBg, border: '2.5px solid ' + nodeClr, boxShadow: cat ? ('0 0 10px ' + nodeClr + '55') : 'none' }}>
+                                        <div style={{ width: 6, height: 6, borderRadius: '50%', background: nodeClr }} />
+                                    </div>
+                                    <div className="timeline-line" style={{ background: isLast ? 'transparent' : 'var(--card-border)' }} />
+                                </div>
+
+                                {/* Station card */}
+                                <div style={{ flex: 1, paddingBottom: isLast ? 0 : 4, paddingTop: 0 }}>
+                                    <div className="timeline-station-card" style={{
+                                        borderLeftColor: nodeClr,
+                                        background: 'var(--card-mid)',
+                                        border: '1px solid var(--card-border-soft)',
+                                        borderLeftWidth: 3,
+                                    }}>
+                                        {/* Station header */}
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8, flexWrap: 'wrap' }}>
+                                            <span className="font-mono" style={{ fontSize: 17, fontWeight: 800, color: nodeClr, letterSpacing: '-0.3px' }}>{icao}</span>
+                                            <span style={{ fontSize: 9, fontWeight: 800, background: nodeClr, color: '#fff', borderRadius: 99, padding: '1px 8px', letterSpacing: '0.5px', textTransform: 'uppercase' }}>{role}</span>
+                                            {cat && (
+                                                <span className={'cat-badge cat-' + cat.toLowerCase()}>
+                                                    <MdIcon name={cat === 'VFR' ? 'check_circle' : cat === 'MVFR' ? 'warning' : 'cancel'} style={{ fontSize: 10 }} />
+                                                    {cat}
+                                                </span>
+                                            )}
+                                            {apt && <span style={{ fontSize: 12, color: 'var(--text-tertiary)', marginLeft: 'auto' }}>{apt.city || apt.name}</span>}
+                                        </div>
+
+                                        {/* Weather data row */}
+                                        {wx && (
+                                            <div className="wx-metric-grid">
+                                                {/* Wind with barb */}
+                                                <div className="wx-metric-tile" style={{ gridColumn: 'span 1' }}>
+                                                    <div className="wx-metric-label">Wind</div>
+                                                    <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+                                                        {windDeg != null && windKts != null && (
+                                                            <WindBarb deg={windDeg} kts={windKts} size={24} />
+                                                        )}
+                                                        <span className="wx-metric-value" style={{ fontSize: 11 }}>{wx.wind || '—'}</span>
+                                                    </div>
+                                                </div>
+                                                {/* Visibility */}
+                                                <div className="wx-metric-tile">
+                                                    <div className="wx-metric-label">Vis</div>
+                                                    <span className="wx-metric-value" style={{ fontSize: 11 }}>{wx.vis || '—'}</span>
+                                                </div>
+                                                {/* Sky with icon */}
+                                                <div className="wx-metric-tile">
+                                                    <div className="wx-metric-label">Sky</div>
+                                                    <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                                                        <WeatherIcon sky={wx.sky} size={18} color="var(--text-secondary)" />
+                                                        <span className="wx-metric-value" style={{ fontSize: 10 }}>{wx.sky || '—'}</span>
+                                                    </div>
+                                                </div>
+                                                {/* Temp */}
+                                                <div className="wx-metric-tile">
+                                                    <div className="wx-metric-label">Temp</div>
+                                                    <span className="wx-metric-value" style={{ fontSize: 11 }}>{wx.temp || '—'}</span>
+                                                </div>
+                                            </div>
+                                        )}
+                                        {!wx && (
+                                            <div style={{ fontSize: 12, color: 'var(--text-tertiary)', fontStyle: 'italic' }}>No weather data available</div>
+                                        )}
+                                    </div>
+
+                                    {/* Inter-leg distance strip */}
+                                    {!isLast && legDist && (
+                                        <div className="timeline-leg-strip" style={{ paddingLeft: 6, paddingRight: 8, marginBottom: 4 }}>
+                                            <div className="timeline-leg-line" />
+                                            <span className="timeline-leg-label">
+                                                <MdIcon name="flight" style={{ fontSize: 10, marginRight: 3, display: 'inline-block', transform: 'rotate(45deg)' }} />
+                                                {legDist} NM
+                                            </span>
+                                            <div className="timeline-leg-line" />
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+                        );
+                    })}
+                </div>
+            );
+        }
+
         function SemiGauge({ score, size }) {
             size = size || 180;
             var cx = size / 2, cy = size * 0.58, r = size * 0.40;
@@ -2624,28 +3164,39 @@
         ========================================= */
         function ScoreBreakdown({ breakdown, total }) {
             return (
-                <div style={{ background:'var(--md-sys-color-surface-container)', borderRadius:16, padding:'16px 20px', marginBottom:16 }}>
-                    <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:16 }}>
-                        <MdIcon name="analytics" style={{ color:'var(--md-sys-color-primary)', fontSize:18 }} />
-                        <span style={{ fontWeight:700, fontSize:13, textTransform:'uppercase', letterSpacing:'0.5px', color:'var(--md-sys-color-primary)' }}>Composite Safety Score</span>
+                <div style={{ background: 'var(--card)', border: '1px solid var(--card-border)', borderRadius: 20, padding: '20px 22px', marginBottom: 16, boxShadow: '0 2px 16px rgba(0,0,0,0.35)' }}>
+                    {/* Header row */}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 18 }}>
+                        <div style={{ width: 28, height: 28, borderRadius: 8, background: 'var(--accent-dim)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                            <MdIcon name="analytics" style={{ color: 'var(--accent)', fontSize: 16 }} />
+                        </div>
+                        <span style={{ fontWeight: 700, fontSize: 13, textTransform: 'uppercase', letterSpacing: '0.7px', color: 'var(--text-secondary)' }}>Safety Score Breakdown</span>
+                        <span className="font-mono" style={{ marginLeft: 'auto', fontSize: 22, fontWeight: 900, color: getGoColor(total) }}>{total}<span style={{ fontSize: 13, color: 'var(--text-tertiary)', fontWeight: 500 }}>/100</span></span>
                     </div>
+
+                    {/* Semi-gauge stays centered */}
                     <SemiGauge score={total} size={180} />
-                    <div style={{ marginTop:16, display:'flex', flexDirection:'column', gap:12 }}>
+
+                    {/* Factor rows */}
+                    <div style={{ marginTop: 18, display: 'flex', flexDirection: 'column', gap: 14 }}>
                         {breakdown.map(function(f) {
+                            var pct = Math.round((f.score / f.max) * 100);
                             return (
-                                <div key={f.label} style={{ display:'flex', alignItems:'flex-start', gap:10 }}>
-                                    <MdIcon name={f.icon} style={{ fontSize:16, color:f.color, flexShrink:0, marginTop:3 }} />
-                                    <div style={{ flex:1 }}>
-                                        <div style={{ display:'flex', justifyContent:'space-between', marginBottom:4 }}>
-                                            <span style={{ fontSize:12, fontWeight:500, color:'var(--md-sys-color-on-surface)' }}>{f.label}</span>
-                                            <span className="font-mono" style={{ fontSize:12, fontWeight:700, color:f.color }}>
-                                                {f.score}<span style={{ fontWeight:400, color:'var(--md-sys-color-on-surface-variant)' }}>/{f.max}</span>
+                                <div key={f.label} style={{ display: 'flex', alignItems: 'flex-start', gap: 12 }}>
+                                    <div style={{ width: 30, height: 30, borderRadius: 8, background: f.color + '22', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, border: '1px solid ' + f.color + '44' }}>
+                                        <MdIcon name={f.icon} style={{ fontSize: 15, color: f.color }} />
+                                    </div>
+                                    <div style={{ flex: 1 }}>
+                                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 5 }}>
+                                            <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-primary)' }}>{f.label}</span>
+                                            <span className="font-mono" style={{ fontSize: 13, fontWeight: 800, color: f.color }}>
+                                                {f.score}<span style={{ fontSize: 10, fontWeight: 400, color: 'var(--text-tertiary)' }}>/{f.max}</span>
                                             </span>
                                         </div>
-                                        <div style={{ height:6, background:'var(--md-sys-color-surface-container-highest)', borderRadius:3, overflow:'hidden', marginBottom:3 }}>
-                                            <div style={{ width:(f.score/f.max*100)+'%', height:'100%', background:f.color, borderRadius:3, transition:'width 0.9s ease-out' }} />
+                                        <div className="score-seg-track">
+                                            <div className="score-seg-fill" style={{ width: pct + '%', background: 'linear-gradient(90deg,' + f.color + 'cc,' + f.color + ')' }} />
                                         </div>
-                                        <div style={{ fontSize:12, color:'var(--md-sys-color-on-surface-variant)' }}>{f.detail}</div>
+                                        {f.detail && <div style={{ fontSize: 11, color: 'var(--text-tertiary)', marginTop: 3, lineHeight: 1.4 }}>{f.detail}</div>}
                                     </div>
                                 </div>
                             );
@@ -2822,17 +3373,14 @@
             );
         }
 
-        function CatBadge({ cat }) {
-            const lc = cat.toLowerCase();
+        function CatBadge({ cat, large }) {
+            var lc = (cat || '').toLowerCase();
             /* WCAG AA: icon communicates flight category independent of color */
-            const catIcon = { VFR: 'check_circle', MVFR: 'warning', IFR: 'cancel', LIFR: 'dangerous' }[cat] || 'help';
+            var catIcon = { VFR: 'check_circle', MVFR: 'warning', IFR: 'cancel', LIFR: 'dangerous' }[cat] || 'help';
             return (
-                <span className="font-mono" style={{
-                    display: "inline-flex", alignItems: "center", gap: 4, padding: "2px 10px", borderRadius: "12px",
-                    fontSize: "11px", fontWeight: "700",
-                    background: `var(--cat-${lc}-bg)`, color: `var(--cat-${lc}-color)`
-                }} aria-label={cat + ' conditions'}>
-                    <MdIcon name={catIcon} style={{ fontSize: 12, color: `var(--cat-${lc}-color)` }} aria-hidden="true" />
+                <span className={'cat-badge cat-' + lc} aria-label={cat + ' conditions'}
+                    style={{ fontSize: large ? 13 : 11, padding: large ? '4px 14px' : '3px 10px' }}>
+                    <MdIcon name={catIcon} style={{ fontSize: large ? 14 : 11 }} aria-hidden="true" />
                     {cat}
                 </span>
             );
@@ -2863,19 +3411,41 @@
            APP COMPONENTS
         ========================================= */
 
-        function GoScoreRing({ score, size = 100 }) {
-            var r = (size - 10) / 2;
+        function GoScoreRing({ score, size }) {
+            size = size || 100;
+            var strokeW = size >= 80 ? 7 : 5;
+            var r = (size - strokeW * 2) / 2;
             var circ = 2 * Math.PI * r;
             var col = getGoColor(score);
+            // Glow color mapped from the CSS var to an rgba for filter
+            var glowMap = {
+                'var(--md-sys-color-primary)': '10,132,255',
+                'var(--md-sys-color-warning)': '255,149,0',
+                'var(--md-sys-color-error)':   '255,59,48'
+            };
+            var glowRgb = glowMap[col] || '10,132,255';
             return (
-                <div style={{ position: "relative", width: size, height: size }}>
+                <div style={{ position: "relative", width: size, height: size, animation: 'scorePop 0.45s cubic-bezier(0.34,1.56,0.64,1) both' }}>
                     <svg width={size} height={size} style={{ transform: "rotate(-90deg)" }}>
-                        <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke="var(--md-sys-color-surface-container-highest)" strokeWidth="6" />
-                        <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke={col} strokeWidth="6" strokeDasharray={circ} strokeDashoffset={circ * (1 - score / 100)} strokeLinecap="round" style={{ transition: "stroke-dashoffset 0.8s ease-out" }} />
+                        {/* Track */}
+                        <circle cx={size/2} cy={size/2} r={r} fill="none"
+                            stroke="var(--card-high)" strokeWidth={strokeW} />
+                        {/* Progress arc */}
+                        <circle cx={size/2} cy={size/2} r={r} fill="none"
+                            stroke={col} strokeWidth={strokeW}
+                            strokeDasharray={circ}
+                            strokeDashoffset={circ * (1 - Math.min(score,100) / 100)}
+                            strokeLinecap="round"
+                            style={{
+                                transition: 'stroke-dashoffset 0.9s ease-out',
+                                filter: `drop-shadow(0 0 ${size * 0.07}px rgba(${glowRgb},0.55))`
+                            }} />
                     </svg>
                     <div style={{ position: "absolute", inset: 0, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center" }}>
-                        <div style={{ fontSize: size * 0.3, fontWeight: 700, color: col, lineHeight: 1 }}>{score}</div>
-                        <div className="font-mono" style={{ fontSize: size * 0.1, color: "var(--md-sys-color-on-surface-variant)", fontWeight: 600, letterSpacing: "0.05em", marginTop: 2 }}>SCORE</div>
+                        <div className="font-mono" style={{ fontSize: size * 0.28, fontWeight: 800, color: col, lineHeight: 1, letterSpacing: '-0.02em' }}>{score}</div>
+                        {size >= 70 && (
+                            <div style={{ fontSize: size * 0.095, color: "var(--text-tertiary)", fontWeight: 600, letterSpacing: "0.08em", marginTop: 2, textTransform: 'uppercase' }}>Score</div>
+                        )}
                     </div>
                 </div>
             );
@@ -5403,44 +5973,64 @@
                     {/* ---- Auto briefing ---- */}
                     {effectiveWxData && analysis && finalVerdict && (
                         <>
-                            {/* Trip Details card */}
-                            <div style={{ background: 'var(--md-sys-color-surface-container)', borderRadius: 16, padding: '16px 20px', marginBottom: 16 }}>
-                                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
-                                    <MdIcon name="flight" style={{ color: 'var(--md-sys-color-primary)', fontSize: 18, transform: 'rotate(45deg)' }} />
-                                    <span style={{ fontWeight: 700, fontSize: 13, textTransform: 'uppercase', letterSpacing: '0.5px', color: 'var(--md-sys-color-primary)' }}>Trip Details</span>
-                                </div>
-                                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px 20px' }}>
-                                    <div>
-                                        <div style={{ fontSize: 12, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px', color: 'var(--md-sys-color-on-surface-variant)', marginBottom: 2 }}>Route</div>
-                                        <div className="font-mono" style={{ fontSize: 15, fontWeight: 700, color: 'var(--md-sys-color-on-surface)' }}>{allRoutePts.join(' \u2794 ')}</div>
-                                        {allRoutePts.length <= 2 && (
-                                            <div style={{ fontSize: 12, color: 'var(--md-sys-color-on-surface-variant)' }}>
-                                                {(getAirport(allRoutePts[0]) || {}).city || allRoutePts[0]}
-                                                {' \u2192 '}
-                                                {(getAirport(allRoutePts[allRoutePts.length - 1]) || {}).city || allRoutePts[allRoutePts.length - 1]}
-                                            </div>
-                                        )}
-                                    </div>
-                                    <div>
-                                        <div style={{ fontSize: 12, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px', color: 'var(--md-sys-color-on-surface-variant)', marginBottom: 2 }}>Aircraft</div>
-                                        <div style={{ fontSize: 13, fontWeight: 500, color: 'var(--md-sys-color-on-surface)' }}>{ac.name}</div>
-                                        <div style={{ fontSize: 12, color: 'var(--md-sys-color-on-surface-variant)' }}>{ac.cat} · {ac.kts} kts cruise</div>
-                                    </div>
-                                    <div>
-                                        <div style={{ fontSize: 12, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px', color: 'var(--md-sys-color-on-surface-variant)', marginBottom: 2 }}>Departure</div>
-                                        <div style={{ fontSize: 13, fontWeight: 500, color: 'var(--md-sys-color-on-surface)' }}>{trip.date}</div>
-                                        <div style={{ fontSize: 12, color: 'var(--md-sys-color-on-surface-variant)' }}>
-                                            {trip.time} local
-                                            {tripTargetUtc && (
-                                                <span className="font-mono"> · {String(tripTargetUtc.getUTCHours()).padStart(2,'0')}{String(tripTargetUtc.getUTCMinutes()).padStart(2,'0')}Z</span>
-                                            )}
+                            {/* ── GO/NO-GO Verdict Banner ── */}
+                            {(function() {
+                                var verd = finalVerdict;
+                                var bannerClass = verd.verdict === 'GO' ? 'go-banner' : verd.verdict === 'CAUTION' ? 'caution-banner' : 'nogo-banner';
+                                var sc = combinedScore ?? (detailedScore ? detailedScore.total : null);
+                                return (
+                                    <div className={'verdict-banner ' + bannerClass} style={{ marginBottom: 16 }}>
+                                        {/* Verdict icon ring */}
+                                        <div className="verdict-icon-ring" style={{ color: verd.verdictColor }}>
+                                            <MdIcon name={verd.verdictIcon} style={{ fontSize: 26, color: verd.verdictColor }} />
                                         </div>
+                                        {/* Text */}
+                                        <div style={{ flex: 1, minWidth: 0 }}>
+                                            <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, flexWrap: 'wrap' }}>
+                                                <span style={{ fontSize: 20, fontWeight: 900, letterSpacing: '-0.02em', color: verd.verdictColor }}>{verd.verdict}</span>
+                                                {sc != null && (
+                                                    <span className="font-mono" style={{ fontSize: 13, fontWeight: 700, color: verd.verdictColor, opacity: 0.8 }}>{sc}/100</span>
+                                                )}
+                                            </div>
+                                            <div style={{ fontSize: 13, color: 'var(--text-secondary)', marginTop: 3, lineHeight: 1.5 }}>{verd.verdictDesc}</div>
+                                        </div>
+                                        {/* Score ring */}
+                                        {sc != null && <GoScoreRing score={sc} size={72} />}
                                     </div>
-                                    <div>
-                                        <div style={{ fontSize: 12, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px', color: 'var(--md-sys-color-on-surface-variant)', marginBottom: 2 }}>Distance / ETE</div>
-                                        <div className="font-mono" style={{ fontSize: 13, fontWeight: 600, color: 'var(--md-sys-color-on-surface)' }}>{routeDist} NM</div>
-                                        <div style={{ fontSize: 12, color: 'var(--md-sys-color-on-surface-variant)' }}>{eteStr} at cruise</div>
+                                );
+                            })()}
+
+                            {/* ── Trip Details header card ── */}
+                            <div style={{ background: 'var(--card)', border: '1px solid var(--card-border)', borderRadius: 18, padding: '16px 20px', marginBottom: 16, boxShadow: '0 2px 12px rgba(0,0,0,0.3)' }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 14 }}>
+                                    <div style={{ width: 28, height: 28, borderRadius: 8, background: 'var(--accent-dim)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                                        <MdIcon name="flight" style={{ color: 'var(--accent)', fontSize: 16, transform: 'rotate(45deg)' }} />
                                     </div>
+                                    <span style={{ fontWeight: 700, fontSize: 12, textTransform: 'uppercase', letterSpacing: '0.7px', color: 'var(--text-secondary)' }}>Flight Details</span>
+                                </div>
+
+                                {/* 4-column metadata grid */}
+                                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '10px 20px', marginBottom: 16 }}>
+                                    {[
+                                        { label: 'Route',       mono: true,  val: allRoutePts.join(' → '), sub: allRoutePts.length <= 2 ? [(getAirport(allRoutePts[0])||{}).city, (getAirport(allRoutePts[allRoutePts.length-1])||{}).city].filter(Boolean).join(' → ') : null },
+                                        { label: 'Aircraft',    mono: false, val: ac.name, sub: ac.cat + ' · ' + ac.kts + ' kts' },
+                                        { label: 'Departs',     mono: false, val: trip.date, sub: trip.time + ' local' + (tripTargetUtc ? ' · ' + String(tripTargetUtc.getUTCHours()).padStart(2,'0') + String(tripTargetUtc.getUTCMinutes()).padStart(2,'0') + 'Z' : '') },
+                                        { label: 'Dist / ETE',  mono: true,  val: routeDist + ' NM', sub: eteStr + ' at cruise' },
+                                    ].map(function(item) {
+                                        return (
+                                            <div key={item.label}>
+                                                <div style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.7px', color: 'var(--text-tertiary)', marginBottom: 3 }}>{item.label}</div>
+                                                <div className={item.mono ? 'font-mono' : ''} style={{ fontSize: item.mono ? 14 : 13, fontWeight: 700, color: 'var(--text-primary)', lineHeight: 1.2 }}>{item.val}</div>
+                                                {item.sub && <div style={{ fontSize: 11, color: 'var(--text-tertiary)', marginTop: 2 }}>{item.sub}</div>}
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+
+                                {/* Route Timeline */}
+                                <div style={{ borderTop: '1px solid var(--card-border-soft)', paddingTop: 14 }}>
+                                    <div style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.7px', color: 'var(--text-tertiary)', marginBottom: 10 }}>Route Timeline</div>
+                                    <RouteTimeline routePts={allRoutePts} wxData={wxData} effectiveWxData={effectiveWxData} />
                                 </div>
                             </div>
 
@@ -5744,29 +6334,31 @@
                             })()}
 
                             {/* ---- AI Preflight Weather Briefing — veteran aviation meteorologist ---- */}
-                            <div style={{ background: 'var(--md-sys-color-surface-container)', borderRadius: 16, marginBottom: 16, overflow: 'hidden' }}>
+                            <div style={{ background: 'var(--card)', border: '1px solid var(--card-border)', borderRadius: 20, marginBottom: 16, overflow: 'hidden', boxShadow: '0 2px 16px rgba(0,0,0,0.35)' }}>
                                 {/* Section header — always visible, acts as toggle */}
-                                <button onClick={() => setShowAI(!showAI)} style={{ display: 'flex', alignItems: 'center', gap: 10, width: '100%', background: 'none', border: 'none', cursor: 'pointer', padding: '14px 16px', color: 'var(--md-sys-color-on-surface)' }}>
-                                    <MdIcon name="flight" style={{ color: 'var(--md-sys-color-primary)', fontSize: 20 }} />
+                                <button onClick={() => setShowAI(!showAI)} style={{ display: 'flex', alignItems: 'center', gap: 12, width: '100%', background: 'none', border: 'none', cursor: 'pointer', padding: '16px 18px', color: 'var(--text-primary)', fontFamily: 'var(--font-sans)' }}>
+                                    <div style={{ width: 34, height: 34, borderRadius: 10, background: 'linear-gradient(135deg, var(--accent-dim), rgba(10,132,255,0.08))', border: '1px solid rgba(10,132,255,0.25)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                                        <MdIcon name="auto_awesome" style={{ color: 'var(--accent)', fontSize: 18 }} />
+                                    </div>
                                     <div style={{ flex: 1, textAlign: 'left' }}>
-                                        <div style={{ fontWeight: 700, fontSize: 13, textTransform: 'uppercase', letterSpacing: '0.5px', color: 'var(--md-sys-color-primary)' }}>AI Preflight Weather Briefing</div>
+                                        <div style={{ fontWeight: 700, fontSize: 13, textTransform: 'uppercase', letterSpacing: '0.7px', color: 'var(--text-primary)' }}>AI Preflight Briefing</div>
                                         {aiSavedAt && !aiLoading && (
-                                            <div style={{ fontSize: 11, color: 'var(--md-sys-color-on-surface-variant)', marginTop: 2 }}>
-                                                Last assessed {new Date(aiSavedAt).toLocaleString()} · tap to {showAI ? 'collapse' : 'expand'}
+                                            <div style={{ fontSize: 11, color: 'var(--text-tertiary)', marginTop: 2 }}>
+                                                Updated {new Date(aiSavedAt).toLocaleTimeString()} · {showAI ? 'Tap to collapse' : 'Tap to expand'}
                                             </div>
                                         )}
                                         {!aiSavedAt && !aiLoading && (
-                                            <div style={{ fontSize: 11, color: 'var(--md-sys-color-on-surface-variant)', marginTop: 2 }}>Veteran aviation meteorologist · 30+ years experience</div>
+                                            <div style={{ fontSize: 11, color: 'var(--text-tertiary)', marginTop: 2 }}>Veteran meteorologist · FAA standard briefing format</div>
                                         )}
                                     </div>
                                     {aiResult && !aiLoading && (
-                                        <span style={{ fontSize: 11, fontWeight: 700, background: 'var(--md-sys-color-primary-container)', color: 'var(--md-sys-color-on-primary-container)', borderRadius: 6, padding: '2px 8px', marginRight: 4 }}>SAVED</span>
+                                        <span style={{ fontSize: 10, fontWeight: 700, background: 'var(--accent-dim)', color: 'var(--accent)', borderRadius: 6, padding: '3px 9px', letterSpacing: '0.5px', flexShrink: 0 }}>LIVE</span>
                                     )}
-                                    <MdIcon name={showAI ? 'expand_less' : 'expand_more'} style={{ fontSize: 20, color: 'var(--md-sys-color-on-surface-variant)' }} />
+                                    <MdIcon name={showAI ? 'expand_less' : 'expand_more'} style={{ fontSize: 20, color: 'var(--text-tertiary)', flexShrink: 0 }} />
                                 </button>
 
                                 {showAI && (
-                                    <div style={{ padding: '0 16px 16px', borderTop: '1px solid var(--md-sys-color-outline-variant)' }}>
+                                    <div style={{ padding: '0 16px 16px', borderTop: '1px solid var(--card-border-soft)' }}>
 
                                         {/* Loading state — shown while auto-generating */}
                                         {aiLoading && !aiResult && (
@@ -5795,21 +6387,37 @@
                                             </div>
                                         )}
 
-                                        {/* Briefing sections */}
-                                        {aiSections.map((s, i) => {
-                                            var meta = sectionMeta[s.title] || { icon: 'info', color: 'var(--md-sys-color-primary)' };
-                                            return (
-                                                <div key={i} style={{ background: meta.bg || 'var(--md-sys-color-surface-container-high)', borderRadius: 14, padding: '16px 18px', marginBottom: 12, color: meta.onBg || 'var(--md-sys-color-on-surface)' }}>
-                                                    <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 }}>
-                                                        <MdIcon name={meta.icon} style={{ color: meta.color, fontSize: 20 }} />
-                                                        <h3 style={{ margin: 0, fontSize: 13, fontWeight: 700, color: meta.color, letterSpacing: '0.5px', textTransform: 'uppercase' }}>{s.title}</h3>
-                                                    </div>
-                                                    <div style={{ fontSize: 13, lineHeight: 1.65, whiteSpace: 'pre-wrap', color: meta.onBg || 'var(--md-sys-color-on-surface-variant)' }}>
-                                                        {s.body.trim()}
-                                                    </div>
-                                                </div>
-                                            );
-                                        })}
+                                        {/* Briefing sections — collapsible accordion cards */}
+                                        {(function() {
+                                            // Which sections are expanded (all open by default)
+                                            return aiSections.map(function(s, i) {
+                                                var meta = sectionMeta[s.title] || { icon: 'info', color: 'var(--accent)' };
+                                                var isHighlight = s.title === 'GO/NO-GO ASSESSMENT' || s.title === 'HAZARDS SUMMARY';
+                                                return (
+                                                    <details key={i} open={i < 3 || isHighlight} className="ai-section-accordion" style={{
+                                                        background: isHighlight ? (meta.bg || 'var(--card)') : 'var(--card)',
+                                                        border: '1px solid ' + (isHighlight ? meta.color + '44' : 'var(--card-border-soft)'),
+                                                    }}>
+                                                        <summary className="ai-section-trigger">
+                                                            {/* Icon ring */}
+                                                            <div className="ai-section-icon-ring" style={{ background: meta.color + '22', border: '1px solid ' + meta.color + '44' }}>
+                                                                <MdIcon name={meta.icon} style={{ fontSize: 15, color: meta.color }} />
+                                                            </div>
+                                                            <span style={{ fontWeight: 700, fontSize: 12, textTransform: 'uppercase', letterSpacing: '0.7px', color: meta.color, flex: 1 }}>
+                                                                {s.title}
+                                                            </span>
+                                                            {isHighlight && (
+                                                                <span style={{ fontSize: 10, fontWeight: 700, background: meta.color + '22', color: meta.color, borderRadius: 6, padding: '2px 7px', marginRight: 6, flexShrink: 0 }}>KEY</span>
+                                                            )}
+                                                            <MdIcon name="expand_more" style={{ fontSize: 18, color: 'var(--text-tertiary)', flexShrink: 0, transition: 'transform 0.2s' }} />
+                                                        </summary>
+                                                        <div className="ai-section-content" style={{ color: meta.onBg || 'var(--text-secondary)' }}>
+                                                            {s.body.trim()}
+                                                        </div>
+                                                    </details>
+                                                );
+                                            });
+                                        })()}
 
                                         {/* Update + speech buttons — only shown after briefing exists */}
                                         {aiResult && !aiLoading && (
