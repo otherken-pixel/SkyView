@@ -48,7 +48,7 @@ self.addEventListener('fetch', function(event) {
 
     // Skip caching for non-GET requests and external API calls
     if (event.request.method !== 'GET') return;
-    if (url.hostname === 'api.anthropic.com') return;
+    if (url.hostname === 'generativelanguage.googleapis.com') return;
     if (url.hostname === 'aviationweather.gov') return;
     if (url.hostname === 'api.weather.gov') return;
     if (url.hostname.includes('cloudfunctions.net')) return;
