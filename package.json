@@ -1,0 +1,13 @@
+{
+  "name": "flightscore",
+  "version": "1.0.0",
+  "description": "FlightScore – preflight weather & risk briefing app",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "build": "echo 'Static site — no build step required'",
+    "start": "node server.js"
+  },
+  "private": true
+}
