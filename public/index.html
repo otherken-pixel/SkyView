@@ -1284,6 +1284,166 @@
             return localStorage.getItem(_OAIP_LS_KEY) || '';
         }
 
+        /* ═══════════════════════════════════════════════════════════════════
+           PERSONAL MINIMUMS — storage & evaluation
+           Stored in localStorage; Firestore sync for authenticated users.
+        ═══════════════════════════════════════════════════════════════════ */
+        var _MIN_LS_KEY = 'skyview_personal_minimums';
+
+        function getPersonalMinimums() {
+            try { var r = localStorage.getItem(_MIN_LS_KEY); return r ? JSON.parse(r) : null; }
+            catch(e) { return null; }
+        }
+        function savePersonalMinimums(mins) {
+            if (mins) localStorage.setItem(_MIN_LS_KEY, JSON.stringify(mins));
+            else localStorage.removeItem(_MIN_LS_KEY);
+        }
+
+        // Extract lowest ceiling (ft) from sky string: "BKN012 OVC020" → 1200
+        function parseCeilingFt(skyStr) {
+            if (!skyStr) return null;
+            var best = null;
+            var re = /(?:BKN|OVC|VV)(\d{3})/gi, m;
+            while ((m = re.exec(skyStr)) !== null) {
+                var ft = parseInt(m[1]) * 100;
+                if (best === null || ft < best) best = ft;
+            }
+            return best;
+        }
+
+        // Parse visibility string → SM (numeric). Returns null if unparseable.
+        function parseVisSMNum(s) {
+            if (!s) return null;
+            if (/^P/i.test(s)) return 99; // P6SM = "more than 6" — treat as unlimited
+            var m = s.match(/([\d.]+)\s*(?:\/\s*([\d.]+))?\s*SM/i);
+            if (!m) return null;
+            return m[2] ? parseInt(m[1]) / parseInt(m[2]) : parseFloat(m[1]);
+        }
+
+        // Evaluate personal minimums against all route weather stations.
+        // Returns { penalty, status, worstParam, color, icon, detail }
+        function checkPersonalMinimums(effectiveWxData, personalMinimums, tripTargetUtc) {
+            if (!personalMinimums) {
+                return { penalty: 25, status: 'notset', worstParam: null,
+                    color: 'var(--caution)', icon: 'warning',
+                    detail: 'ADM: Personal minimums not configured — set them in Pilot Profile' };
+            }
+
+            // Day vs night by UTC departure hour (06-20 UTC ≈ daytime)
+            var isNight = tripTargetUtc ? (tripTargetUtc.getUTCHours() < 6 || tripTargetUtc.getUTCHours() >= 20) : false;
+            var minCeil = isNight
+                ? (personalMinimums.ceilingNight || personalMinimums.ceilingDay || 0)
+                : (personalMinimums.ceilingDay || 0);
+            var minVis  = isNight
+                ? (personalMinimums.visNight || personalMinimums.visDay || 0)
+                : (personalMinimums.visDay || 0);
+            var maxWind  = personalMinimums.maxWind || 0;
+            var maxGust  = personalMinimums.maxGustSpread || 0;
+            var maxXwind = personalMinimums.maxCrosswind || 0;
+
+            // Severity ranks: 3=exceed, 2=at, 1=buffer/xwind-buffer, 0=clear
+            var worstRank = 0, worstStatus = 'clear', worstParam = null;
+            var detailMsg = '';
+
+            function elevate(rank, status, param, msg) {
+                if (rank > worstRank) {
+                    worstRank = rank; worstStatus = status; worstParam = param; detailMsg = msg;
+                }
+            }
+
+            (effectiveWxData || []).forEach(function(e) {
+                var wx = e.effectiveWx;
+                if (!wx) return;
+                var id = e.icao;
+                var apt = getAirport(id);
+
+                // ── Ceiling
+                if (minCeil > 0) {
+                    var cft = parseCeilingFt(wx.sky);
+                    if (cft !== null) {
+                        if (cft < minCeil)
+                            elevate(3, 'exceed', 'Ceiling', id + ': ceiling ' + cft + 'ft below min ' + minCeil + 'ft');
+                        else if (cft === minCeil)
+                            elevate(2, 'at', 'Ceiling', id + ': ceiling exactly at minimum ' + minCeil + 'ft');
+                        else if (cft <= minCeil * 1.20)
+                            elevate(1, 'buffer', 'Ceiling', id + ': ceiling ' + cft + 'ft within 20% of minimum');
+                    }
+                }
+
+                // ── Visibility
+                if (minVis > 0) {
+                    var vis = parseVisSMNum(wx.vis);
+                    if (vis !== null) {
+                        if (vis < minVis)
+                            elevate(3, 'exceed', 'Visibility', id + ': vis ' + vis + 'SM below min ' + minVis + 'SM');
+                        else if (vis === minVis)
+                            elevate(2, 'at', 'Visibility', id + ': visibility exactly at minimum');
+                        else if (vis <= minVis * 1.20)
+                            elevate(1, 'buffer', 'Visibility', id + ': visibility within 20% of minimum');
+                    }
+                }
+
+                // ── Wind
+                if (maxWind > 0) {
+                    var wm = (wx.wind || '').match(/(\d{2,3})KT/);
+                    var wkts = wm ? parseInt(wm[1]) : 0;
+                    if (wkts > maxWind)
+                        elevate(3, 'exceed', 'Wind', id + ': wind ' + wkts + 'kt exceeds max ' + maxWind + 'kt');
+                    else if (wkts === maxWind)
+                        elevate(2, 'at', 'Wind', id + ': wind exactly at maximum');
+                    else if (wkts >= maxWind * 0.80)
+                        elevate(1, 'buffer', 'Wind', id + ': wind ' + wkts + 'kt within 20% of maximum');
+                }
+
+                // ── Gust spread
+                if (maxGust > 0) {
+                    var gm = (wx.wind || '').match(/(\d{2,3})G(\d+)KT/);
+                    if (gm) {
+                        var spread = parseInt(gm[2]) - parseInt(gm[1]);
+                        if (spread > maxGust)
+                            elevate(3, 'exceed', 'Gust Spread', id + ': gust spread ' + spread + 'kt exceeds max ' + maxGust + 'kt');
+                        else if (spread === maxGust)
+                            elevate(2, 'at', 'Gust Spread', id + ': gust spread exactly at maximum');
+                        else if (spread >= maxGust * 0.80)
+                            elevate(1, 'buffer', 'Gust Spread', id + ': gust spread within 20% of maximum');
+                    }
+                }
+
+                // ── Crosswind (within 2 kt = buffer, spec-defined)
+                if (maxXwind > 0 && apt) {
+                    var rwy = getRunwayRecommendation(wx, apt);
+                    if (rwy && rwy.crosswind != null) {
+                        var xw = rwy.crosswind;
+                        if (xw > maxXwind)
+                            elevate(3, 'exceed', 'Crosswind', id + ': crosswind ' + xw + 'kt exceeds max ' + maxXwind + 'kt');
+                        else if (xw === maxXwind)
+                            elevate(2, 'at', 'Crosswind', id + ': crosswind exactly at maximum');
+                        else if (xw >= maxXwind - 2)
+                            elevate(1, 'buffer', 'Crosswind', id + ': crosswind ' + xw + 'kt within 2kt of limit');
+                    }
+                }
+            });
+
+            switch(worstStatus) {
+                case 'exceed':
+                    return { penalty: 50, status: 'exceed', worstParam: worstParam,
+                        color: 'var(--nogo)', icon: 'dangerous',
+                        detail: 'EXCEEDS minimums — ' + detailMsg };
+                case 'at':
+                    return { penalty: 30, status: 'at', worstParam: worstParam,
+                        color: 'var(--nogo)', icon: 'warning',
+                        detail: 'AT minimums — ' + detailMsg };
+                case 'buffer':
+                    return { penalty: 15, status: 'buffer', worstParam: worstParam,
+                        color: 'var(--caution)', icon: 'warning_amber',
+                        detail: 'Buffer zone — ' + detailMsg };
+                default:
+                    return { penalty: 0, status: 'clear', worstParam: null,
+                        color: 'var(--go)', icon: 'check_circle',
+                        detail: 'All conditions clear of personal minimums' };
+            }
+        }
+
         // Generic fetch wrapper for OpenAIP.  Checks localStorage cache first;
         // falls back to live fetch with the x-openaip-api-key header.
         async function openaipFetch(path, params) {
@@ -3180,6 +3340,30 @@
                     {/* Factor rows */}
                     <div style={{ marginTop: 18, display: 'flex', flexDirection: 'column', gap: 14 }}>
                         {breakdown.map(function(f) {
+                            if (f.isPenalty) {
+                                // Personal Minimums penalty item — show penalty badge + risk bar
+                                var penaltyPct = f.penaltyAmount > 0 ? Math.min(100, Math.round((f.penaltyAmount / 50) * 100)) : 0;
+                                var penaltyLabel = f.penaltyAmount === 0 ? 'Clear' : '−' + f.penaltyAmount + ' pts';
+                                return (
+                                    <div key={f.label} style={{ display: 'flex', alignItems: 'flex-start', gap: 12 }}>
+                                        <div style={{ width: 30, height: 30, borderRadius: 8, background: f.color + '22', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, border: '1px solid ' + f.color + '44' }}>
+                                            <MdIcon name={f.icon} style={{ fontSize: 15, color: f.color }} />
+                                        </div>
+                                        <div style={{ flex: 1 }}>
+                                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 5 }}>
+                                                <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-primary)' }}>{f.label}</span>
+                                                <span style={{ fontSize: 11, fontWeight: 700, color: f.color, background: f.color + '22', border: '1px solid ' + f.color + '55', borderRadius: 6, padding: '2px 7px', letterSpacing: '0.3px' }}>
+                                                    {penaltyLabel}
+                                                </span>
+                                            </div>
+                                            <div className="score-seg-track">
+                                                <div className="score-seg-fill" style={{ width: penaltyPct + '%', background: f.color }} />
+                                            </div>
+                                            {f.detail && <div style={{ fontSize: 11, color: 'var(--text-tertiary)', marginTop: 3, lineHeight: 1.4 }}>{f.detail}</div>}
+                                        </div>
+                                    </div>
+                                );
+                            }
                             var pct = Math.round((f.score / f.max) * 100);
                             return (
                                 <div key={f.label} style={{ display: 'flex', alignItems: 'flex-start', gap: 12 }}>
@@ -4303,7 +4487,7 @@
             else { URL.revokeObjectURL(url); }
         }
 
-        function BriefingPanel({ trip, onScoreUpdate, onFratUpdate, tab, pendingAiPrompt, onClearPendingPrompt, user }) {
+        function BriefingPanel({ trip, onScoreUpdate, onFratUpdate, tab, pendingAiPrompt, onClearPendingPrompt, user, personalMinimums }) {
             // --- Auto-briefing state ---
             var [wxData, setWxData] = useState(null);
             var [loadingWx, setLoadingWx] = useState(true);
@@ -4841,6 +5025,20 @@
                 }
                 return raw;
             }, [detailedScore, fratComplete, fratAnswers, fratSkipped]);
+
+            // ── Personal Minimums evaluation ─────────────────────────────────────
+            var minimumsCheck = useMemo(function() {
+                if (!effectiveWxData) return null;
+                return checkPersonalMinimums(effectiveWxData, personalMinimums, tripTargetUtc);
+            }, [effectiveWxData, personalMinimums, tripTargetUtc]);
+
+            // Final displayed score = combinedScore minus minimums penalty, floored at 0
+            var finalDisplayScore = useMemo(function() {
+                if (combinedScore == null) return null;
+                if (!minimumsCheck) return combinedScore;
+                var cap = detailedScore && detailedScore.scoreCap != null ? detailedScore.scoreCap : 100;
+                return Math.max(0, Math.min(cap, combinedScore - minimumsCheck.penalty));
+            }, [combinedScore, minimumsCheck, detailedScore]);
 
             // Store callbacks in refs so effects never capture a stale closure when
             // the parent re-creates these functions on each render.
@@ -5977,7 +6175,7 @@
                             {(function() {
                                 var verd = finalVerdict;
                                 var bannerClass = verd.verdict === 'GO' ? 'go-banner' : verd.verdict === 'CAUTION' ? 'caution-banner' : 'nogo-banner';
-                                var sc = combinedScore ?? (detailedScore ? detailedScore.total : null);
+                                var sc = finalDisplayScore ?? combinedScore ?? (detailedScore ? detailedScore.total : null);
                                 return (
                                     <div className={'verdict-banner ' + bannerClass} style={{ marginBottom: 16 }}>
                                         {/* Verdict icon ring */}
@@ -6049,7 +6247,24 @@
                                         detail: 'FRAT score ' + fs + '/100 — 30% weight blended with weather (70%) for combined GO Score'
                                     }]);
                                 }
-                                return <ScoreBreakdown breakdown={augBreakdown} total={combinedScore ?? detailedScore.total} />;
+                                // Personal Minimums factor (penalty-based, displayed as a special row)
+                                if (minimumsCheck) {
+                                    var mPenalty = minimumsCheck.penalty;
+                                    // Bar: 0 penalty = full, 50 penalty = empty (out of 50 pts "cushion")
+                                    var mScore = Math.max(0, 50 - mPenalty);
+                                    augBreakdown = augBreakdown.concat([{
+                                        label: 'Personal Minimums',
+                                        score: mScore,
+                                        max: 50,
+                                        color: minimumsCheck.color,
+                                        icon: 'person',
+                                        detail: minimumsCheck.detail,
+                                        isPenalty: true,
+                                        penaltyAmount: mPenalty
+                                    }]);
+                                }
+                                var displayTotal = finalDisplayScore ?? combinedScore ?? detailedScore.total;
+                                return <ScoreBreakdown breakdown={augBreakdown} total={displayTotal} />;
                             })()}
 
                             {/* ── FRAT — Flight Risk Assessment Tool (MMOPA / PAVE) ── */}
@@ -6554,6 +6769,144 @@
            For production deployments, the OpenAIP key should be proxied
            via a Cloudflare Worker so it is not visible in the browser.
         ========================================================= */
+        /* ═══════════════════════════════════════════════════════════════════
+           PILOT PROFILE MODAL — Personal Minimums Configuration
+        ═══════════════════════════════════════════════════════════════════ */
+        function PilotProfileModal({ onClose, onSave }) {
+            var saved = getPersonalMinimums() || {};
+            var [vals, setVals] = React.useState({
+                ceilingDay:    saved.ceilingDay    || '',
+                ceilingNight:  saved.ceilingNight  || '',
+                visDay:        saved.visDay        || '',
+                visNight:      saved.visNight      || '',
+                maxWind:       saved.maxWind       || '',
+                maxGustSpread: saved.maxGustSpread || '',
+                maxCrosswind:  saved.maxCrosswind  || '',
+            });
+            var [saved2, setSaved2] = React.useState(false);
+
+            function field(key) { return vals[key] === '' ? '' : String(vals[key]); }
+            function setField(key, raw) {
+                var n = raw === '' ? '' : parseInt(raw);
+                setVals(function(v) { return Object.assign({}, v, { [key]: isNaN(n) ? '' : n }); });
+            }
+            function handleSave() {
+                // Convert empty strings to null so missing fields are detectable
+                var out = {};
+                Object.keys(vals).forEach(function(k) { out[k] = vals[k] === '' ? null : Number(vals[k]); });
+                savePersonalMinimums(out);
+                setSaved2(true);
+                setTimeout(function() { setSaved2(false); }, 1800);
+                if (onSave) onSave(out);
+            }
+            function handleClear() {
+                savePersonalMinimums(null);
+                setVals({ ceilingDay:'', ceilingNight:'', visDay:'', visNight:'', maxWind:'', maxGustSpread:'', maxCrosswind:'' });
+                if (onSave) onSave(null);
+            }
+
+            var groups = [
+                {
+                    label: 'Ceiling', icon: 'cloud', color: 'var(--mvfr)',
+                    fields: [
+                        { key: 'ceilingDay',   label: 'Day Minimum',   unit: 'ft',  placeholder: '3000', hint: 'e.g. 3,000 ft AGL' },
+                        { key: 'ceilingNight', label: 'Night Minimum', unit: 'ft',  placeholder: '5000', hint: 'e.g. 5,000 ft AGL' },
+                    ]
+                },
+                {
+                    label: 'Visibility', icon: 'visibility', color: 'var(--go)',
+                    fields: [
+                        { key: 'visDay',   label: 'Day Minimum',   unit: 'SM', placeholder: '5', hint: 'e.g. 5 SM' },
+                        { key: 'visNight', label: 'Night Minimum', unit: 'SM', placeholder: '7', hint: 'e.g. 7 SM' },
+                    ]
+                },
+                {
+                    label: 'Wind Limits', icon: 'air', color: 'var(--caution)',
+                    fields: [
+                        { key: 'maxWind',       label: 'Max Total Wind',   unit: 'kt', placeholder: '20', hint: 'Sustained wind limit' },
+                        { key: 'maxGustSpread', label: 'Max Gust Spread',  unit: 'kt', placeholder: '10', hint: 'Gust minus steady wind' },
+                        { key: 'maxCrosswind',  label: 'Max Crosswind',    unit: 'kt', placeholder: '12', hint: 'Aircraft crosswind limit' },
+                    ]
+                },
+            ];
+
+            return (
+                <div style={{ position:'fixed', inset:0, background:'rgba(0,0,0,0.72)', zIndex:9000, display:'flex', alignItems:'center', justifyContent:'center', padding:16 }}
+                    onClick={function(e){ if(e.target===e.currentTarget) onClose(); }}>
+                    <div style={{ background:'var(--card)', borderRadius:22, width:'100%', maxWidth:480, maxHeight:'90vh', overflowY:'auto', boxShadow:'0 24px 80px rgba(0,0,0,0.6)', border:'1px solid var(--card-border)' }}>
+
+                        {/* Header */}
+                        <div style={{ display:'flex', alignItems:'center', gap:14, padding:'20px 22px 16px', borderBottom:'1px solid var(--card-border-soft)' }}>
+                            <div style={{ width:40, height:40, borderRadius:12, background:'var(--accent-dim)', border:'1px solid rgba(10,132,255,0.3)', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
+                                <MdIcon name="person" style={{ color:'var(--accent)', fontSize:22 }} />
+                            </div>
+                            <div style={{ flex:1 }}>
+                                <div style={{ fontWeight:800, fontSize:16, color:'var(--text-primary)', letterSpacing:'-0.01em' }}>Pilot Profile</div>
+                                <div style={{ fontSize:12, color:'var(--text-tertiary)', marginTop:2 }}>Personal minimums — used in flight safety scoring</div>
+                            </div>
+                            <button onClick={onClose} style={{ background:'var(--card-high)', border:'none', borderRadius:8, width:32, height:32, display:'flex', alignItems:'center', justifyContent:'center', cursor:'pointer', flexShrink:0 }}>
+                                <MdIcon name="close" style={{ fontSize:18, color:'var(--text-secondary)' }} />
+                            </button>
+                        </div>
+
+                        {/* ADM notice */}
+                        <div style={{ margin:'16px 22px 0', padding:'12px 14px', borderRadius:12, background:'var(--caution-bg)', border:'1px solid rgba(255,149,0,0.25)', display:'flex', gap:10 }}>
+                            <MdIcon name="admin_panel_settings" style={{ color:'var(--caution)', fontSize:18, flexShrink:0, marginTop:1 }} />
+                            <div style={{ fontSize:12, color:'var(--text-secondary)', lineHeight:1.55 }}>
+                                <strong style={{ color:'var(--caution)' }}>ADM Notice:</strong> Leaving personal minimums blank applies a <strong>−25 pt ADM penalty</strong> to your safety score. Setting them enables precise buffer-zone warnings before conditions reach your limits.
+                            </div>
+                        </div>
+
+                        {/* Fields */}
+                        <div style={{ padding:'16px 22px' }}>
+                            {groups.map(function(g) { return (
+                                <div key={g.label} style={{ marginBottom:20 }}>
+                                    {/* Group header */}
+                                    <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:12, paddingBottom:8, borderBottom:'1px solid var(--card-border-soft)' }}>
+                                        <div style={{ width:26, height:26, borderRadius:7, background:g.color+'22', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
+                                            <MdIcon name={g.icon} style={{ fontSize:14, color:g.color }} />
+                                        </div>
+                                        <span style={{ fontWeight:700, fontSize:12, textTransform:'uppercase', letterSpacing:'0.7px', color:g.color }}>{g.label}</span>
+                                    </div>
+                                    {/* Fields */}
+                                    <div style={{ display:'grid', gridTemplateColumns: g.fields.length === 3 ? '1fr 1fr 1fr' : '1fr 1fr', gap:10 }}>
+                                        {g.fields.map(function(f) { return (
+                                            <div key={f.key}>
+                                                <div style={{ fontSize:10, fontWeight:700, textTransform:'uppercase', letterSpacing:'0.6px', color:'var(--text-tertiary)', marginBottom:5 }}>{f.label}</div>
+                                                <div style={{ display:'flex', alignItems:'center', gap:0, background:'var(--card-mid)', border:'1px solid var(--card-border-soft)', borderRadius:10, overflow:'hidden', transition:'border-color 0.15s' }}>
+                                                    <input
+                                                        type="number"
+                                                        min="0"
+                                                        placeholder={f.placeholder}
+                                                        value={field(f.key)}
+                                                        onChange={function(e){ setField(f.key, e.target.value); }}
+                                                        style={{ flex:1, background:'none', border:'none', outline:'none', padding:'10px 10px', fontSize:14, fontWeight:700, color:'var(--text-primary)', fontFamily:'var(--font-mono)', width:0 }}
+                                                    />
+                                                    <span style={{ padding:'0 10px 0 4px', fontSize:11, fontWeight:600, color:'var(--text-tertiary)', flexShrink:0 }}>{f.unit}</span>
+                                                </div>
+                                                <div style={{ fontSize:10, color:'var(--text-tertiary)', marginTop:4 }}>{f.hint}</div>
+                                            </div>
+                                        ); })}
+                                    </div>
+                                </div>
+                            ); })}
+                        </div>
+
+                        {/* Footer actions */}
+                        <div style={{ display:'flex', gap:10, padding:'0 22px 22px', borderTop:'1px solid var(--card-border-soft)', paddingTop:16 }}>
+                            <button onClick={handleClear} style={{ background:'var(--card-high)', border:'1px solid var(--card-border-soft)', borderRadius:10, padding:'10px 16px', fontSize:13, fontWeight:600, color:'var(--text-tertiary)', cursor:'pointer', flexShrink:0 }}>
+                                Clear All
+                            </button>
+                            <button onClick={handleSave} style={{ flex:1, background: saved2 ? 'var(--go)' : 'var(--accent)', border:'none', borderRadius:10, padding:'10px 0', fontSize:14, fontWeight:700, color:'#fff', cursor:'pointer', transition:'background 0.2s', display:'flex', alignItems:'center', justifyContent:'center', gap:8 }}>
+                                <MdIcon name={saved2 ? 'check_circle' : 'save'} style={{ fontSize:16, color:'#fff' }} />
+                                {saved2 ? 'Saved!' : 'Save Minimums'}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            );
+        }
+
         function SettingsModal({ onClose }) {
             var [apiKey,     setApiKey]     = useState(getOpenAIPKey);
             var [testStatus, setTestStatus] = useState(null);   // null | 'testing' | {ok,msg}
@@ -7118,9 +7471,11 @@
 
             var defaultTimeStr = (new Date(Date.now() + 7200000)).toTimeString().slice(0, 5);
 
-            var [showDataModal,     setShowDataModal]     = useState(false);
-    var [showSettingsModal, setShowSettingsModal] = useState(false);
-            var [showLoginModal,    setShowLoginModal]    = useState(false);
+            var [showDataModal,       setShowDataModal]       = useState(false);
+            var [showSettingsModal,   setShowSettingsModal]   = useState(false);
+            var [showLoginModal,      setShowLoginModal]      = useState(false);
+            var [showProfileModal,    setShowProfileModal]    = useState(false);
+            var [personalMinimums,    setPersonalMinimums]    = useState(getPersonalMinimums);
             var [showHamburger,    setShowHamburger]     = useState(false);
             var [isDecodedWx,      setIsDecodedWx]       = useState(false);
             var [pendingAiPrompt,  setPendingAiPrompt]   = useState(null);
@@ -7632,6 +7987,9 @@
                                 <IconBtn icon={THEME_ICONS[theme]} title={THEME_LABELS[theme]} onClick={cycleTheme} />
                                 <IconBtn icon="translate" title={isDecodedWx ? 'Show Raw METAR' : 'Decoded Weather'} active={isDecodedWx} onClick={() => setIsDecodedWx(function(v) { return !v; })} />
                                 <IconBtn icon="import_export" title="Export / Import trips" onClick={() => setShowDataModal(true)} />
+                                <IconBtn icon="person" title="Pilot Profile &amp; Personal Minimums" onClick={() => setShowProfileModal(true)} style={{ position:'relative' }}>
+                                    {!personalMinimums && <span style={{ position:'absolute', top:4, right:4, width:6, height:6, borderRadius:'50%', background:'var(--caution)', border:'1.5px solid var(--bg)' }} />}
+                                </IconBtn>
                                 <IconBtn icon="tune" title="Settings" onClick={() => setShowSettingsModal(true)} />
                             </div>
 
@@ -7707,6 +8065,7 @@
                     {showDataModal     && <DataModal trips={trips} onImport={importTrips} onClose={() => setShowDataModal(false)} />}
                     {showSettingsModal && <SettingsModal onClose={() => setShowSettingsModal(false)} />}
                     {showLoginModal    && <LoginScreen onClose={() => setShowLoginModal(false)} />}
+                    {showProfileModal  && <PilotProfileModal onClose={() => setShowProfileModal(false)} onSave={function(mins){ setPersonalMinimums(mins); }} />}
 
                     <main style={{ flex: 1, overflowY: "auto", background: "var(--bg-elevated)" }}>
                         
@@ -8251,6 +8610,7 @@
                                                 <WxErrorBoundary label="Flight Briefing">
                                                     <BriefingPanel trip={activeTrip} tab={tab}
                                                     user={user}
+                                                    personalMinimums={personalMinimums}
                                                     pendingAiPrompt={pendingAiPrompt}
                                                     onClearPendingPrompt={() => setPendingAiPrompt(null)}
                                                     onScoreUpdate={score => {
