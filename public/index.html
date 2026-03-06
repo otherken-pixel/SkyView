@@ -4324,6 +4324,8 @@
 
                 if (!leafletMap.current) {
                     leafletMap.current = L.map(mapEl.current, { zoomControl: true });
+                    // Base map tiles for when VFR sectional tiles fail to load
+                    L.tileLayer(TILE_LIGHT, { attribution: TILE_ATTR, subdomains: 'abcd', maxZoom: 19 }).addTo(leafletMap.current);
                     L.tileLayer(TILE_VFR, { attribution: TILE_VFR_ATTR, maxZoom: 13, minZoom: 4 }).addTo(leafletMap.current);
 
                     // Debounced re-fetch on pan/zoom — uses ref to avoid stale closures
