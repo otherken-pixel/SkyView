@@ -1494,11 +1494,15 @@
         }
 
         // Enrich AIRPORTS[icao] with OpenAIP airport details (name, lat/lon, runways,
-        // COM frequencies).  Only fetched when the airport is NOT already known.
+        // COM frequencies).  Skips fetch when the airport already has runway data,
+        // but re-enriches if the airport exists with an empty rwy list (e.g. after
+        // fetchAirportInfo seeded it with rwy:[]).
         async function enrichAirportFromOpenAIP(icao) {
-            if (!icao || AIRPORTS[icao]) return AIRPORTS[icao] || null;
+            if (!icao) return null;
+            var existing = AIRPORTS[icao];
+            if (existing && existing.rwy && existing.rwy.length > 0) return existing;
             var data = await openaipFetch('/airports', { icaoCode: icao });
-            if (!data || !data.items || data.items.length === 0) return null;
+            if (!data || !data.items || data.items.length === 0) return existing || null;
             var a = data.items[0];
 
             var freq = { atis: '', twr: '', gnd: '', app: '', dep: '', clnc: '' };
@@ -1519,17 +1523,18 @@
             var lon = coords ? coords[0] : 0;
             var lat = coords ? coords[1] : 0;
 
-            var enriched = {
-                name:     a.name || icao + ' Airport',
-                city:     a.city || a.municipality || '',
-                state:    a.country && a.country.code ? a.country.code : 'US',
-                lat, lon,
-                elev:     (a.elevation && a.elevation.value) ? Math.round(a.elevation.value * 3.281) : 0,
+            var enriched = Object.assign({}, existing || {}, {
+                name:     a.name || (existing && existing.name) || icao + ' Airport',
+                city:     a.city || a.municipality || (existing && existing.city) || '',
+                state:    a.country && a.country.code ? a.country.code : (existing && existing.state) || 'US',
+                lat:      lat || (existing && existing.lat) || 0,
+                lon:      lon || (existing && existing.lon) || 0,
+                elev:     (a.elevation && a.elevation.value) ? Math.round(a.elevation.value * 3.281) : (existing && existing.elev) || 0,
                 rwy:      (a.runways || []).map(function(r) { return r.designator; }).filter(Boolean),
-                artcc:    'Center',
-                facility: null,
-                freq
-            };
+                artcc:    (existing && existing.artcc) || 'Center',
+                facility: (existing && existing.facility) || null,
+                freq:     freq
+            });
             AIRPORTS[icao] = enriched;
             return enriched;
         }
@@ -1724,7 +1729,10 @@
             var apt = getAirport(icao);
             if (!apt || !apt.lat) {
                 apt = await fetchAirportInfo(icao).catch(function() { return null; });
-                if (apt) await enrichAirportFromOpenAIP(icao).catch(function() {});
+            }
+            // Ensure we have runway designators from OpenAIP (for static fallback)
+            if (!apt || !apt.rwy || apt.rwy.length === 0) {
+                await enrichAirportFromOpenAIP(icao).catch(function() {});
                 apt = getAirport(icao);
             }
             if (!apt || !apt.lat) return [];
