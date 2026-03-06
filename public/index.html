@@ -4035,12 +4035,14 @@
 
             var mapEl         = useRef(null);
             var leafletMap    = useRef(null);
+            var baseTileRef   = useRef(null);
             var routeLayerRef = useRef(null);
             var layerGroupRef = useRef({});    // keyed by layer id
             var altLabelRef   = useRef(null);  // permanent altitude labels
             var debounceRef   = useRef(null);
             var fetchRef      = useRef(null);  // stable ref to latest fetchAllLayers
 
+            var [isDark, setIsDark] = useState(!document.body.classList.contains('light-theme'));
             var [showAirports,    setShowAirports]    = useState(true);
             var [showObstacles,   setShowObstacles]   = useState(false);
             var [showNavaids,     setShowNavaids]     = useState(false);
@@ -4317,6 +4319,27 @@
             // Keep ref in sync so the moveend handler always calls the latest version
             fetchRef.current = fetchAllLayers;
 
+            // Track light/dark theme changes
+            useEffect(function() {
+                var obs = new MutationObserver(function() {
+                    setIsDark(!document.body.classList.contains('light-theme'));
+                });
+                obs.observe(document.body, { attributes: true, attributeFilter: ['class'] });
+                return function() { obs.disconnect(); };
+            }, []);
+
+            // Swap base tile layer when theme changes
+            useEffect(function() {
+                var L = window.L;
+                if (!L || !leafletMap.current) return;
+                if (baseTileRef.current) leafletMap.current.removeLayer(baseTileRef.current);
+                baseTileRef.current = L.tileLayer(isDark ? TILE_DARK : TILE_LIGHT, {
+                    attribution: TILE_ATTR, subdomains: 'abcd', maxZoom: 19
+                });
+                baseTileRef.current.addTo(leafletMap.current);
+                baseTileRef.current.setZIndex(0);
+            }, [isDark]);
+
             // ── Initialize map ──
             useEffect(function() {
                 var L = window.L;
@@ -4324,8 +4347,10 @@
 
                 if (!leafletMap.current) {
                     leafletMap.current = L.map(mapEl.current, { zoomControl: true });
-                    // Base map tiles for when VFR sectional tiles fail to load
-                    L.tileLayer(TILE_LIGHT, { attribution: TILE_ATTR, subdomains: 'abcd', maxZoom: 19 }).addTo(leafletMap.current);
+                    // Base map tiles — theme-aware, swapped via isDark effect above
+                    baseTileRef.current = L.tileLayer(isDark ? TILE_DARK : TILE_LIGHT, {
+                        attribution: TILE_ATTR, subdomains: 'abcd', maxZoom: 19
+                    }).addTo(leafletMap.current);
                     L.tileLayer(TILE_VFR, { attribution: TILE_VFR_ATTR, maxZoom: 13, minZoom: 4 }).addTo(leafletMap.current);
 
                     // Debounced re-fetch on pan/zoom — uses ref to avoid stale closures
