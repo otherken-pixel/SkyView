@@ -4087,7 +4087,7 @@
                 if (val == null || val === '' || val === 0 || val === '0') return 'SFC';
                 var n = parseInt(val, 10);
                 if (isNaN(n) || n <= 0) return 'SFC';
-                return String(Math.round(n / 100)) + ' MSL';
+                return String(Math.round(n / 100));
             }
 
             // ── Data Fetchers ──
@@ -4273,7 +4273,7 @@
                             var p = f.properties || {};
                             var upper = fmtAlt(p.UPPER_VAL);
                             var lower = fmtAlt(p.LOWER_VAL);
-                            var text  = upper + '/' + lower;
+                            var text  = upper + '/' + lower + ' MSL';
                             var cls = (p.CLASS || 'D').toUpperCase();
 
                             // Place label at polygon centroid
