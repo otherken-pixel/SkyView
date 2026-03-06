@@ -6014,7 +6014,7 @@
             }, [chatMessages]);
 
             // --- AI Enhanced briefing ---
-            var runAiBriefing = useCallback(async function() {
+            var runAiBriefing = useCallback(async function(force) {
                 if (!trip.dep || !trip.arr || !wxData) return;
                 setAiLoading(true); setAiError(null);
 
@@ -6124,9 +6124,10 @@
                 // Cache key: trip signature + wx fingerprint so navigating away and
                 // back doesn't refire the expensive API call (Step 2.2)
                 var briefingCacheKey = [trip.id, trip.dep, trip.arr, trip.date, trip.time,
+                    trip.aircraft, JSON.stringify(trip.wps || []),
                     wxData.map(function(w) { return w.icao + ':' + (w.metar ? w.metar.cat : 'X'); }).join(',')
                 ].join('|');
-                if (runAiBriefing._cache && runAiBriefing._cache.key === briefingCacheKey) {
+                if (!force && runAiBriefing._cache && runAiBriefing._cache.key === briefingCacheKey) {
                     setAiResult(runAiBriefing._cache.result);
                     setAiLoading(false);
                     return;
@@ -7485,7 +7486,7 @@
                                         <span style={{ fontSize: 10, fontWeight: 700, background: 'var(--accent-dim)', color: 'var(--accent)', borderRadius: 6, padding: '3px 9px', letterSpacing: '0.5px', flexShrink: 0 }}>LIVE</span>
                                     )}
                                     {aiResult && (
-                                        <button onClick={function(e) { e.stopPropagation(); runAiBriefing(); }} disabled={aiLoading || loadingWx} title="Refresh briefing" style={{ background: 'none', border: 'none', cursor: aiLoading || loadingWx ? 'default' : 'pointer', padding: 4, borderRadius: 8, color: 'var(--text-tertiary)', display: 'flex', alignItems: 'center', flexShrink: 0, opacity: aiLoading || loadingWx ? 0.4 : 1 }}>
+                                        <button onClick={function(e) { e.stopPropagation(); runAiBriefing(true); }} disabled={aiLoading || loadingWx} title="Refresh briefing" style={{ background: 'none', border: 'none', cursor: aiLoading || loadingWx ? 'default' : 'pointer', padding: 4, borderRadius: 8, color: 'var(--text-tertiary)', display: 'flex', alignItems: 'center', flexShrink: 0, opacity: aiLoading || loadingWx ? 0.4 : 1 }}>
                                             <MdIcon name="refresh" style={{ fontSize: 18, animation: aiLoading ? 'spin 1s linear infinite' : 'none' }} />
                                         </button>
                                     )}
@@ -7514,7 +7515,7 @@
                                                 ) : (
                                                     <>
                                                         <div style={{ color: 'var(--text-tertiary)', fontSize: 12, marginBottom: 12 }}>Weather loaded — tap to generate your AI preflight briefing</div>
-                                                        <button onClick={runAiBriefing} style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, width: '100%', background: 'var(--accent)', color: '#fff', border: 'none', borderRadius: 12, padding: '13px', fontSize: 14, fontWeight: 600, cursor: 'pointer', fontFamily: 'var(--font-sans)' }}>
+                                                        <button onClick={() => runAiBriefing(true)} style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, width: '100%', background: 'var(--accent)', color: '#fff', border: 'none', borderRadius: 12, padding: '13px', fontSize: 14, fontWeight: 600, cursor: 'pointer', fontFamily: 'var(--font-sans)' }}>
                                                             <MdIcon name="auto_awesome" style={{ fontSize: 18 }} />
                                                             Generate Briefing
                                                         </button>
@@ -7528,7 +7529,7 @@
                                                 <MdCard style={{ background: 'var(--md-sys-color-error-container)', color: 'var(--md-sys-color-on-error-container)', marginBottom: 8 }}>
                                                     <MdIcon name="error" style={{ marginRight: 8 }} />{aiError}
                                                 </MdCard>
-                                                <MdButton variant="tonal" onClick={runAiBriefing} disabled={aiLoading || loadingWx} icon="refresh" style={{ width: '100%', padding: '10px', fontSize: '13px' }}>
+                                                <MdButton variant="tonal" onClick={() => runAiBriefing(true)} disabled={aiLoading || loadingWx} icon="refresh" style={{ width: '100%', padding: '10px', fontSize: '13px' }}>
                                                     Retry Briefing
                                                 </MdButton>
                                             </div>
@@ -7569,7 +7570,7 @@
                                         {/* Update + speech buttons — only shown after briefing exists */}
                                         {aiResult && !aiLoading && (
                                             <div style={{ display: 'flex', gap: 8, marginTop: 4, marginBottom: 12 }}>
-                                                <MdButton variant="tonal" onClick={runAiBriefing} disabled={loadingWx} icon="refresh" style={{ flex: 1, padding: '10px', fontSize: '13px' }}>
+                                                <MdButton variant="tonal" onClick={() => runAiBriefing(true)} disabled={loadingWx} icon="refresh" style={{ flex: 1, padding: '10px', fontSize: '13px' }}>
                                                     Update Briefing
                                                 </MdButton>
                                                 {window.speechSynthesis && (
