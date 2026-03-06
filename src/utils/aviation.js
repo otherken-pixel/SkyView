@@ -1,4 +1,7 @@
-import { getAirport } from './airports';
+import { getAirport, fetchRunwayData } from './airports';
+
+// Re-export fetchRunwayData so existing imports from aviation.js continue to work
+export { fetchRunwayData };
 
 export const CAT_RANK = { VFR: 0, MVFR: 1, IFR: 2, LIFR: 3 };
 

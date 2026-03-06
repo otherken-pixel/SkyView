@@ -1,6 +1,7 @@
 import React from 'react';
 import { MdIcon } from '../common';
-import { getAirport, closestWindStation, getWindAtAlt } from '../../utils';
+import { getAirport } from '../../utils/airports';
+import { closestWindStation, getWindAtAlt } from '../../services/weather';
 
 function WindsAloftCard({ allRoutePts, stations, cruiseAlt }) {
     if (!stations || stations.length === 0) return null;

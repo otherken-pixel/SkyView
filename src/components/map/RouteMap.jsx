@@ -1,7 +1,7 @@
 import React, { useRef, useEffect, useState } from 'react';
 import L from 'leaflet';
 import { MdIcon } from '../common';
-import { getAirport } from '../../utils';
+import { getAirport } from '../../utils/airports';
 import { calcDist, calcBearing } from '../../utils/geo';
 import { fetchLiveMetar } from '../../services/weather';
 

@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">FlightScore</string>
+    <string name="title_activity_main">FlightScore</string>
+    <string name="package_name">com.flightscore.app</string>
+    <string name="custom_url_scheme">com.flightscore.app</string>
+</resources>

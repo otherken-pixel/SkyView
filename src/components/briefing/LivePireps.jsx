@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { MdIcon } from '../common';
 import { fetchLivePireps } from '../../services/weather';
-import { getAirport } from '../../utils';
+import { getAirport } from '../../utils/airports';
 
 function LivePireps({ dep, arr }) {
     const [pireps, setPireps] = useState(null);

@@ -1,7 +1,7 @@
 import React from 'react';
 import { MdIcon } from '../common';
 import { WindBarb, WeatherIcon } from '../weather';
-import { getAirport } from '../../utils';
+import { getAirport } from '../../utils/airports';
 import { calcDist } from '../../utils/geo';
 
 function RouteTimeline({ routePts, wxData, effectiveWxData }) {

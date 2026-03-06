@@ -17,7 +17,26 @@ export default defineConfig({
     VitePWA({
       registerType: 'autoUpdate',
       workbox: {
-        globPatterns: ['**/*.{js,css,html,ico,png,svg,woff2}'],
+        globPatterns: ['**/*.{js,css,html,ico,png,svg,woff2,json}'],
+        navigateFallback: 'index.html',
+        runtimeCaching: [
+          {
+            urlPattern: /^https:\/\/api\.weather\.gov\/.*/i,
+            handler: 'NetworkFirst',
+            options: {
+              cacheName: 'weather-api',
+              expiration: { maxEntries: 50, maxAgeSeconds: 300 },
+            },
+          },
+          {
+            urlPattern: /^https:\/\/aviationweather\.gov\/.*/i,
+            handler: 'NetworkFirst',
+            options: {
+              cacheName: 'aviation-wx-api',
+              expiration: { maxEntries: 50, maxAgeSeconds: 300 },
+            },
+          },
+        ],
       },
       manifest: false, // using public/manifest.json
     }),

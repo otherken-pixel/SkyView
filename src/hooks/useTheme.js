@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { setStatusBarStyle } from '../services/capacitor';
 
 const THEME_CYCLE = ['dark', 'light', 'night'];
 const STORAGE_KEY = 'flightscore_theme_manual';
@@ -72,6 +73,8 @@ export function useTheme() {
     document.documentElement.classList.add(theme + '-theme');
     document.body.classList.remove(...classes);
     document.body.classList.add(theme + '-theme');
+    // Sync native status bar style on mobile
+    setStatusBarStyle(theme);
   }, [theme]);
 
   // Auto-follow system preference changes when no manual override is saved

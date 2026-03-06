@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import MdInput from './MdInput';
 import MdIcon from './MdIcon';
 import VoiceInputButton from './VoiceInputButton';
-import { searchOurAirports, enrichAirportFromOpenAIP } from '../../utils';
+import { searchOurAirports, enrichAirportFromOpenAIP } from '../../utils/airports';
 import { AIRPORTS, isOurAirportsLoading } from '../../data';
 
 function AirportInput({ label, value, onChange, placeholder, containerStyle }) {
