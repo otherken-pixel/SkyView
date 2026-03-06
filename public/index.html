@@ -852,13 +852,15 @@
         // Accepts Anthropic-style { system, messages, max_tokens } for
         // compatibility and converts to Gemini's format internally.
         // Returns normalised shape: { content: [{ text: "..." }] }
-        async function callGeminiApi({ system, messages, max_tokens, apiKey }) {
+        async function callGeminiApi({ system, messages, max_tokens, apiKey, thinkingBudget }) {
             var fns = _fbFns();
             // Prefer the server proxy — key stays server-side
             if (fns.httpsCallable && fns.functions) {
                 try {
                     var callProxy = fns.httpsCallable(fns.functions, 'geminiProxy');
-                    var result = await callProxy({ model: GEMINI_MODEL, system, messages, max_tokens: max_tokens || 1800, temperature: 0.0 });
+                    var proxyPayload = { model: GEMINI_MODEL, system, messages, max_tokens: max_tokens || 1800, temperature: 0.0 };
+                    if (thinkingBudget != null) proxyPayload.thinkingBudget = thinkingBudget;
+                    var result = await callProxy(proxyPayload);
                     return result.data;          // { content: [{ text: "..." }] }
                 } catch(proxyErr) {
                     console.warn('[FlightScore] geminiProxy error:', proxyErr.message);
@@ -876,9 +878,11 @@
             var contents = messages.map(function(m) {
                 return { role: m.role === 'assistant' ? 'model' : 'user', parts: [{ text: m.content }] };
             });
+            var genConfig = { maxOutputTokens: max_tokens || 1800, temperature: 0.0 };
+            if (thinkingBudget != null) genConfig.thinkingConfig = { thinkingBudget: thinkingBudget };
             var payload = {
                 contents: contents,
-                generationConfig: { maxOutputTokens: max_tokens || 1800, temperature: 0.0 }
+                generationConfig: genConfig
             };
             if (system) {
                 payload.systemInstruction = { parts: [{ text: system }] };
@@ -7784,14 +7788,25 @@
             var data = await callGeminiApi({
                 system,
                 messages: [{ role: 'user', content: inputText }],
-                max_tokens: 300,
-                apiKey
+                max_tokens: 1024,
+                apiKey,
+                thinkingBudget: 0
             });
             var raw = (data.content && data.content[0] && data.content[0].text) || '';
             if (!raw.trim()) throw new Error('Empty response from Gemini');
             // Strip any accidental markdown fences
             var cleaned = raw.trim().replace(/^```(?:json)?\s*/i, '').replace(/\s*```\s*$/, '');
-            var parsed = JSON.parse(cleaned);
+            var parsed;
+            try {
+                parsed = JSON.parse(cleaned);
+            } catch (jsonErr) {
+                // Attempt to extract a valid JSON object if the response was truncated
+                var match = cleaned.match(/\{[\s\S]*\}/);
+                if (match) {
+                    try { parsed = JSON.parse(match[0]); } catch (_) {}
+                }
+                if (!parsed) throw new Error('Could not parse AI response — please try again or simplify your input');
+            }
             if (!parsed.dep || !parsed.arr) throw new Error('Could not identify departure or arrival airport — please be more specific');
             parsed.dep = parsed.dep.toUpperCase();
             parsed.arr = parsed.arr.toUpperCase();

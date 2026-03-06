@@ -51,7 +51,7 @@ exports.geminiProxy = onCall(
             throw new HttpsError("failed-precondition", "GEMINI_API_KEY secret is not set. Run: firebase functions:secrets:set GEMINI_API_KEY");
         }
 
-        const { model, system, messages, max_tokens, temperature } = request.data || {};
+        const { model, system, messages, max_tokens, temperature, thinkingBudget } = request.data || {};
 
         if (!messages || !Array.isArray(messages) || messages.length === 0) {
             throw new HttpsError("invalid-argument", "messages must be a non-empty array.");
@@ -65,12 +65,16 @@ exports.geminiProxy = onCall(
             parts: [{ text: m.content }],
         }));
 
+        const generationConfig = {
+            maxOutputTokens: max_tokens || 1800,
+            temperature: temperature != null ? temperature : 0.0,
+        };
+        if (thinkingBudget != null) {
+            generationConfig.thinkingConfig = { thinkingBudget };
+        }
         const payload = {
             contents,
-            generationConfig: {
-                maxOutputTokens: max_tokens || 1800,
-                temperature: temperature != null ? temperature : 0.0,
-            },
+            generationConfig,
         };
 
         if (system) {
