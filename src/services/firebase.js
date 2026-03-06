@@ -20,10 +20,17 @@ export const db = initializeFirestore(app, { localCache: persistentLocalCache() 
 export const functions = getFunctions(app);
 export const googleProvider = new GoogleAuthProvider();
 
-// App Check — uncomment and configure when ready for production
-// const appCheck = initializeAppCheck(app, {
-//   provider: new ReCaptchaEnterpriseProvider('YOUR_RECAPTCHA_SITE_KEY'),
-//   isTokenAutoRefreshEnabled: true,
-// });
+// App Check — protects backend resources from abuse.
+// Enable debug mode for local dev (creates a debug token in the console).
+if (import.meta.env.DEV) {
+  self.FIREBASE_APPCHECK_DEBUG_TOKEN = true;
+}
+const appCheckSiteKey = import.meta.env.VITE_RECAPTCHA_SITE_KEY;
+if (appCheckSiteKey) {
+  initializeAppCheck(app, {
+    provider: new ReCaptchaEnterpriseProvider(appCheckSiteKey),
+    isTokenAutoRefreshEnabled: true,
+  });
+}
 
 export default app;
