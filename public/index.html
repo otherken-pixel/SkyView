@@ -3975,6 +3975,209 @@
             );
         }
 
+        /* =====================================================================
+           VFR CHARTS MAP — FAA ADDS vector overlay on route map
+           Shows airports, Class B/C/D airspace, and Navaids from the FAA
+           Aeronautical Data Delivery Service (ADDS) ArcGIS open data portal.
+        ===================================================================== */
+        function VfrChartsMap({ dep, arr, wps }) {
+            var _hooks = React;
+            var useRef = _hooks.useRef, useEffect = _hooks.useEffect, useState = _hooks.useState;
+            var mapContainerRef = useRef(null);
+            var leafletMapRef   = useRef(null);
+            var tileLayerRef    = useRef(null);
+            var vectorLayersRef = useRef([]);
+
+            var [isDark,       setIsDark]       = useState(!document.body.classList.contains('light-theme'));
+            var [showAirports, setShowAirports] = useState(true);
+            var [showAirspace, setShowAirspace] = useState(true);
+            var [showNavaids,  setShowNavaids]  = useState(false);
+
+            var ADDS_BASE = 'https://services6.arcgis.com/ssFJjBXIUyZDrSYZ/arcgis/rest/services';
+
+            var allCodes = [dep].concat(wps || []).concat([arr]).filter(function(c){ return c && c.trim().length >= 3; });
+            var allPts   = allCodes.map(function(c){ return getAirport(c); }).filter(Boolean);
+
+            // Track light/dark theme
+            useEffect(function() {
+                var obs = new MutationObserver(function(){ setIsDark(!document.body.classList.contains('light-theme')); });
+                obs.observe(document.body, { attributes: true, attributeFilter: ['class'] });
+                return function(){ obs.disconnect(); };
+            }, []);
+
+            // Swap tile layer on theme change
+            useEffect(function() {
+                var L = window.L;
+                if (!L || !leafletMapRef.current) return;
+                if (tileLayerRef.current) leafletMapRef.current.removeLayer(tileLayerRef.current);
+                tileLayerRef.current = L.tileLayer(isDark ? TILE_DARK : TILE_LIGHT,
+                    { attribution: TILE_ATTR, subdomains: 'abcd', maxZoom: 19 }
+                ).addTo(leafletMapRef.current);
+            }, [isDark]);
+
+            // Build map + vector layers
+            useEffect(function() {
+                var L = window.L;
+                if (!L || !mapContainerRef.current) return;
+
+                if (!leafletMapRef.current) {
+                    leafletMapRef.current = L.map(mapContainerRef.current, { zoomControl: true });
+                    tileLayerRef.current  = L.tileLayer(isDark ? TILE_DARK : TILE_LIGHT,
+                        { attribution: TILE_ATTR, subdomains: 'abcd', maxZoom: 19 }
+                    ).addTo(leafletMapRef.current);
+                }
+
+                var map = leafletMapRef.current;
+                vectorLayersRef.current.forEach(function(l){ map.removeLayer(l); });
+                vectorLayersRef.current = [];
+
+                if (allPts.length < 1) { map.setView([39.5, -98.35], 4); return; }
+
+                var latLngs = allPts.map(function(p){ return [p.lat, p.lon]; });
+                if (allPts.length >= 2) {
+                    var lineColor = isDark ? '#0A84FF' : '#0055CC';
+                    var routeLine = L.polyline(latLngs, { color: lineColor, weight: 3, opacity: 0.85 });
+                    routeLine.addTo(map);
+                    vectorLayersRef.current.push(routeLine);
+                    map.fitBounds(latLngs, { padding: [70, 70] });
+                } else {
+                    map.setView(latLngs[0], 8);
+                }
+
+                var bounds = map.getBounds();
+                var bbox = bounds.getWest().toFixed(4) + ',' + bounds.getSouth().toFixed(4) + ',' +
+                           bounds.getEast().toFixed(4) + ',' + bounds.getNorth().toFixed(4);
+                var bboxParam = encodeURIComponent(bbox);
+                var classColors = { B: '#0A84FF', C: '#BF5AF2', D: '#FF9500' };
+                var classAlpha  = { B: 0.20, C: 0.15, D: 0.10 };
+
+                // FAA ADDS: Airports
+                if (showAirports) {
+                    fetch(ADDS_BASE + '/US_Airport/FeatureServer/0/query?geometry=' + bboxParam +
+                        '&geometryType=esriGeometryEnvelope&inSR=4326&spatialRel=esriSpatialRelIntersects' +
+                        '&outFields=ARPT_NAME,ICAO_ID,ARPT_ID,TYPE_CODE&outSR=4326&f=geojson&where=1%3D1')
+                        .then(function(r){ return r.json(); })
+                        .then(function(data) {
+                            if (!leafletMapRef.current) return;
+                            var layer = L.geoJSON(data, {
+                                pointToLayer: function(feature, latlng) {
+                                    return L.circleMarker(latlng, {
+                                        radius: 5, fillColor: '#34C759',
+                                        color: isDark ? '#000' : '#fff', weight: 1.5, fillOpacity: 0.9
+                                    });
+                                },
+                                onEachFeature: function(feature, lyr) {
+                                    var p = feature.properties;
+                                    lyr.bindTooltip((p.ICAO_ID || p.ARPT_ID || '') + ' · ' + (p.ARPT_NAME || ''),
+                                        { direction: 'top', offset: [0, -7] });
+                                }
+                            }).addTo(leafletMapRef.current);
+                            vectorLayersRef.current.push(layer);
+                        }).catch(function(e){ console.warn('[VfrChartsMap] Airports fetch:', e); });
+                }
+
+                // FAA ADDS: Class B / C / D Airspace
+                if (showAirspace) {
+                    fetch(ADDS_BASE + '/Class_Airspace/FeatureServer/0/query?geometry=' + bboxParam +
+                        '&geometryType=esriGeometryEnvelope&inSR=4326&spatialRel=esriSpatialRelIntersects' +
+                        "&where=CLASS+IN+('B','C','D')&outFields=CLASS,NAME&outSR=4326&f=geojson")
+                        .then(function(r){ return r.json(); })
+                        .then(function(data) {
+                            if (!leafletMapRef.current) return;
+                            var layer = L.geoJSON(data, {
+                                style: function(feature) {
+                                    var cls = ((feature.properties || {}).CLASS || 'D').toUpperCase();
+                                    return { color: classColors[cls] || '#888', fillColor: classColors[cls] || '#888',
+                                             weight: 1.5, fillOpacity: classAlpha[cls] || 0.08 };
+                                },
+                                onEachFeature: function(feature, lyr) {
+                                    var p = feature.properties || {};
+                                    lyr.bindTooltip('Class ' + p.CLASS + ' · ' + (p.NAME || ''), { sticky: true });
+                                }
+                            }).addTo(leafletMapRef.current);
+                            vectorLayersRef.current.push(layer);
+                        }).catch(function(e){ console.warn('[VfrChartsMap] Airspace fetch:', e); });
+                }
+
+                // FAA ADDS: Navaids (VOR / NDB)
+                if (showNavaids) {
+                    fetch(ADDS_BASE + '/Navaids/FeatureServer/0/query?geometry=' + bboxParam +
+                        '&geometryType=esriGeometryEnvelope&inSR=4326&spatialRel=esriSpatialRelIntersects' +
+                        '&where=1%3D1&outFields=NAV_ID,NAME,TYPE_CODE,CHANNEL,FREQ&outSR=4326&f=geojson')
+                        .then(function(r){ return r.json(); })
+                        .then(function(data) {
+                            if (!leafletMapRef.current) return;
+                            var layer = L.geoJSON(data, {
+                                pointToLayer: function(feature, latlng) {
+                                    return L.circleMarker(latlng, {
+                                        radius: 4, fillColor: '#FF9500',
+                                        color: isDark ? '#000' : '#fff', weight: 1.5, fillOpacity: 0.9
+                                    });
+                                },
+                                onEachFeature: function(feature, lyr) {
+                                    var p = feature.properties || {};
+                                    lyr.bindTooltip((p.NAV_ID || '') + ' · ' + (p.NAME || '') + ' · ' + (p.TYPE_CODE || ''),
+                                        { direction: 'top', offset: [0, -7] });
+                                }
+                            }).addTo(leafletMapRef.current);
+                            vectorLayersRef.current.push(layer);
+                        }).catch(function(e){ console.warn('[VfrChartsMap] Navaids fetch:', e); });
+                }
+            }, [dep, arr, JSON.stringify(wps), showAirports, showAirspace, showNavaids]);
+
+            // Cleanup on unmount
+            useEffect(function() {
+                return function() {
+                    if (leafletMapRef.current) { leafletMapRef.current.remove(); leafletMapRef.current = null; }
+                };
+            }, []);
+
+            return (
+                <div style={{ background: 'var(--card)', border: '1px solid var(--card-border)', borderRadius: 20, overflow: 'hidden', boxShadow: '0 2px 16px rgba(0,0,0,0.35)' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 10, padding: '14px 18px', borderBottom: '1px solid var(--card-border-soft)' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                            <div style={{ width: 34, height: 34, borderRadius: 10, background: 'var(--accent-dim)', border: '1px solid rgba(10,132,255,0.25)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                                <MdIcon name="layers" style={{ color: 'var(--accent)', fontSize: 18 }} />
+                            </div>
+                            <div>
+                                <div style={{ fontWeight: 700, fontSize: 13, textTransform: 'uppercase', letterSpacing: '0.7px', color: 'var(--text-primary)' }}>VFR Vector Overlay</div>
+                                <div style={{ fontSize: 11, color: 'var(--text-tertiary)', marginTop: 2 }}>FAA ADDS · Live GeoJSON · Class B/C/D Airspace</div>
+                            </div>
+                        </div>
+                        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                            {[['Airports', showAirports, setShowAirports, 'var(--vfr)', 'var(--vfr-bg)'],
+                              ['Airspace', showAirspace, setShowAirspace, 'var(--accent)', 'var(--accent-dim)'],
+                              ['Navaids',  showNavaids,  setShowNavaids,  'var(--caution)', 'var(--caution-bg)']
+                            ].map(function(item) {
+                                var label = item[0], active = item[1], setter = item[2], col = item[3], bg = item[4];
+                                return (
+                                    <button key={label} onClick={function(){ setter(function(v){ return !v; }); }}
+                                        style={{ fontSize: 11, padding: '4px 10px', borderRadius: 8, border: '1px solid', fontWeight: 600, cursor: 'pointer', fontFamily: 'var(--font-sans)',
+                                            background: active ? bg : 'var(--card-high)',
+                                            color: active ? col : 'var(--text-tertiary)',
+                                            borderColor: active ? col : 'var(--card-border)' }}>
+                                        {label}
+                                    </button>
+                                );
+                            })}
+                        </div>
+                    </div>
+                    <div ref={mapContainerRef} style={{ width: '100%', height: 420 }} />
+                    <div style={{ padding: '10px 18px', borderTop: '1px solid var(--card-border-soft)', display: 'flex', gap: 16, flexWrap: 'wrap' }}>
+                        {[['Airports', '#34C759'], ['Class B', '#0A84FF'], ['Class C', '#BF5AF2'], ['Class D', '#FF9500'], ['Navaids', '#FF9500']].map(function(item) {
+                            return (
+                                <div key={item[0]} style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 11, color: 'var(--text-secondary)' }}>
+                                    <div style={{ width: 10, height: 10, borderRadius: 2, background: item[1], opacity: 0.85 }} />
+                                    {item[0]}
+                                </div>
+                            );
+                        })}
+                        <span style={{ marginLeft: 'auto', fontSize: 11, color: 'var(--text-tertiary)' }}>Source: FAA ADDS · adds-faa.opendata.arcgis.com</span>
+                    </div>
+                </div>
+            );
+        }
+
         // Error Boundary for weather-panel components.
         //
         // React Error Boundaries must be class components.  This one catches render
@@ -7095,6 +7298,81 @@
                                 )}
                             </div>
 
+                            {/* ---- NOTAMs & TFRs — briefing summary (above PIREPs) ---- */}
+                            <div style={{ background: 'var(--card)', border: '1px solid var(--card-border)', borderRadius: 20, marginBottom: 16, overflow: 'hidden', boxShadow: '0 2px 16px rgba(0,0,0,0.35)' }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '16px 18px', borderBottom: '1px solid var(--card-border-soft)' }}>
+                                    <div style={{ width: 34, height: 34, borderRadius: 10, background: 'var(--caution-bg)', border: '1px solid rgba(255,149,0,0.25)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                                        <MdIcon name="warning" style={{ color: 'var(--caution)', fontSize: 18 }} />
+                                    </div>
+                                    <div style={{ flex: 1 }}>
+                                        <div style={{ fontWeight: 700, fontSize: 13, textTransform: 'uppercase', letterSpacing: '0.7px', color: 'var(--text-primary)' }}>NOTAMs &amp; TFRs</div>
+                                        <div style={{ fontSize: 11, color: 'var(--text-tertiary)', marginTop: 2 }}>Live · AviationWeather.gov · Departure / En Route / Destination</div>
+                                    </div>
+                                    {notamsLoaded && (
+                                        <span style={{ fontSize: 10, fontWeight: 700, background: 'var(--caution-bg)', color: 'var(--caution)', borderRadius: 6, padding: '3px 9px', letterSpacing: '0.5px', flexShrink: 0 }}>
+                                            {allRoutePts.reduce(function(sum, icao){ return sum + (notamsByAirport[icao] || []).length; }, 0)} ACTIVE
+                                        </span>
+                                    )}
+                                </div>
+                                <div style={{ padding: '14px 18px' }}>
+                                    {!notamsLoaded ? (
+                                        <div style={{ fontSize: 13, color: 'var(--text-tertiary)', display: 'flex', alignItems: 'center', gap: 8 }}>
+                                            <MdIcon name="hourglass_empty" style={{ fontSize: 16 }} />
+                                            Fetching NOTAMs…
+                                        </div>
+                                    ) : (
+                                        <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+                                            {allRoutePts.map(function(icao) {
+                                                var aNotams = notamsByAirport[icao] || [];
+                                                var apt = getAirport(icao);
+                                                var role = icao === trip.dep ? 'Departure' : icao === trip.arr ? 'Destination' : 'En Route';
+                                                var tfrs    = aNotams.filter(function(n){ return n.type === 'TFR' || n.type === 'SECURITY'; });
+                                                var rwyNtm  = aNotams.filter(function(n){ return n.type === 'RWY' || n.type === 'TWY'; });
+                                                var other   = aNotams.filter(function(n){ return n.type !== 'TFR' && n.type !== 'SECURITY' && n.type !== 'RWY' && n.type !== 'TWY'; });
+                                                return (
+                                                    <div key={icao} style={{ paddingBottom: 12, borderBottom: '1px solid var(--card-border-soft)' }}>
+                                                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+                                                            <span className="font-mono" style={{ fontWeight: 800, fontSize: 13, color: 'var(--accent)' }}>{icao}</span>
+                                                            <span style={{ fontSize: 11, color: 'var(--text-tertiary)' }}>{apt ? apt.name : ''} · {role}</span>
+                                                            {aNotams.length === 0 && <span style={{ fontSize: 11, color: 'var(--vfr)', fontWeight: 600 }}>No active NOTAMs</span>}
+                                                        </div>
+                                                        {tfrs.map(function(n, i) {
+                                                            return (
+                                                                <div key={'tfr'+i} style={{ display: 'flex', gap: 8, fontSize: 12, color: 'var(--nogo)', lineHeight: 1.5, paddingLeft: 8, marginBottom: 4 }}>
+                                                                    <span className="font-mono" style={{ fontWeight: 800, flexShrink: 0, minWidth: 44 }}>TFR</span>
+                                                                    <span className="font-mono" style={{ wordBreak: 'break-word' }}>{n.text.substring(0, 220)}{n.text.length > 220 ? '…' : ''}</span>
+                                                                </div>
+                                                            );
+                                                        })}
+                                                        {rwyNtm.map(function(n, i) {
+                                                            return (
+                                                                <div key={'rwy'+i} style={{ display: 'flex', gap: 8, fontSize: 12, color: 'var(--caution)', lineHeight: 1.5, paddingLeft: 8, marginBottom: 4 }}>
+                                                                    <span className="font-mono" style={{ fontWeight: 800, flexShrink: 0, minWidth: 44 }}>{n.type}</span>
+                                                                    <span className="font-mono" style={{ wordBreak: 'break-word' }}>{n.text.substring(0, 200)}{n.text.length > 200 ? '…' : ''}</span>
+                                                                </div>
+                                                            );
+                                                        })}
+                                                        {other.slice(0, 3).map(function(n, i) {
+                                                            return (
+                                                                <div key={'ot'+i} style={{ display: 'flex', gap: 8, fontSize: 12, color: 'var(--text-secondary)', lineHeight: 1.5, paddingLeft: 8, marginBottom: 4 }}>
+                                                                    <span className="font-mono" style={{ fontWeight: 700, flexShrink: 0, minWidth: 44, color: 'var(--text-tertiary)' }}>{n.type}</span>
+                                                                    <span className="font-mono" style={{ wordBreak: 'break-word' }}>{n.text.substring(0, 180)}{n.text.length > 180 ? '…' : ''}</span>
+                                                                </div>
+                                                            );
+                                                        })}
+                                                        {other.length > 3 && (
+                                                            <div style={{ fontSize: 11, color: 'var(--text-tertiary)', paddingLeft: 8 }}>
+                                                                +{other.length - 3} more — see <strong>NOTAMs tab</strong> for full list.
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                );
+                                            })}
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+
                             {/* ---- En Route PIREPs — co-located with AI briefing ---- */}
                             <div style={{ background: 'var(--card)', border: '1px solid var(--card-border)', borderRadius: 20, marginBottom: 16, overflow: 'hidden', boxShadow: '0 2px 16px rgba(0,0,0,0.35)' }}>
                                 <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '16px 18px', borderBottom: '1px solid var(--card-border-soft)' }}>
@@ -8326,6 +8604,7 @@
             var tabList = [
                 { id: "brief", label: "Briefing", icon: "auto_awesome" },
                 { id: "wx", label: "Weather", icon: "partly_cloudy_day" },
+                { id: "maps",    label: "Maps",    icon: "map" },
                 { id: "notam",   label: "NOTAMs",  icon: "warning" },
                 { id: "runway",  label: "Runways", icon: "flight_land" },
                 { id: "freq",    label: "Freqs",   icon: "cell_tower" },
@@ -9050,6 +9329,162 @@
                                                     })}
 
                                                     <WindyMap dep={activeTrip.dep} arr={activeTrip.arr} wps={activeTrip.wps || []} />
+                                                </div>
+                                            )}
+
+                                            {tab === "maps" && (
+                                                <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
+
+                                                    {/* ── FAA VFR Charts Info ── */}
+                                                    <div style={{ background: 'var(--card)', border: '1px solid var(--card-border)', borderRadius: 20, overflow: 'hidden', boxShadow: '0 2px 16px rgba(0,0,0,0.35)' }}>
+                                                        <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '14px 18px', borderBottom: '1px solid var(--card-border-soft)' }}>
+                                                            <div style={{ width: 34, height: 34, borderRadius: 10, background: 'var(--vfr-bg)', border: '1px solid rgba(52,199,89,0.25)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                                                                <MdIcon name="map" style={{ color: 'var(--vfr)', fontSize: 18 }} />
+                                                            </div>
+                                                            <div>
+                                                                <div style={{ fontWeight: 700, fontSize: 13, textTransform: 'uppercase', letterSpacing: '0.7px', color: 'var(--text-primary)' }}>FAA VFR Sectional Charts</div>
+                                                                <div style={{ fontSize: 11, color: 'var(--text-tertiary)', marginTop: 2 }}>Free GeoTIFF raster · 56-day update cycle · Firebase Storage</div>
+                                                            </div>
+                                                        </div>
+                                                        <div style={{ padding: '16px 18px', fontSize: 13, color: 'var(--text-secondary)', lineHeight: 1.7 }}>
+                                                            <p style={{ margin: '0 0 12px' }}>
+                                                                The FAA publishes free georeferenced <strong style={{ color: 'var(--text-primary)' }}>VFR Sectional Charts</strong> as GeoTIFF ZIP files updated on a 56-day AIRAC cycle.
+                                                                The included <code style={{ background: 'var(--card-high)', padding: '1px 6px', borderRadius: 4, fontSize: 12 }}>faa_charts_download.py</code> script automates downloading,
+                                                                extracting, and uploading these charts to your Firebase Storage bucket so they are ready for tile serving.
+                                                            </p>
+                                                            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                                                                {[
+                                                                    ['download', 'Scrapes the FAA VFR product page and discovers all Sectional GeoTIFF ZIP links.'],
+                                                                    ['unarchive', 'Streams each ZIP to a temp directory, extracts the raw .tif file.'],
+                                                                    ['cloud_upload', 'Uploads .tif files to gs://<bucket>/faa-charts/sectional/ via firebase-admin.'],
+                                                                    ['delete_sweep', 'Deletes all temporary local files after a successful upload.'],
+                                                                ].map(function(row) {
+                                                                    return (
+                                                                        <div key={row[0]} style={{ display: 'flex', alignItems: 'flex-start', gap: 10 }}>
+                                                                            <MdIcon name={row[0]} style={{ color: 'var(--accent)', fontSize: 16, marginTop: 1, flexShrink: 0 }} />
+                                                                            <span style={{ fontSize: 12 }}>{row[1]}</span>
+                                                                        </div>
+                                                                    );
+                                                                })}
+                                                            </div>
+                                                            <div style={{ marginTop: 14, padding: '10px 14px', background: 'var(--card-mid)', borderRadius: 10, fontSize: 12, color: 'var(--text-tertiary)', fontFamily: 'var(--font-mono)' }}>
+                                                                <div style={{ marginBottom: 4 }}>pip install requests beautifulsoup4 firebase-admin</div>
+                                                                <div>FIREBASE_BUCKET=my-app.appspot.com python faa_charts_download.py</div>
+                                                            </div>
+                                                            <p style={{ margin: '12px 0 0', fontSize: 12, color: 'var(--text-tertiary)' }}>
+                                                                Source: <strong>FAA Digital Products VFR</strong> · faa.gov/air_traffic/flight_info/aeronav/digital_products/vfr/
+                                                            </p>
+                                                        </div>
+                                                    </div>
+
+                                                    {/* ── Live vector overlay map ── */}
+                                                    <VfrChartsMap dep={activeTrip.dep} arr={activeTrip.arr} wps={activeTrip.wps || []} />
+
+                                                    {/* ── Vector Data Overlay Developer Guide ── */}
+                                                    <div style={{ background: 'var(--card)', border: '1px solid var(--card-border)', borderRadius: 20, overflow: 'hidden', boxShadow: '0 2px 16px rgba(0,0,0,0.35)' }}>
+                                                        <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '14px 18px', borderBottom: '1px solid var(--card-border-soft)' }}>
+                                                            <div style={{ width: 34, height: 34, borderRadius: 10, background: 'rgba(191,90,242,0.15)', border: '1px solid rgba(191,90,242,0.25)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                                                                <MdIcon name="code" style={{ color: '#BF5AF2', fontSize: 18 }} />
+                                                            </div>
+                                                            <div>
+                                                                <div style={{ fontWeight: 700, fontSize: 13, textTransform: 'uppercase', letterSpacing: '0.7px', color: 'var(--text-primary)' }}>Vector Data Overlay Guide</div>
+                                                                <div style={{ fontSize: 11, color: 'var(--text-tertiary)', marginTop: 2 }}>FAA ADDS ArcGIS · GeoJSON API endpoints · Mapbox GL JS / Leaflet</div>
+                                                            </div>
+                                                        </div>
+                                                        <div style={{ padding: '16px 18px', fontSize: 13, lineHeight: 1.7, color: 'var(--text-secondary)' }}>
+
+                                                            {/* Source */}
+                                                            <div style={{ fontWeight: 700, fontSize: 12, textTransform: 'uppercase', letterSpacing: '0.8px', color: 'var(--text-tertiary)', marginBottom: 6 }}>Data Source</div>
+                                                            <p style={{ margin: '0 0 14px', fontSize: 12 }}>
+                                                                The <strong style={{ color: 'var(--text-primary)' }}>FAA Aeronautical Data Delivery Service (ADDS)</strong> publishes authoritative aviation
+                                                                vector data via an ArcGIS open data portal. All endpoints below return <strong>GeoJSON</strong> and
+                                                                require no API key — they are publicly accessible from any browser or server.
+                                                                <br />
+                                                                <span style={{ color: 'var(--text-tertiary)' }}>Portal: adds-faa.opendata.arcgis.com</span>
+                                                            </p>
+
+                                                            {/* Endpoints */}
+                                                            <div style={{ fontWeight: 700, fontSize: 12, textTransform: 'uppercase', letterSpacing: '0.8px', color: 'var(--text-tertiary)', marginBottom: 10 }}>GeoJSON API Endpoints</div>
+                                                            {[
+                                                                {
+                                                                    label: 'Airports',
+                                                                    color: '#34C759',
+                                                                    desc: 'All US public-use airports with ICAO ID, name, type, and elevation.',
+                                                                    url: 'https://services6.arcgis.com/ssFJjBXIUyZDrSYZ/arcgis/rest/services/US_Airport/FeatureServer/0/query?where=1%3D1&outFields=ARPT_NAME,ICAO_ID,ARPT_ID,TYPE_CODE,ELEV&outSR=4326&f=geojson',
+                                                                },
+                                                                {
+                                                                    label: 'Airspace — Class B / C / D',
+                                                                    color: '#0A84FF',
+                                                                    desc: "Controlled airspace polygon boundaries. Filter by CLASS field: 'B', 'C', or 'D'.",
+                                                                    url: "https://services6.arcgis.com/ssFJjBXIUyZDrSYZ/arcgis/rest/services/Class_Airspace/FeatureServer/0/query?where=CLASS+IN+('B','C','D')&outFields=CLASS,NAME,LOWER_VAL,UPPER_VAL&outSR=4326&f=geojson",
+                                                                },
+                                                                {
+                                                                    label: 'Navigational Aids (Navaids)',
+                                                                    color: '#FF9500',
+                                                                    desc: 'VOR, NDB, DME, TACAN point locations with frequency and identifier.',
+                                                                    url: 'https://services6.arcgis.com/ssFJjBXIUyZDrSYZ/arcgis/rest/services/Navaids/FeatureServer/0/query?where=1%3D1&outFields=NAV_ID,NAME,TYPE_CODE,FREQ,CHANNEL&outSR=4326&f=geojson',
+                                                                },
+                                                            ].map(function(ep) {
+                                                                return (
+                                                                    <div key={ep.label} style={{ marginBottom: 16, padding: '12px 14px', background: 'var(--card-mid)', borderRadius: 12, borderLeft: '3px solid ' + ep.color }}>
+                                                                        <div style={{ fontWeight: 700, fontSize: 12, color: ep.color, marginBottom: 4 }}>{ep.label}</div>
+                                                                        <div style={{ fontSize: 12, marginBottom: 8, color: 'var(--text-secondary)' }}>{ep.desc}</div>
+                                                                        <div style={{ fontFamily: 'var(--font-mono)', fontSize: 10, color: 'var(--text-tertiary)', wordBreak: 'break-all', lineHeight: 1.5 }}>{ep.url}</div>
+                                                                    </div>
+                                                                );
+                                                            })}
+
+                                                            {/* Overlay instructions */}
+                                                            <div style={{ fontWeight: 700, fontSize: 12, textTransform: 'uppercase', letterSpacing: '0.8px', color: 'var(--text-tertiary)', marginBottom: 10, marginTop: 4 }}>Implementation — Leaflet</div>
+                                                            <div style={{ background: 'var(--card-mid)', borderRadius: 10, padding: '12px 14px', fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--text-mono)', lineHeight: 1.65, overflowX: 'auto' }}>
+                                                                <div>{'// 1. Add the GeoTIFF raster as a tile layer (requires georeferenced tiles)'}</div>
+                                                                <div>{"//    Convert .tif → XYZ tiles: gdal2tiles.py -z 5-12 chart.tif ./tiles/"}</div>
+                                                                <div>{"//    Or use a tile server like TiTiler pointing at the GCS bucket."}</div>
+                                                                <div style={{ marginTop: 8 }}>{'const map = L.map("map").setView([37.7, -96], 6);'}</div>
+                                                                <div>{'L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png").addTo(map);'}</div>
+                                                                <div style={{ marginTop: 8 }}>{'// 2. Overlay airports from FAA ADDS'}</div>
+                                                                <div>{'fetch("https://services6.arcgis.com/.../US_Airport/FeatureServer/0/query?...")'}</div>
+                                                                <div>{'  .then(r => r.json())'}</div>
+                                                                <div>{'  .then(data => L.geoJSON(data, {'}</div>
+                                                                <div>{'    pointToLayer: (f, ll) => L.circleMarker(ll, { radius: 5, fillColor: "#34C759" }),'}</div>
+                                                                <div>{'    onEachFeature: (f, l) => l.bindPopup(f.properties.ARPT_NAME)'}</div>
+                                                                <div>{'  }).addTo(map));'}</div>
+                                                                <div style={{ marginTop: 8 }}>{'// 3. Overlay Class B/C/D airspace polygons'}</div>
+                                                                <div>{'fetch("https://services6.arcgis.com/.../Class_Airspace/FeatureServer/0/query?...")'}</div>
+                                                                <div>{'  .then(r => r.json())'}</div>
+                                                                <div>{'  .then(data => L.geoJSON(data, {'}</div>
+                                                                <div>{"    style: f => ({ color: f.properties.CLASS === 'B' ? '#00f' : '#80f', fillOpacity: 0.15 }),"}</div>
+                                                                <div>{'    onEachFeature: (f, l) => l.bindTooltip("Class " + f.properties.CLASS)'}</div>
+                                                                <div>{'  }).addTo(map));'}</div>
+                                                            </div>
+
+                                                            <div style={{ fontWeight: 700, fontSize: 12, textTransform: 'uppercase', letterSpacing: '0.8px', color: 'var(--text-tertiary)', marginBottom: 10, marginTop: 16 }}>Implementation — Mapbox GL JS</div>
+                                                            <div style={{ background: 'var(--card-mid)', borderRadius: 10, padding: '12px 14px', fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--text-mono)', lineHeight: 1.65, overflowX: 'auto' }}>
+                                                                <div>{'const map = new mapboxgl.Map({ container: "map", style: "mapbox://styles/mapbox/dark-v11" });'}</div>
+                                                                <div style={{ marginTop: 8 }}>{"map.on('load', () => {"}</div>
+                                                                <div>{'  // Add airports source'}</div>
+                                                                <div>{"  map.addSource('faa-airports', {"}</div>
+                                                                <div>{"    type: 'geojson',"}</div>
+                                                                <div>{"    data: 'https://services6.arcgis.com/.../US_Airport/FeatureServer/0/query?...'"}</div>
+                                                                <div>{'  });'}</div>
+                                                                <div>{"  map.addLayer({ id: 'airports', type: 'circle', source: 'faa-airports',"}</div>
+                                                                <div>{"    paint: { 'circle-color': '#34C759', 'circle-radius': 5 }"}</div>
+                                                                <div>{'  });'}</div>
+                                                                <div style={{ marginTop: 8 }}>{'  // Add airspace source and fill layer'}</div>
+                                                                <div>{"  map.addSource('faa-airspace', { type: 'geojson', data: 'https://services6.arcgis.com/.../Class_Airspace/...' });"}</div>
+                                                                <div>{"  map.addLayer({ id: 'airspace-fill', type: 'fill', source: 'faa-airspace',"}</div>
+                                                                <div>{"    paint: { 'fill-color': ['match', ['get', 'CLASS'], 'B', '#0080ff', 'C', '#8000ff', '#ff8000'], 'fill-opacity': 0.15 }"}</div>
+                                                                <div>{'  });'}</div>
+                                                                <div>{'});'}</div>
+                                                            </div>
+
+                                                            <p style={{ margin: '14px 0 0', fontSize: 12, color: 'var(--text-tertiary)' }}>
+                                                                <strong>Tip:</strong> To overlay FAA GeoTIFF charts directly as a raster tile layer, convert them to XYZ tiles
+                                                                using <code style={{ background: 'var(--card-high)', padding: '1px 5px', borderRadius: 4 }}>gdal2tiles.py</code>, then
+                                                                serve from Firebase Hosting or use a cloud-native tile server like <strong>TiTiler</strong> pointed at your GCS bucket path.
+                                                            </p>
+                                                        </div>
+                                                    </div>
                                                 </div>
                                             )}
 
