@@ -3905,9 +3905,9 @@
 
                 var latLngs = allPts.map(function(p){ return [p.lat, p.lon]; });
 
-                // Glow halo + solid route line — darker blue on light tiles for contrast
-                var lineColor = isDark ? '#0A84FF' : '#0055CC';
-                var glow = L.polyline(latLngs, { color: lineColor, weight: 16, opacity: isDark ? 0.18 : 0.35 });
+                // Glow halo + solid route line — magenta for high contrast on all backgrounds
+                var lineColor = isDark ? '#FF6BF0' : '#D42BE0';
+                var glow = L.polyline(latLngs, { color: lineColor, weight: 16, opacity: isDark ? 0.22 : 0.4 });
                 var line = L.polyline(latLngs, { color: lineColor, weight: 4,  opacity: 0.95 });
                 glow.addTo(map); overlaysRef.current.push(glow);
                 line.addTo(map); overlaysRef.current.push(line);
@@ -4341,7 +4341,7 @@
 
                 var latLngs = allPts.map(function(p) { return [p.lat, p.lon]; });
                 if (allPts.length >= 2) {
-                    routeLayerRef.current = L.polyline(latLngs, { color: '#FFFFFF', weight: 3, opacity: 0.9, dashArray: '8 6' });
+                    routeLayerRef.current = L.polyline(latLngs, { color: '#D42BE0', weight: 3, opacity: 0.9, dashArray: '8 6' });
                     routeLayerRef.current.addTo(map);
                     map.fitBounds(latLngs, { padding: [80, 80] });
                 } else {
