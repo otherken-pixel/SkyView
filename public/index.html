@@ -6090,18 +6090,50 @@
                     if (windLines.length) advisoryCtx += '\n=== WINDS ALOFT ===\n' + windLines.join('\n') + '\n';
                 }
 
+                // Build NWS 7-day forecast context for AI prompt
+                var nwsCtx = '';
+                allRoutePts.forEach(function(icao) {
+                    var days = nwsData[icao];
+                    if (days && days.length) {
+                        nwsCtx += '\n=== NWS 7-DAY FORECAST ' + icao + ' (api.weather.gov) ===\n';
+                        days.forEach(function(d) {
+                            nwsCtx += d.dayName + ' ' + d.dateStr + ': ' + d.shortForecast +
+                                ' | Cat: ' + d.cat + ' | Hi: ' + d.hi + '°F Lo: ' + d.lo + '°F' +
+                                ' | Wind: ' + d.ws + 'kt | Precip: ' + d.pr + '%\n';
+                        });
+                    }
+                });
+
+                // Build effective weather source context (what the scoring system actually used)
+                var effectiveCtx = '';
+                if (effectiveWxData && effectiveWxData.length) {
+                    effectiveCtx = '\n=== EFFECTIVE WEATHER USED FOR SCORING ===\n';
+                    effectiveWxData.forEach(function(e) {
+                        var wx = e.effectiveWx;
+                        if (!wx) return;
+                        effectiveCtx += e.icao + ' [Source: ' + (e.sourceLabel || e.source) + ']: ' +
+                            'Cat=' + (wx.cat||'?') + ' Vis=' + (wx.vis||'?') + ' Sky=' + (wx.sky||'?') +
+                            ' Wind=' + (wx.wind||'?') +
+                            (wx.shortForecast ? ' Forecast="' + wx.shortForecast + '"' : '') + '\n';
+                    });
+                }
+
                 var routeStr = allRoutePts.map(function(code) {
                     var apt = getAirport(code);
                     return apt ? code + ' (' + apt.name + ', ' + apt.city + ' ' + apt.state + ')' : code;
                 }).join(' -> ');
 
+                var hoursOut = hoursUntilTrip !== null ? Math.round(hoursUntilTrip) : null;
                 var prompt = `TRIP: ${ac.name} (${ac.cat}) cruise ${ac.kts}kt\n` +
-                    `DEPARTURE: ${trip.date} at ${trip.time} Local Time\n` +
+                    `DEPARTURE: ${trip.date} at ${trip.time} Local Time` +
+                    (hoursOut !== null ? ` (${hoursOut} hours from now)` : '') + `\n` +
                     `ROUTE: ${routeStr}\n` +
                     `Distance: ${Math.round(distance)}nm  ETE: ${Math.floor(ete)}h${Math.round((ete % 1) * 60)}m\n` +
                     scoreCtx +
-                    `\n=== LIVE WEATHER DATA ===\n${wxLines || "No live weather available."}` +
-                    advisoryCtx;
+                    `\n=== LIVE WEATHER DATA (aviationweather.gov) ===\n${wxLines || "No live weather available."}` +
+                    advisoryCtx +
+                    nwsCtx +
+                    effectiveCtx;
 
                 const BRIEFING_SYSTEM = [
                     "You are a veteran aviation meteorologist with 30+ years of experience supporting both general aviation and commercial flight operations.",
@@ -6109,14 +6141,15 @@
                     "You communicate with the precision of a professional briefer but can translate complex weather into plain language when needed.",
                     "",
                     "CRITICAL RULES — FOLLOW THESE STRICTLY:",
-                    "1. The user message contains LIVE WEATHER DATA (METARs, TAFs, SIGMETs, AIRMETs, CWAs, winds aloft). You MUST use this data directly in your briefing. Quote raw METAR/TAF strings and decode them.",
-                    "2. NEVER say 'no weather data was provided' or 'no data available' — the data IS provided in the user message. Read it carefully and use every piece of it.",
-                    "3. NEVER speculate or guess about weather conditions. Base every statement on the actual data provided. If a TAF or METAR is present, decode and analyze it — do not ignore it.",
+                    "1. The user message contains weather data from MULTIPLE SOURCES: aviationweather.gov (METARs, TAFs, SIGMETs, AIRMETs, CWAs, winds aloft), NWS api.weather.gov (7-day forecasts with short forecast text, temperatures, wind, precipitation probability), and effective weather used for scoring. You MUST synthesize ALL of this data into a unified, comprehensive briefing. Quote raw METAR/TAF strings and decode them.",
+                    "2. NEVER say 'no weather data was provided' or 'no data available' — the data IS provided in the user message. Read it carefully and use every piece of it from every source.",
+                    "3. NEVER speculate or guess about weather conditions. Base every statement on the actual data provided. If a TAF, METAR, or NWS forecast is present, analyze it — do not ignore it.",
                     "4. Decode every METAR and TAF fully: wind direction/speed/gusts, visibility, weather phenomena, cloud layers (type/height), temperature/dewpoint, altimeter setting, remarks.",
                     "5. Classify flight categories explicitly: VFR (ceiling >3000ft & vis >5sm), MVFR (1000-3000ft or 3-5sm), IFR (500-999ft or 1-3sm), LIFR (<500ft or <1sm).",
-                    "6. If the flight date is in the future relative to METAR observation times, acknowledge this but still analyze the available METARs as the most recent observations and use TAFs for the forecast period. Do NOT dismiss the data as 'outdated' — treat it as the best available information.",
+                    "6. For future flights: combine current METARs (latest observations showing current trends), TAFs (terminal forecasts), and NWS 7-day forecasts (extended outlook with forecast text, precip probability, temperature, wind) to build the most complete picture. The NWS short forecast text (e.g. 'Rain likely then Partly Sunny') and precip probability are especially valuable for flights >24h out. Do NOT dismiss any data source — cross-reference them all.",
                     "7. If SIGMETs, AIRMETs, CWAs, or winds aloft data are provided, you MUST address them. Do not skip any provided data.",
-                    "8. Be CONCISE — keep each section focused and actionable. Avoid filler, repetition, and unnecessary caveats.",
+                    "8. The 'Effective Weather Used for Scoring' section shows what the automated safety system used — reference this to explain the safety score and identify which data source drove the scoring decisions.",
+                    "9. Be CONCISE — keep each section focused and actionable. Avoid filler, repetition, and unnecessary caveats.",
                     "",
                     "Your role is to provide a thorough preflight weather briefing for the flight route provided.",
                     "",
@@ -6133,10 +6166,10 @@
                     "",
                     "Section guidance:",
                     "ROUTE OVERVIEW: Summarize the proposed route, altitude(s), estimated departure time, and flight duration from the data provided.",
-                    "SYNOPTIC OVERVIEW: Infer the big-picture weather pattern from the provided METARs, TAFs, and advisories — pressure systems, frontal activity, and how they affect the route. Use altimeter settings, wind patterns, temperature/dewpoint trends, and weather phenomena across stations to paint the synoptic picture.",
-                    "DEPARTURE CONDITIONS: Decode the departure METAR and TAF fully. Assess ceiling, visibility, winds (surface and aloft), temperature/dewpoint spread, flight category, and any significant phenomena. Quote the raw METAR/TAF.",
+                    "SYNOPTIC OVERVIEW: Infer the big-picture weather pattern from ALL provided data — METARs, TAFs, NWS 7-day forecasts, and advisories. Use altimeter settings, wind patterns, temperature/dewpoint trends, NWS forecast text, and weather phenomena across stations to paint the synoptic picture. For future flights, the NWS forecast text and precip probability are key indicators of the expected pattern.",
+                    "DEPARTURE CONDITIONS: Decode the departure METAR and TAF fully. For future flights, also incorporate the NWS forecast for the departure date (forecast text, expected category, temperature range, wind, precip chance). Assess ceiling, visibility, winds, temperature/dewpoint spread, flight category, and any significant phenomena. Quote the raw METAR/TAF.",
                     "EN ROUTE CONDITIONS: Cover conditions along the full route, including turbulence (CAT and convective), icing levels and types, mountain wave activity if applicable, convective activity, and any relevant AIRMETs/SIGMETs.",
-                    "DESTINATION CONDITIONS: Decode the destination METAR and TAF fully. Assess forecast conditions, flight category, alternate airport requirements, and any deteriorating trends. Quote the raw METAR/TAF.",
+                    "DESTINATION CONDITIONS: Decode the destination METAR and TAF fully. For future flights, also incorporate the NWS forecast for the arrival date (forecast text, expected category, temperature range, wind, precip chance). Assess forecast conditions, flight category, alternate airport requirements, and any deteriorating trends. Quote the raw METAR/TAF.",
                     "WINDS ALOFT: Use the winds aloft data provided (if any) to discuss headwind/tailwind/crosswind components at relevant flight levels. If no winds aloft data is provided, estimate from surface observations.",
                     "HAZARDS SUMMARY: Bullet the top weather hazards in order of severity: convection, icing, turbulence, low IFR, wind shear, etc. Be direct — do not sugarcoat hazards.",
                     "GO/NO-GO ASSESSMENT: Give a direct professional recommendation — GO, GO WITH CAUTION, or NO-GO — with a clear rationale. If 'GO WITH CAUTION,' specify what conditions to monitor and at what point the flight should be aborted or diverted.",
@@ -6202,7 +6235,7 @@
                 }
             // detailedScore intentionally excluded — score updates should not re-trigger
             // an expensive briefing API call (Step 2.3).
-            }, [trip, wxData]);
+            }, [trip, wxData, nwsData, effectiveWxData, hoursUntilTrip]);
 
 
             // --- Conversational AI Chat ---
