@@ -3,9 +3,12 @@
  */
 
 export function deriveCat(ceilingFt, visMi) {
-  if (ceilingFt < 500 || visMi < 1)    return 'LIFR';
-  if (ceilingFt < 1000 || visMi < 3)   return 'IFR';
-  if (ceilingFt < 3000 || visMi < 5)   return 'MVFR';
+  // null/undefined ceiling = clear sky (SKC/CLR) — treat as unlimited for category
+  const c = (ceilingFt != null) ? ceilingFt : Infinity;
+  const v = (visMi != null) ? visMi : 10;
+  if (c < 500  || v < 1) return 'LIFR';
+  if (c < 1000 || v < 3) return 'IFR';
+  if (c < 3000 || v < 5) return 'MVFR';
   return 'VFR';
 }
 
@@ -20,9 +23,9 @@ export function getCategoryColor(cat) {
 }
 
 export function calculateDensityAltitude(tempC, altimeterInHg, elevationFt) {
-  const pressureAlt = elevationFt + (29.92 - altimeterInHg) * 1000;
-  const isaTemp = 15 - (pressureAlt * 0.002);
-  return Math.round(pressureAlt + 120 * (tempC - isaTemp));
+  const pa = (elevationFt || 0) + (29.92 - (altimeterInHg || 29.92)) * 1000;
+  const isaTemp = 15 - pa * 0.001981;  // ISA lapse rate: 1.981°C per 1000 ft
+  return Math.round(pa + 120 * ((tempC != null ? tempC : 15) - isaTemp));
 }
 
 export function getGoColor(s) {

@@ -159,9 +159,10 @@ export async function addKeyboardListeners({ onShow, onHide } = {}) {
  * @param {() => void} callback
  */
 export async function onAppResume(callback) {
-  if (!isNative) return;
+  if (!isNative) return () => {};
   const { App } = await import('@capacitor/app');
-  App.addListener('appStateChange', ({ isActive }) => {
+  const handle = await App.addListener('appStateChange', ({ isActive }) => {
     if (isActive) callback();
   });
+  return () => handle.remove();
 }

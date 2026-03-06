@@ -15,10 +15,13 @@ var _OAIP_BASE   = 'https://api.openaip.net/api';
 var _OAIP_LS_KEY = 'skyview_openaip_key';
 var _OAIP_TTL    = 60 * 60 * 1000; // 1 hour
 
-// Seed default key into localStorage on first run
+// Seed key from env var into localStorage on first run (never hardcode credentials)
 export function seedOpenAIPKey() {
     if (!localStorage.getItem(_OAIP_LS_KEY)) {
-        localStorage.setItem(_OAIP_LS_KEY, atob('MDg0OGY3NTAzNzE2Mzk1YjZiZmE4MDcyYTMwMmI5M2I='));
+        const envKey = typeof import.meta !== 'undefined' && import.meta.env
+            ? import.meta.env.VITE_OPENAIP_KEY
+            : undefined;
+        if (envKey) localStorage.setItem(_OAIP_LS_KEY, envKey);
     }
 }
 
