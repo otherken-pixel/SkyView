@@ -1013,26 +1013,35 @@
             return "TAF " + icao + " " + dd + hh + "00Z 24012KT P6SM FEW040 SCT250 TEMPO 28015G22KT BKN030 FM" + h12 + "00 18008KT P6SM SCT060 BECMG " + h18 + "00 VRB05KT FEW250";
         }
 
-        // Fetch live NOTAMs from AviationWeather.gov.
+        // Fetch live NOTAMs from FAA NOTAM Search (notams.aim.faa.gov).
         // Returns an array of { type, severity, text } objects (empty array on failure).
         async function fetchLiveNotams(icao) {
             if (!icao) return [];
             icao = icao.trim().toUpperCase();
             try {
                 var res = await timeoutFetch(
-                    `https://aviationweather.gov/api/data/notam?ids=${icao}&format=json`,
-                    {}, 10000
+                    'https://notams.aim.faa.gov/notamSearch/search',
+                    {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                        body: 'searchType=0&designatorsForLocation=' + encodeURIComponent(icao)
+                    },
+                    15000
                 );
                 if (!res.ok) return [];
                 var data = await res.json();
-                if (!Array.isArray(data) || data.length === 0) return [];
-                return data.slice(0, 12).map(function(n) {
-                    var kw = (n.keyword || n.facilityType || 'NOTAM').toUpperCase();
-                    var text = n.message || n.notamText || n.text || '';
+                var items = Array.isArray(data.notamList) ? data.notamList
+                    : Array.isArray(data) ? data : [];
+                if (items.length === 0) return [];
+                return items.slice(0, 12).map(function(n) {
+                    var kw = (n.featureName || n.keyword || n.facilityType || 'NOTAM').toUpperCase();
+                    var text = n.traditionalMessage || n.icaoMessage
+                             || n.plainLanguageMessage || '';
+                    if (typeof text === 'string') text = text.trim();
                     var sev = (kw === 'TFR' || kw === 'SECURITY') ? 'error'
                             : (kw === 'RWY' || kw === 'TWY')      ? 'warning'
                             : 'tertiary';
-                    return { type: kw, severity: sev, text };
+                    return { type: kw, severity: sev, text: text };
                 }).filter(function(n) { return n.text; });
             } catch(e) { return []; }
         }
