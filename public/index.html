@@ -9070,6 +9070,11 @@
                                             <MdIcon name="tune" style={{ fontSize: 20, color: 'var(--text-secondary)' }} />
                                             Settings
                                         </button>
+                                        <button className="hamburger-dropdown-item" onClick={() => { setShowProfileModal(true); setShowHamburger(false); }}>
+                                            <MdIcon name="person" style={{ fontSize: 20, color: 'var(--text-secondary)' }} />
+                                            Pilot Profile
+                                            {!personalMinimums && <span style={{ width:6, height:6, borderRadius:'50%', background:'var(--caution)', marginLeft:'auto' }} />}
+                                        </button>
                                         {user && (
                                             <>
                                                 <div className="hamburger-dropdown-sep" />
@@ -9710,8 +9715,8 @@
                         })()}
                     </main>
 
-                    {/* ── FAB: New Flight (shown on create/wx views only) ── */}
-                    {view !== "briefing" && view !== "trips" && (
+                    {/* ── FAB: New Flight (shown on create/wx views only, hidden when editing) ── */}
+                    {view !== "briefing" && view !== "trips" && !editingTripId && (
                         <button className="fab-new-flight" onClick={() => setView("create")}>
                             <MdIcon name="add" style={{ fontSize: 22 }} />
                             New Flight
