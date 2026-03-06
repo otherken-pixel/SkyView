@@ -58,16 +58,17 @@ export function metarCompassDir(deg) {
 }
 
 export function decodeMetarWind(metar) {
-  if (!metar.wind) return 'N/A';
+  if (!metar || !metar.wind) return '\u2014';
   const m = metar.wind.match(/^(VRB|\d{3})(\d{2,3})(G(\d{2,3}))?KT$/);
   if (!m) return metar.wind;
   const dir = m[1], spd = parseInt(m[2]), gst = m[4] ? parseInt(m[4]) : null;
+  if (spd === 0 && !gst) return 'Calm';
   const dirStr = dir === 'VRB' ? 'Variable' : metarCompassDir(parseInt(dir)) + ' (' + parseInt(dir) + '\u00b0)';
   return dirStr + ' at ' + spd + ' kts' + (gst ? ', gusting ' + gst + ' kts' : '');
 }
 
 export function decodeMetarVis(vis) {
-  if (!vis) return 'N/A';
+  if (!vis) return '\u2014';
   if (vis === 'P6SM') return 'Greater than 6 miles';
   const m = vis.match(/^([\d\/ ]+)SM$/);
   if (m) { const v = m[1].trim(); return v + ' statute mile' + (v === '1' ? '' : 's'); }
@@ -84,12 +85,12 @@ export function decodeMetarSkyLayer(layer) {
 }
 
 export function decodeMetarSky(sky) {
-  if (!sky) return 'N/A';
+  if (!sky) return '\u2014';
   return sky.split(' ').map(decodeMetarSkyLayer).join(', ');
 }
 
 export function decodeMetarTemp(temp) {
-  if (!temp) return 'N/A';
+  if (!temp) return '\u2014';
   const parts = temp.split('/');
   function parseC(s) { const neg = s.startsWith('M'); return neg ? -parseInt(s.slice(1)) : parseInt(s); }
   const tc = parseC(parts[0]), dc = parseC(parts[1] || '0');
@@ -98,7 +99,7 @@ export function decodeMetarTemp(temp) {
 }
 
 export function decodeMetarAlt(alt) {
-  if (!alt) return 'N/A';
+  if (!alt) return '\u2014';
   const m = alt.match(/^A(\d{4})$/);
   if (!m) return alt;
   return (parseInt(m[1]) / 100).toFixed(2) + ' inHg';

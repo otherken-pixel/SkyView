@@ -21,6 +21,7 @@ import { getPersonalMinimums } from './utils/personalMinimums';
 import { AIRCRAFT } from './data/aircraft';
 import { AVIATION_DAD_JOKES } from './data/jokes';
 import { FRAT_QUESTIONS, FRAT_TOTAL } from './data/frat';
+import { Sentry } from './services/sentry';
 
 const DEFAULT_TRIPS = [
   { id: 1, dep: 'KCLT', arr: 'KATL', aircraft: 'c172', date: '2026-03-06', time: '09:00', wps: [], name: 'Charlotte to Atlanta', goScore: null },
@@ -59,11 +60,14 @@ async function parseTripWithAi(inputText) {
 class WxErrorBoundary extends React.Component {
   constructor(props) { super(props); this.state = { hasError: false }; }
   static getDerivedStateFromError() { return { hasError: true }; }
+  componentDidCatch(error, info) {
+    if (Sentry) Sentry.captureException(error, { extra: { componentStack: info?.componentStack } });
+  }
   render() {
     if (this.state.hasError) {
       return this.props.compact ? null : (
         <div style={{ padding: 16, color: 'var(--text-secondary)', fontSize: 13 }}>
-          <MdIcon name="error_outline" style={{ fontSize: 18, verticalAlign: 'middle', marginRight: 6 }} />
+          <span style={{ fontSize: 18, verticalAlign: 'middle', marginRight: 6 }}>⚠️</span>
           {this.props.label || 'Component'} encountered an error.
         </div>
       );
