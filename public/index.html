@@ -5621,6 +5621,7 @@
                     runAiBriefing._cache = { key: briefingCacheKey, result }; // Step 2.2 cache
                     setAiResult(result);
                 } catch (e) {
+                    setAiResult(null);
                     setAiError("Briefing failed: " + (e.message || "Please check your API key and try again."));
                 } finally {
                     setAiLoading(false);
