@@ -4753,16 +4753,33 @@
             );
         }
 
-        function RunwayPanel({ icao, windDir, windSpd }) {
+        function RunwayPanel({ icao }) {
             var [runways, setRunways] = useState(null);
             var [loading, setLoading] = useState(true);
+            var [windDir, setWindDir] = useState(null);
+            var [windSpd, setWindSpd] = useState(0);
 
             useEffect(function() {
                 setLoading(true);
                 setRunways(null);
-                fetchRunwayData(icao)
-                    .then(function(data) { setRunways(data); setLoading(false); })
-                    .catch(function()    { setRunways([]);   setLoading(false); });
+                setWindDir(null);
+                setWindSpd(0);
+                // Fetch runway geometry and live METAR (for wind) in parallel
+                Promise.all([
+                    fetchRunwayData(icao).catch(function() { return []; }),
+                    fetchLiveMetar(icao).catch(function() { return null; })
+                ]).then(function(results) {
+                    setRunways(results[0] || []);
+                    var metar = results[1];
+                    if (metar) {
+                        setWindDir(metar.wdir != null ? metar.wdir : null);
+                        setWindSpd(metar.wspd || 0);
+                    }
+                    setLoading(false);
+                }).catch(function() {
+                    setRunways([]);
+                    setLoading(false);
+                });
             }, [icao]);
 
             if (loading) return (
@@ -9504,14 +9521,12 @@
                                             {tab === "runway" && (
                                                 <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
                                                     {fullRoute.map(function(rt, idx) {
-                                                        var wxEntry = (effectiveWxData || []).find(function(e) { return e.icao === rt; });
-                                                        var wx = wxEntry && wxEntry.effectiveWx;
                                                         return (
                                                             <div key={idx}>
                                                                 <h2 style={{ fontSize: 14, fontWeight: 700, margin: '0 0 12px', color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.8px' }}>
                                                                     Runways · {rt}
                                                                 </h2>
-                                                                <RunwayPanel icao={rt} windDir={wx ? wx.wdir : null} windSpd={wx ? (wx.wspd || 0) : 0} />
+                                                                <RunwayPanel icao={rt} />
                                                             </div>
                                                         );
                                                     })}
