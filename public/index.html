@@ -1371,7 +1371,8 @@
         // Evaluate personal minimums against all route weather stations.
         // Returns { penalty, status, worstParam, color, icon, detail }
         function checkPersonalMinimums(effectiveWxData, personalMinimums, tripTargetUtc) {
-            if (!personalMinimums) {
+            // Treat null or all-empty minimums as not configured
+            if (!personalMinimums || !Object.values(personalMinimums).some(function(v) { return v != null && v > 0; })) {
                 return { penalty: 25, status: 'notset', worstParam: null,
                     color: 'var(--caution)', icon: 'warning',
                     detail: 'ADM: Personal minimums not configured — set them in Pilot Profile' };
@@ -1468,6 +1469,25 @@
                             elevate(2, 'at', 'Crosswind', id + ': crosswind exactly at maximum');
                         else if (xw >= maxXwind - 2)
                             elevate(1, 'buffer', 'Crosswind', id + ': crosswind ' + xw + 'kt within 2kt of limit');
+                    }
+                }
+
+                // ── Flight category safety net ──
+                // If ceiling or visibility minimums are configured and conditions
+                // are IFR/LIFR, ensure we always flag even if the numeric check
+                // somehow passed (e.g. rounding). Also flag IFR/LIFR when no
+                // ceiling/vis minimum was explicitly set — a VFR pilot in IFR
+                // conditions should never see "Clear."
+                var wxCat = wx.cat;
+                if (wxCat === 'IFR' || wxCat === 'LIFR') {
+                    if (minCeil === 0 && minVis === 0) {
+                        // No ceiling/vis minimums configured — flag IFR as a hazard
+                        elevate(3, 'exceed', 'Flight Category',
+                            id + ': conditions are ' + wxCat + ' — set ceiling/visibility minimums in Pilot Profile');
+                    } else if (worstRank < 1) {
+                        // Minimums are set but numeric checks passed — still warn about IFR cat
+                        elevate(1, 'buffer', 'Flight Category',
+                            id + ': conditions are ' + wxCat + ' — review your ceiling/visibility minimums');
                     }
                 }
             });
