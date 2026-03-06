@@ -110,24 +110,8 @@ export default function App() {
   const [nlError, setNlError] = useState(null);
 
   useEffect(() => {
-    if (user && user !== undefined) setShowLoginModal(false);
+    if (user) setShowLoginModal(false);
   }, [user]);
-
-  useEffect(() => {
-    if (view === 'briefing' && activeTrip) {
-      try {
-        sessionStorage.setItem('sc_view', 'briefing');
-        sessionStorage.setItem('sc_active_trip_id', String(activeTrip.id));
-        sessionStorage.setItem('sc_tab', tab);
-      } catch (e) {}
-    } else {
-      try {
-        sessionStorage.removeItem('sc_view');
-        sessionStorage.removeItem('sc_active_trip_id');
-        sessionStorage.removeItem('sc_tab');
-      } catch (e) {}
-    }
-  });
 
   // Trips state
   const [trips, setTrips] = useState([]);
@@ -140,6 +124,23 @@ export default function App() {
   const [tab, setTab] = useState(() => {
     try { return sessionStorage.getItem('sc_tab') || 'brief'; } catch (e) { return 'brief'; }
   });
+
+  // Persist current view to sessionStorage for post-reload restoration
+  useEffect(() => {
+    if (view === 'briefing' && activeTrip) {
+      try {
+        sessionStorage.setItem('sc_view', 'briefing');
+        sessionStorage.setItem('sc_active_trip_id', String(activeTrip.id));
+        sessionStorage.setItem('sc_tab', tab);
+      } catch (_) {}
+    } else {
+      try {
+        sessionStorage.removeItem('sc_view');
+        sessionStorage.removeItem('sc_active_trip_id');
+        sessionStorage.removeItem('sc_tab');
+      } catch (_) {}
+    }
+  }, [view, activeTrip, tab]);
   const [forecastDay, setForecastDay] = useState(0);
   const [newTrip, setNewTrip] = useState({ route: ['', ''], aircraft: 'c172', date: '', time: defaultTimeStr, name: '' });
   const [editingTripId, setEditingTripId] = useState(null);
@@ -243,15 +244,20 @@ export default function App() {
           }
         } catch (e) {}
       } else {
-        migrateLocalStorageTrips(user.uid).then(result => {
+        migrateLocalStorageTrips(user.uid).then(async (result) => {
           skipNextFirestoreWrite.current = true;
           const seenKey = 'flightscore_uid_seen_' + user.uid;
           let hasLocalData = false;
           try { hasLocalData = localStorage.getItem('flightscore_trips') !== null; } catch (e) {}
           let seenBefore = false;
           try { seenBefore = !!localStorage.getItem(seenKey); } catch (e) {}
-          const migrated = result.migrated > 0 ? [] : []; // migration returns count, not array
-          const initial = hasLocalData || seenBefore ? [] : DEFAULT_TRIPS;
+          // If trips were migrated, reload them from Firestore so they appear immediately
+          let initial;
+          if (result.migrated > 0) {
+            try { initial = await loadTrips(user.uid); } catch (e) { initial = []; }
+          } else {
+            initial = hasLocalData || seenBefore ? [] : DEFAULT_TRIPS;
+          }
           try { localStorage.setItem(seenKey, '1'); } catch (e) {}
           setTrips(initial);
           setTripsLoaded(true);
