@@ -8877,6 +8877,10 @@
                             if (wxData.length > 0) setTrips(prev => prev.map(t => t.id === id ? { ...t, goScore: calcDetailedScore(wxData, dist).total } : t));
                         }).catch(() => {});
                     })(editingTripId, { dep, arr, wps: editedWps, date: newTrip.date, time: newTrip.time }, Math.round((function() { var d=0; for(var i=0;i<validRoute.length-1;i++){var p1=getAirport(validRoute[i]),p2=getAirport(validRoute[i+1]);if(p1&&p2)d+=calcDist(p1.lat,p1.lon,p2.lat,p2.lon);}return d; })()));
+                    // Sync activeTrip so BriefingPanel sees updated flight data
+                    if (activeTrip && activeTrip.id === editingTripId) {
+                        setActiveTrip(prev => prev ? { ...prev, dep, arr, wps: editedWps, aircraft: newTrip.aircraft, date: newTrip.date, time: newTrip.time, name: tripName } : prev);
+                    }
                     setEditingTripId(null);
                 } else {
                     // ── Create new trip ───────────────────────────────────────────────
