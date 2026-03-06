@@ -389,6 +389,20 @@
             right: 10px !important; font-size: 18px !important; line-height: 1 !important;
         }
 
+        /* ── Airport labels (permanent on map) ── */
+        .airport-label {
+            background: transparent !important; border: none !important;
+            box-shadow: none !important; padding: 0 2px !important;
+            font-family: var(--font-mono); font-weight: 700; font-size: 10px;
+            color: #1a5c28; white-space: nowrap; letter-spacing: 0.3px;
+            text-shadow: 0 0 3px rgba(0,0,0,0.8), 0 0 6px rgba(0,0,0,0.5);
+            pointer-events: none;
+        }
+        body.light-theme .airport-label {
+            color: #1a5c28;
+            text-shadow: 0 0 3px rgba(255,255,255,0.95), 0 0 6px rgba(255,255,255,0.8);
+        }
+
         /* ── Airspace altitude labels (permanent on map) ── */
         .airspace-alt-label {
             background: transparent !important; border: none !important;
@@ -1770,7 +1784,20 @@
                 if (res.ok) {
                     var data = await res.json();
                     var ways = (data.elements || []).filter(function(el) {
-                        return el.type === 'way' && Array.isArray(el.geometry) && el.geometry.length >= 2;
+                        if (el.type !== 'way' || !Array.isArray(el.geometry) || el.geometry.length < 2) return false;
+                        // Skip disused, abandoned, or closed runways
+                        var tags = el.tags || {};
+                        if (tags['disused'] === 'yes' || tags['abandoned'] === 'yes' ||
+                            tags['disused:aeroway'] === 'runway' || tags['abandoned:aeroway'] === 'runway' ||
+                            (tags['description'] && tags['description'].toLowerCase().indexOf('closed') >= 0)) return false;
+                        // Filter runways that are too far from the airport centre (>2 km)
+                        var g = el.geometry;
+                        var midLat = (g[0].lat + g[g.length-1].lat) / 2;
+                        var midLon = (g[0].lon + g[g.length-1].lon) / 2;
+                        var dLat = (midLat - apt.lat) * 111320;
+                        var dLon = (midLon - apt.lon) * 111320 * Math.cos(apt.lat * Math.PI / 180);
+                        var distM = Math.sqrt(dLat * dLat + dLon * dLon);
+                        return distM < 2000; // within 2 km of airport centre
                     });
                     if (ways.length > 0) {
                         return ways.map(function(el) {
@@ -4055,12 +4082,12 @@
                 if (layerGroupRef.current[key]) { map.removeLayer(layerGroupRef.current[key]); delete layerGroupRef.current[key]; }
             }
 
-            // Format altitude value for labels: "SFC", or hundreds of feet
+            // Format altitude value for labels: "SFC", or hundreds of feet MSL
             function fmtAlt(val) {
                 if (val == null || val === '' || val === 0 || val === '0') return 'SFC';
                 var n = parseInt(val, 10);
                 if (isNaN(n) || n <= 0) return 'SFC';
-                return String(Math.round(n / 100));
+                return String(Math.round(n / 100)) + ' MSL';
             }
 
             // ── Data Fetchers ──
@@ -4077,8 +4104,8 @@
                             onEachFeature: function(f, lyr) {
                                 var p = f.properties || {};
                                 var id = p.ICAO_ID || p.ARPT_ID || '';
-                                lyr.bindTooltip(id + ' · ' + (p.ARPT_NAME || ''), { direction: 'top', offset: [0, -7] });
-                                lyr.bindPopup('<b>' + id + '</b><br>' + (p.ARPT_NAME || '') + '<br>Type: ' + (p.TYPE_CODE || '—') + '<br>Elev: ' + (p.ELEV != null ? p.ELEV + ' ft' : '—'));
+                                lyr.bindTooltip(id, { permanent: true, direction: 'right', offset: [6, 0], className: 'airport-label' });
+                                lyr.bindPopup('<b>' + id + '</b><br>' + (p.ARPT_NAME || '') + '<br>Type: ' + (p.TYPE_CODE || '—') + '<br>Elev: ' + (p.ELEV != null ? p.ELEV + ' ft MSL' : '—'));
                             }
                         });
                         replaceLayerGroup('airports', layer);
@@ -4265,8 +4292,8 @@
                             var icon = L.divIcon({
                                 className: 'airspace-alt-label class-' + cls,
                                 html: '<span>' + text + '</span>',
-                                iconSize: [50, 16],
-                                iconAnchor: [25, 8]
+                                iconSize: [90, 16],
+                                iconAnchor: [45, 8]
                             });
                             L.marker([cy, cx], { icon: icon, interactive: false, pane: 'tooltipPane' }).addTo(labelGroup);
                         });
@@ -4987,21 +5014,58 @@
             var [windDir, setWindDir] = useState(null);
             var [windSpd, setWindSpd] = useState(0);
 
+            var [windSource, setWindSource] = useState(null);
+
             useEffect(function() {
                 setLoading(true);
                 setRunways(null);
                 setWindDir(null);
                 setWindSpd(0);
+                setWindSource(null);
                 // Fetch runway geometry and live METAR (for wind) in parallel
                 Promise.all([
                     fetchRunwayData(icao).catch(function() { return []; }),
                     fetchLiveMetar(icao).catch(function() { return null; })
-                ]).then(function(results) {
+                ]).then(async function(results) {
                     setRunways(results[0] || []);
                     var metar = results[1];
-                    if (metar) {
-                        setWindDir(metar.wdir != null ? metar.wdir : null);
+                    if (metar && metar.wdir != null) {
+                        setWindDir(metar.wdir);
                         setWindSpd(metar.wspd || 0);
+                        setWindSource(null);
+                        setLoading(false);
+                        return;
+                    }
+                    // Fallback: try nearby airports for wind data
+                    var apt = getAirport(icao);
+                    if (apt && apt.lat) {
+                        try {
+                            var nearRes = await timeoutFetch(
+                                'https://aviationweather.gov/api/data/metar?bbox=' +
+                                (apt.lat - 0.5).toFixed(4) + ',' + (apt.lon - 0.5).toFixed(4) + ',' +
+                                (apt.lat + 0.5).toFixed(4) + ',' + (apt.lon + 0.5).toFixed(4) +
+                                '&format=json', {}, 8000
+                            );
+                            if (nearRes.ok) {
+                                var nearData = await nearRes.json();
+                                if (Array.isArray(nearData) && nearData.length > 0) {
+                                    // Pick closest station with valid wind
+                                    var best = null, bestDist = Infinity;
+                                    nearData.forEach(function(m) {
+                                        if (m.wdir == null || m.wspd == null) return;
+                                        var dLat = (m.lat - apt.lat) * 111.32;
+                                        var dLon = (m.lon - apt.lon) * 111.32 * Math.cos(apt.lat * Math.PI / 180);
+                                        var dist = Math.sqrt(dLat * dLat + dLon * dLon);
+                                        if (dist < bestDist) { bestDist = dist; best = m; }
+                                    });
+                                    if (best && best.wdir != null) {
+                                        setWindDir(best.wdir);
+                                        setWindSpd(best.wspd || 0);
+                                        setWindSource(best.icaoId || best.stationId || 'nearby');
+                                    }
+                                }
+                            }
+                        } catch(e) { /* no nearby wind available */ }
                     }
                     setLoading(false);
                 }).catch(function() {
@@ -5034,7 +5098,7 @@
                     <div style={{ fontSize: 12, color: hasWind ? 'var(--cat-vfr-color)' : 'var(--text-tertiary)', display: 'flex', alignItems: 'center', gap: 6, marginBottom: 2 }}>
                         <MdIcon name="air" style={{ fontSize: 14 }}/>
                         {hasWind
-                            ? `Wind ${windDir}° at ${windSpd} kt — best runway highlighted`
+                            ? `Wind ${windDir}° at ${windSpd} kt` + (windSource ? ` (via ${windSource})` : '') + ` — best runway highlighted`
                             : 'No wind data — showing headings only'
                         }
                     </div>
