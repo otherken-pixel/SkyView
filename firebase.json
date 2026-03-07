@@ -1,10 +1,10 @@
 {
   "firestore": {
-    "rules": "public/firestore.rules",
-    "indexes": "public/firestore.indexes.json"
+    "rules": "firestore.rules",
+    "indexes": "firestore.indexes.json"
   },
   "hosting": {
-    "public": "public",
+    "public": "dist",
     "ignore": [
       "firebase.json",
       "**/.*",
