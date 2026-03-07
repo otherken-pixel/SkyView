@@ -575,19 +575,19 @@ export default function BriefingPanel({ trip, onScoreUpdate, onFratUpdate, tab, 
                 background: fratAnswers[q.id] !== undefined ? 'var(--card-high)' : 'var(--card-mid)',
                 border: '1px solid var(--card-border-soft)'
               }}>
-                <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-primary)', marginBottom: 6 }}>{q.text}</div>
+                <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-primary)', marginBottom: 6 }}>{q.label}</div>
                 <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-                  {q.options.map(opt => (
-                    <button key={opt.value} onClick={() => {
-                      setFratAnswers(prev => ({ ...prev, [q.id]: opt.value }));
+                  {q.opts.map(opt => (
+                    <button key={opt.l} onClick={() => {
+                      setFratAnswers(prev => ({ ...prev, [q.id]: opt.p }));
                     }} style={{
                       padding: '5px 12px', borderRadius: 8, fontSize: 12, fontWeight: 600,
                       cursor: 'pointer', transition: 'all 0.15s',
-                      background: fratAnswers[q.id] === opt.value ? 'var(--accent)' : 'var(--card)',
-                      color: fratAnswers[q.id] === opt.value ? '#fff' : 'var(--text-secondary)',
-                      border: '1px solid ' + (fratAnswers[q.id] === opt.value ? 'var(--accent)' : 'var(--card-border)')
+                      background: fratAnswers[q.id] === opt.p ? 'var(--accent)' : 'var(--card)',
+                      color: fratAnswers[q.id] === opt.p ? '#fff' : 'var(--text-secondary)',
+                      border: '1px solid ' + (fratAnswers[q.id] === opt.p ? 'var(--accent)' : 'var(--card-border)')
                     }}>
-                      {opt.label} ({opt.value}pt{opt.value !== 1 ? 's' : ''})
+                      {opt.l} ({opt.p}pt{opt.p !== 1 ? 's' : ''})
                     </button>
                   ))}
                 </div>
