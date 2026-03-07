@@ -10,13 +10,13 @@ const MdCard = ({ children, style = {}, onClick }) => {
                 borderRadius: '20px',
                 padding: '16px',
                 color: 'var(--text-primary)',
-                boxShadow: '0 2px 16px rgba(0,0,0,0.35)',
+                boxShadow: 'var(--shadow-card)',
                 cursor: onClick ? 'pointer' : 'default',
                 transition: 'background 0.2s, box-shadow 0.2s',
                 ...style
             }}
-            onMouseOver={(e) => { if (onClick) { e.currentTarget.style.background = 'var(--card-mid)'; e.currentTarget.style.boxShadow = '0 6px 24px rgba(0,0,0,0.5)'; } }}
-            onMouseOut={(e) => { if (onClick) { e.currentTarget.style.background = 'var(--card)'; e.currentTarget.style.boxShadow = '0 2px 16px rgba(0,0,0,0.35)'; } }}
+            onMouseOver={(e) => { if (onClick) { e.currentTarget.style.background = 'var(--card-mid)'; e.currentTarget.style.boxShadow = 'var(--shadow-elevated)'; } }}
+            onMouseOut={(e) => { if (onClick) { e.currentTarget.style.background = 'var(--card)'; e.currentTarget.style.boxShadow = 'var(--shadow-card)'; } }}
         >
             {children}
         </div>

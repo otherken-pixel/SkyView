@@ -51,27 +51,36 @@ export default function DataModal({ trips, onImport, onClose }) {
   }
 
   return (
-    <div onClick={e => { if (e.target === e.currentTarget) onClose(); }}
-      style={{ position:'fixed', inset:0, background:'rgba(0,0,0,0.55)', zIndex:2000, display:'flex', alignItems:'center', justifyContent:'center', padding:16 }}>
-      <div style={{ background:'var(--md-sys-color-surface)', borderRadius:28, padding:32, width:'min(420px,100%)', boxShadow:'0 8px 32px rgba(0,0,0,0.3)' }}>
-        <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:20 }}>
-          <div style={{ fontSize:20, fontWeight:500 }}>My Trip Data</div>
-          <MdButton variant="text" icon="close" onClick={onClose} style={{ padding:8 }} />
-        </div>
-        {toast && (
-          <div style={{ background:'var(--md-sys-color-primary-container)', color:'var(--md-sys-color-on-primary-container)', borderRadius:12, padding:'10px 16px', marginBottom:16, fontSize:14, textAlign:'center' }}>{toast}</div>
-        )}
-        <div style={{ fontSize:13, color:'var(--md-sys-color-on-surface-variant)', marginBottom:20, lineHeight:1.6 }}>
-          Trips are automatically saved in this browser. Use export/import to move trips between devices, or to keep a backup.
-        </div>
-        <div style={{ display:'flex', flexDirection:'column', gap:12 }}>
-          <MdButton variant="tonal" icon="download" onClick={handleExport}>
-            Export trips as JSON ({trips.length} trip{trips.length !== 1 ? 's' : ''})
-          </MdButton>
-          <input ref={importRef} type="file" accept=".json,application/json" style={{ display:'none' }} onChange={handleImportFile} />
-          <MdButton variant="tonal" icon="upload" onClick={() => importRef.current && importRef.current.click()}>
-            Import trips from JSON
-          </MdButton>
+    <div className="ios-sheet-overlay" onClick={e => { if (e.target === e.currentTarget) onClose(); }}
+      role="dialog" aria-modal="true" aria-label="My Trip Data">
+      <div className="ios-sheet">
+        <div className="ios-sheet-grabber" />
+        <div style={{ padding: '16px 24px 24px' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
+            <div style={{ fontSize: 20, fontWeight: 700, color: 'var(--text-primary)' }}>My Trip Data</div>
+            <button onClick={onClose} aria-label="Close" style={{
+              background: 'var(--card-high)', border: 'none', cursor: 'pointer', color: 'var(--text-secondary)',
+              display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: 8,
+              minWidth: 44, minHeight: 44, padding: 6
+            }}>
+              <MdIcon name="close" style={{ fontSize: 20 }} />
+            </button>
+          </div>
+          {toast && (
+            <div role="alert" style={{ background: 'var(--md-sys-color-primary-container)', color: 'var(--md-sys-color-on-primary-container)', borderRadius: 12, padding: '10px 16px', marginBottom: 16, fontSize: 14, textAlign: 'center' }}>{toast}</div>
+          )}
+          <div style={{ fontSize: 13, color: 'var(--text-secondary)', marginBottom: 20, lineHeight: 1.6 }}>
+            Trips are automatically saved in this browser. Use export/import to move trips between devices, or to keep a backup.
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+            <MdButton variant="tonal" icon="download" onClick={handleExport}>
+              Export trips as JSON ({trips.length} trip{trips.length !== 1 ? 's' : ''})
+            </MdButton>
+            <input ref={importRef} type="file" accept=".json,application/json" style={{ display: 'none' }} onChange={handleImportFile} />
+            <MdButton variant="tonal" icon="upload" onClick={() => importRef.current && importRef.current.click()}>
+              Import trips from JSON
+            </MdButton>
+          </div>
         </div>
       </div>
     </div>
