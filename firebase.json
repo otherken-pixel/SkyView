@@ -4,6 +4,7 @@
     "indexes": "firestore.indexes.json"
   },
   "hosting": {
+    "site": "flightscore-ca7e0",
     "public": "dist",
     "ignore": [
       "firebase.json",
